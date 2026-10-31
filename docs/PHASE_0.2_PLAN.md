@@ -170,3 +170,12 @@ The four-validator implementation and CI smoke test have now passed. This supers
 **Scope limitation:** This is a local four-validator crash-stop integration test. It is not proof of Byzantine fault tolerance, partition safety, malicious-validator handling, production-grade persistence, or production readiness. Snapshot state sync is not implemented. Independent security review, broader adversarial/fault testing, operational controls, governance, and jurisdiction-specific legal review remain open. Public release remains blocked by the existing G2–G4 gates.
 
 All work remains on `phase-0.2-planning`; `main` is not modified.
+
+
+## 12. WP4.6 ABCI Genesis identity negative tests — passed 2026-11-01
+
+- Added two adapter-level negative tests: reject an InitChain request with a mismatched CometBFT chain ID, and reject an application Genesis payload whose hash differs from the independently pinned HND manifest hash.
+- Both tests assert that failed initialization does not create the application state file.
+- Full CI run [41246122343](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41246122343) completed successfully on commit `b89b99abc4c9193c0235b3f5ff52833ef9c0b91e`. The isolated v0.2 test job and the CometBFT integration job both passed; the latter reran the single-node smoke, four-validator Genesis preflight, and four-validator network integration.
+- Detailed scope and limitations are recorded in `docs/WP4_6_ABCI_GENESIS_IDENTITY_NEGATIVE_TESTS_2026-11-01.md`.
+- These checks cover only the stated initialization identity failures. They do not prove Byzantine fault tolerance, partition safety, resistance to malicious validators, or production security. `main` remains unchanged.
