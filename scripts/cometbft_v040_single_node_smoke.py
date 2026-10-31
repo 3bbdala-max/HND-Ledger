@@ -82,8 +82,8 @@ def query_account(account_id: str) -> dict:
     result = rpc_get(
         "/abci_query",
         {
-            "path": "/account",
-            "data": "0x" + account_id.encode("utf-8").hex(),
+            "path": json.dumps("/account"),
+            "data": json.dumps("0x" + account_id.encode("utf-8").hex()),
             "prove": "false",
         },
     )
@@ -320,7 +320,7 @@ def main() -> None:
 
             broadcast = rpc_get(
                 "/broadcast_tx_sync",
-                {"tx": "0x" + tx_bytes.hex()},
+                {"tx": json.dumps("0x" + tx_bytes.hex())},
             )
             check_tx = broadcast.get("result", {}).get("check_tx", {})
             if int(check_tx.get("code", 0)) != 0:
