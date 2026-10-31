@@ -123,3 +123,15 @@ A failed gate pauses progression. No gate is passed by assumption.
 
 ---
 This document is a development plan, not a security certification, legal opinion, investment document, or promise of launch.
+
+
+## 9. Implementation status update — 2026-10-31
+
+This status note supersedes the earlier "Immediate next actions" snapshot where later verified work has closed those gaps. It does not silently change the original planning baseline or release gates.
+
+- WP0 source recovery/recheck and the recorded local transfer recheck are documented separately.
+- WP1–WP3 v0.2 engineering references and isolated test suites are present in this branch.
+- WP4.1–WP4.3 ABCI feasibility, application core, and pinned gRPC adapter are documented.
+- **WP4.4 single-node integration passed** in GitHub Actions run [41242087625](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41242087625), tested commit `ede5acf8a786d1d29e8af1d9c54b583f4446ec3f`. The disposable CometBFT v0.40.0 node initialized HND, accepted and committed a signed 1,237 HND transfer, changed the synthetic sender balance from 600,000 to 598,763 HND, and recovered the same committed state after application/node restart. See `docs/WP4_4_COMETBFT_V040_SINGLE_NODE_INTEGRATION_2026-10-31.md`.
+- The next technical gate is a private multi-validator test network and distributed fault testing. This is not yet evidence of BFT safety/liveness, production readiness, or public-release authorization.
+- All changes remain on `phase-0.2-planning`; `main` has not been changed.
