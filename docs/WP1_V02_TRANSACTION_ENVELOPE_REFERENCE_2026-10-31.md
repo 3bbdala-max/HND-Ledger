@@ -17,6 +17,7 @@ The module provides:
 - A transaction identifier over the same domain-prefixed unsigned payload, so network and protocol version are included.
 - Strict integer checks using exact Python types, rejecting bool and float aliases.
 - Explicit network/version matching, amount bounds, unsigned-64-bit nonce range, balance checks, strict Base64 decoding, and Ed25519 verification.
+- A deterministic test vector in `vectors/v0.2-transaction-envelope-example.json`, with public key and signature but no private key.
 
 The module expects the caller to supply the sender account's stored public key and current balance/nonce. It does not implement a ledger, account database, account-ID derivation, block format, peer network, or consensus.
 
@@ -41,11 +42,11 @@ Executed locally on the reference implementation:
 
 ```text
 python -m unittest -v tests.test_v02_transaction_envelope
-Ran 16 tests
+Ran 17 tests
 OK
 ```
 
-Coverage includes valid signatures; rejection of boolean, float, string, zero, negative, and oversized amounts; rejection of malformed, boolean, float, negative, and overflowing nonces; stale nonce; insufficient balance; self-transfer; missing/unknown fields; malformed key/signature; wrong network and protocol version; and signature invalidation when signed fields are changed.
+Coverage includes valid signatures; rejection of boolean, float, string, zero, negative, and oversized amounts; rejection of malformed, boolean, float, negative, and overflowing nonces; stale nonce; insufficient balance; self-transfer; missing/unknown fields; malformed key/signature; wrong network and protocol version; signature invalidation when signed fields are changed, and verification of the published deterministic vector.
 
 These results establish only that this isolated module passes its own 16 tests in the local environment. They are not GitHub Actions results, a formal verification result, an independent audit, or evidence of production readiness.
 
@@ -64,8 +65,9 @@ python -m unittest -v tests.test_v02_transaction_envelope
 2. Approve the precise network-ID registry/format and protocol versioning policy.
 3. Approve the nonce width and transaction amount range, including how the range relates to the eventual atomic-unit scale.
 4. Publish byte-for-byte signing and transaction-ID test vectors for independent implementations.
-5. Define a verified genesis manifest and state-transition rules before integrating this primitive into a ledger.
-6. Keep distributed consensus and networking out of scope until validator assumptions and a reviewed consensus design exist.
+5. Verify the published vector independently in another implementation and add more edge-case vectors.
+6. Define a verified genesis manifest and state-transition rules before integrating this primitive into a ledger.
+7. Keep distributed consensus and networking out of scope until validator assumptions and a reviewed consensus design exist.
 
 ## 6. Release boundary
 
