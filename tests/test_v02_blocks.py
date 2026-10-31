@@ -56,6 +56,12 @@ class TestV02Blocks(unittest.TestCase):
     def build(self, txs=None, timestamp=1):
         return self.chain.build_block(txs or [self.tx()], timestamp_ms=timestamp)
 
+    def fresh_chain(self):
+        return HNDChain(
+            config=self.config, manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+        )
+
     def test_genesis_block_is_height_zero_and_commits_genesis_state(self):
         self.assertEqual(self.chain.height, 0)
         genesis = self.chain.blocks[0]
@@ -137,7 +143,7 @@ class TestV02Blocks(unittest.TestCase):
         tampered = copy.deepcopy(block)
         tampered["transactions"][0]["amount"] = 11
         with self.assertRaisesRegex(BlockError, "transaction root mismatch"):
-            self.chain.apply_block(tampered)
+            self.fresh_chain().apply_block(tampered)
 
     def test_tampered_header_rejected_by_block_hash(self):
         block = self.build()
@@ -175,7 +181,7 @@ class TestV02Blocks(unittest.TestCase):
             tampered["block_hash"] = block_header_hash(tampered["header"])
             with self.subTest(field=key):
                 with self.assertRaisesRegex(BlockError, message):
-                    self.chain.apply_block(tampered)
+                    self.fresh_chain().apply_block(tampered)
 
     def test_state_hash_mismatch_rejected(self):
         block = self.build()
