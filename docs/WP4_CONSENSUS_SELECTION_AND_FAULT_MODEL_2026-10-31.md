@@ -159,11 +159,12 @@ The upstream CometBFT releases page currently marks **v0.40.0** as the latest re
 
 Release source: https://github.com/cometbft/cometbft/releases (checked 2026-10-31).
 
-### Language boundary
+### Language boundary — WP4.1 outcome
 
-HND's reference ledger is currently Python. Do not assume that a first-party, production-ready Python ABCI++ adapter exists or is compatible with the chosen CometBFT release. WP4.1 must compare:
-- a maintained Python ABCI client/adapter, if one is demonstrably compatible;
-- a small, separately reviewed Go adapter that calls the Python state machine through a local, versioned interface; or
-- a Go implementation of the HND state-transition rules validated against the existing Python test vectors.
+HND's deterministic ledger and transaction validation remain in Python for the first integration spike. WP4.1 selects a narrow Python ABCI gRPC server generated from the exact CometBFT v0.40.0 protobuf schema as the preferred feasibility path.
 
-The choice must be supported by an end-to-end prototype and parity tests. Do not duplicate consensus logic in Python, and do not silently create two independently evolving ledger implementations.
+This is a design recommendation, not yet a working adapter. Do not assume a first-party, production-ready Python ABCI++ server library exists. The integration must be verified against the pinned protocol schema, request/response lifecycle, and four-connection behavior.
+
+A Go adapter calling a Python sidecar, or a Go reimplementation of HND state transitions, is deferred unless the Python gRPC spike fails a measurable correctness, compatibility, or performance requirement. Any future second implementation must pass full transaction and state-hash parity tests against the Python reference.
+
+The consensus engine is CometBFT. The HND Python application must not implement a separate consensus algorithm or independently write a competing block history. See `docs/WP4_1_COMETBFT_ABCI_PYTHON_FEASIBILITY_2026-10-31.md` for the detailed design and acceptance gates.
