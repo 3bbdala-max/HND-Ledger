@@ -1,0 +1,22 @@
+{
+  "description": "Test-only devnet genesis fixture. The two allocations are invented test data, not an approved public distribution.",
+  "manifest": {
+    "manifest_version": 1,
+    "network_id": "hnd-devnet-alpha",
+    "protocol_version": 2,
+    "total_supply": 1000000,
+    "allocations": [
+      {
+        "account_id": "hnd2:hnd-devnet-alpha:37c9592c3a9881be2ee8d830ce6294186c203ed18c6493ef95a4219f0f7a53b8",
+        "public_key": "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=",
+        "amount": 600000
+      },
+      {
+        "account_id": "hnd2:hnd-devnet-alpha:b8911e84c5ac9b4158d8dd5618bb7df7dba0d438e0242dce7ef0086b6c3866cb",
+        "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+        "amount": 400000
+      }
+    ]
+  },
+  "genesis_hash_sha256": "505629671345f9d33ad8a567426be09b6f30dbdf403f2a15ccba576cb2109fbe"
+}

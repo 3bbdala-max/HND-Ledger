@@ -22,11 +22,14 @@ python -m unittest -v test_hnd.py
 - `tests/test_v02_transaction_envelope.py`: local conformance tests for the isolated reference.
 - `vectors/v0.2-transaction-envelope-example.json`: deterministic public test vector.
 - `docs/WP1_V02_ACCOUNT_IDENTITY_DESIGN_2026-10-31.md`: account identity design, limits, and test record.
+- `hnd_v02/genesis.py`: deterministic genesis-manifest validation against a separately pinned hash.
+- `tests/test_v02_genesis_manifest.py`: genesis validation tests.
+- `vectors/v0.2-genesis-devnet-example.json`: synthetic two-account devnet fixture; not a public allocation.
 
 Run the isolated v0.2 tests from the repository root:
 
 ```bash
-python -m unittest -v tests.test_v02_transaction_envelope
+python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest
 ```
 
 The archived reports record the historical 3,000-transfer run; that run is not claimed as repeated here. HND v0.1 is a local educational prototype, and v0.2 is an isolated engineering reference. Neither is production software or an approved financial product. No public deployment, real funds, token sale, exchange listing, or payment integration is authorized.
