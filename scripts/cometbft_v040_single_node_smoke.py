@@ -214,7 +214,7 @@ def main() -> None:
         genesis_path = home / "config" / "genesis.json"
         genesis = json.loads(genesis_path.read_text(encoding="utf-8"))
         genesis["chain_id"] = NETWORK_ID
-        genesis["initial_height"] = 1
+        genesis["initial_height"] = "1"
         genesis["app_hash"] = ""
         genesis["app_state"] = {}
         app_state = canonical_json({
