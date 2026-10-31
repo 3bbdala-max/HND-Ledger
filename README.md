@@ -25,6 +25,9 @@ python -m unittest -v test_hnd.py
 - `hnd_v02/genesis.py`: deterministic genesis-manifest validation against a separately pinned hash.
 - `hnd_v02/ledger.py`: in-memory balances, signed transfers, nonce/replay checks, supply invariant, atomic JSON snapshot saving, and replay-verified file recovery.
 - `tests/test_v02_ledger.py`: 21 ledger state-transition, persistence, and recovery tests.
+- `hnd_v02/blocks.py`: deterministic block headers, parent links, transaction Merkle roots, and full local chain replay.
+- `tests/test_v02_blocks.py`: block validation, atomic batch, chain integrity, and recovery tests.
+- `docs/WP3_V02_BLOCK_CHAIN_REFERENCE_2026-10-31.md`: block format, hashing rules, test scope, and limitations.
 - `docs/WP2_V02_LEDGER_REFERENCE_2026-10-31.md`: ledger design, limits, and test status.
 - `.github/workflows/hnd-v02-tests.yml`: CI workflow for the isolated v0.2 suites.
 - `tests/test_v02_genesis_manifest.py`: genesis validation tests.
@@ -33,7 +36,7 @@ python -m unittest -v test_hnd.py
 Run the isolated v0.2 tests from the repository root:
 
 ```bash
-python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger
+python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger tests.test_v02_blocks
 ```
 
 The archived reports record the historical 3,000-transfer run; that run is not claimed as repeated here. HND v0.1 is a local educational prototype, and v0.2 is an isolated engineering reference. Neither is production software or an approved financial product. No public deployment, real funds, token sale, exchange listing, or payment integration is authorized.
