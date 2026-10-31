@@ -101,6 +101,7 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
             return types_pb2.ResponseQuery(
                 code=1, log="proof queries are not implemented", codespace=CODESPACE
             )
+        account_id = None
         try:
             if request.path == "/height":
                 value = {"height": self.application.last_committed_height}
@@ -120,8 +121,11 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
                 height=self.application.last_committed_height,
             )
         except (UnicodeDecodeError, ABCIApplicationError, ValueError, TypeError) as exc:
+            detail = str(exc)
+            if request.path == "/account":
+                detail += f"; requested_account_id={account_id!r}; data_hex={request.data.hex()}"
             return types_pb2.ResponseQuery(
-                code=1, log=str(exc), codespace=CODESPACE,
+                code=1, log=detail, codespace=CODESPACE,
                 height=self.application.last_committed_height,
             )
 
