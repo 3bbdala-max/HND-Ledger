@@ -135,3 +135,12 @@ This status note supersedes the earlier "Immediate next actions" snapshot where 
 - **WP4.4 single-node integration passed** in GitHub Actions run [41242087625](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41242087625), tested commit `ede5acf8a786d1d29e8af1d9c54b583f4446ec3f`. The disposable CometBFT v0.40.0 node initialized HND, accepted and committed a signed 1,237 HND transfer, changed the synthetic sender balance from 600,000 to 598,763 HND, and recovered the same committed state after application/node restart. See `docs/WP4_4_COMETBFT_V040_SINGLE_NODE_INTEGRATION_2026-10-31.md`.
 - The next technical gate is a private multi-validator test network and distributed fault testing. This is not yet evidence of BFT safety/liveness, production readiness, or public-release authorization.
 - All changes remain on `phase-0.2-planning`; `main` has not been changed.
+
+
+## 10. WP4.5 design gate — 2026-11-01
+
+- Added `docs/WP4_5_PRIVATE_FOUR_VALIDATOR_NETWORK_DESIGN_2026-11-01.md` as the implementation gate for a disposable four-validator CometBFT v0.40.0 network.
+- The design requires four independent validator identities, four isolated HND ABCI application processes and state files, common Genesis/validator configuration, transaction agreement, a one-validator stop-and-restart test, and catch-up convergence.
+- The design explicitly records unresolved schema, networking, persistence, and state-sync risks. WP4.5 is **design-only** at this point; no four-validator network has been implemented or tested yet.
+- Next implementation step: validate CometBFT v0.40.0's exact genesis validator JSON and node-ID/persistent-peer generation using the pinned binary before building the multi-node harness.
+- `main` remains unchanged; all work remains on `phase-0.2-planning`.
