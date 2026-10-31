@@ -66,3 +66,9 @@ The archived reports record the historical 3,000-transfer run; that run is not c
 - `docs/WP4_6_ABCI_GENESIS_IDENTITY_NEGATIVE_TESTS_2026-11-01.md`: records negative InitChain tests for a mismatched CometBFT chain ID and a mismatched pinned HND Genesis hash, including the assertion that rejected initialization writes no state file.
 - CI pass: [run 41246122343](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41246122343), commit `b89b99abc4c9193c0235b3f5ff52833ef9c0b91e`. Both isolated v0.2 tests and the CometBFT integration job passed; the latter includes single-node smoke, four-validator Genesis preflight, and four-validator network integration.
 - **Scope:** these are targeted initialization identity checks, not a Byzantine-security proof, independent audit, production-readiness decision, or public-release authorization. `main` remains unchanged.
+
+
+## WP4.7 network partition test design
+
+- `docs/WP4_7_NETWORK_PARTITION_RECONNECTION_TEST_DESIGN_2026-11-01.md` defines separate 3/1 and 2/2 live network-partition scenarios, bidirectional isolation requirements, reconnection convergence checks, cleanup requirements, and strict acceptance evidence.
+- **Status: design only.** The current four-validator test is crash-stop/restart, not a live partition. No partition pass is claimed. Implementation is blocked until a reversible, auditable isolation primitive is proven on the CI runner; the harness must fail closed rather than silently substitute process termination.
