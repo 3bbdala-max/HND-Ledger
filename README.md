@@ -36,6 +36,8 @@ python -m unittest -v test_hnd.py
 - `scripts/generate_cometbft_v040_python.sh`: generates pinned v0.40.0 Python bindings and gogoproto dependency.
 - `tests/test_v02_cometbft_v040_adapter.py`: 13 wire-level and real local gRPC tests.
 - `docs/WP4_3_COMETBFT_V040_ABCI_GRPC_ADAPTER_2026-10-31.md`: WP4.3 scope, method mapping, limitations, and CI evidence.
+- `scripts/cometbft_v040_single_node_smoke.py`: disposable one-validator CometBFT v0.40.0 end-to-end integration smoke test, including signed transfer and restart recovery.
+- `docs/WP4_4_COMETBFT_V040_SINGLE_NODE_INTEGRATION_2026-10-31.md`: WP4.4 scope, successful CI evidence, exact balance/height results, limitations, and next gate.
 - `docs/WP3_V02_BLOCK_CHAIN_REFERENCE_2026-10-31.md`: block format, hashing rules, test scope, and limitations.
 - `docs/WP2_V02_LEDGER_REFERENCE_2026-10-31.md`: ledger design, limits, and test status.
 - `.github/workflows/hnd-v02-tests.yml`: CI workflow for the isolated v0.2 suites.
