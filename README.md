@@ -32,6 +32,10 @@ python -m unittest -v test_hnd.py
 - `docs/WP4_CONSENSUS_SELECTION_AND_FAULT_MODEL_2026-10-31.md`: CometBFT candidate and validator fault model.
 - `docs/WP4_1_COMETBFT_ABCI_PYTHON_FEASIBILITY_2026-10-31.md`: pinned Python ABCI gRPC feasibility and integration plan.
 - `docs/WP4_2_ABCI_APPLICATION_CORE_2026-10-31.md`: WP4.2 scope, limitations, and CI evidence.
+- `hnd_v02/cometbft_v040_server.py`: Python ABCI gRPC transport for CometBFT v0.40.0.
+- `scripts/generate_cometbft_v040_python.sh`: generates pinned v0.40.0 Python bindings and gogoproto dependency.
+- `tests/test_v02_cometbft_v040_adapter.py`: 13 wire-level and real local gRPC tests.
+- `docs/WP4_3_COMETBFT_V040_ABCI_GRPC_ADAPTER_2026-10-31.md`: WP4.3 scope, method mapping, limitations, and CI evidence.
 - `docs/WP3_V02_BLOCK_CHAIN_REFERENCE_2026-10-31.md`: block format, hashing rules, test scope, and limitations.
 - `docs/WP2_V02_LEDGER_REFERENCE_2026-10-31.md`: ledger design, limits, and test status.
 - `.github/workflows/hnd-v02-tests.yml`: CI workflow for the isolated v0.2 suites.
@@ -41,7 +45,7 @@ python -m unittest -v test_hnd.py
 Run the isolated v0.2 tests from the repository root:
 
 ```bash
-python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger tests.test_v02_blocks tests.test_v02_abci_app
+python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger tests.test_v02_blocks tests.test_v02_abci_app tests.test_v02_cometbft_v040_adapter
 ```
 
 The archived reports record the historical 3,000-transfer run; that run is not claimed as repeated here. HND v0.1 is a local educational prototype, and v0.2 is an isolated engineering reference. Neither is production software or an approved financial product. No public deployment, real funds, token sale, exchange listing, or payment integration is authorized.
