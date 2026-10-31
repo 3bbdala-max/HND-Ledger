@@ -50,8 +50,12 @@ def rpc_get(path: str, params: dict[str, str] | None = None) -> dict:
     query = urllib.parse.urlencode(params or {})
     url = RPC + path + (("?" + query) if query else "")
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(request, timeout=3) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"CometBFT RPC {path} returned HTTP {exc.code}: {body}") from exc
 
 
 def decode_rpc_bytes(value: str | list[int] | None) -> bytes:
@@ -304,7 +308,13 @@ def main() -> None:
         try:
             node = start_node(binary, home, node_handle)
             status = wait_for_node(node, node_log)
-            before = query_account(alice_id)
+            try:
+                abci_info = rpc_get("/abci_info")
+                print("HND_ABCI_INFO", json.dumps(abci_info, sort_keys=True), flush=True)
+                before = query_account(alice_id)
+            except Exception as exc:
+                tail = node_log.read_text(encoding="utf-8", errors="replace")[-12000:]
+                raise RuntimeError(f"ABCI query failed: {exc}\\nCometBFT node log tail:\\n{tail}") from exc
             if before["balance"] != INITIAL_ALICE_BALANCE:
                 raise AssertionError(f"unexpected Genesis balance: {before}")
 
