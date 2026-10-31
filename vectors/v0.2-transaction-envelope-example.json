@@ -1,21 +1,24 @@
 {
-  "description": "Deterministic test-only Ed25519 vector. The private seed is not included.",
+  "description": "Deterministic test-only Ed25519 identity and transaction vector. No private keys are included.",
   "protocol_config": {
     "network_id": "hnd-devnet-alpha",
     "protocol_version": 2,
     "max_amount": 1000000
   },
-  "canonical_payload_utf8": "{\"amount\":5,\"network_id\":\"hnd-devnet-alpha\",\"nonce\":0,\"protocol_version\":2,\"recipient\":\"bob\",\"sender\":\"alice\"}",
-  "signing_preimage_hex": "484e442d4c45444745522f5458007b22616d6f756e74223a352c226e6574776f726b5f6964223a22686e642d6465766e65742d616c706861222c226e6f6e6365223a302c2270726f746f636f6c5f76657273696f6e223a322c22726563697069656e74223a22626f62222c2273656e646572223a22616c696365227d",
   "sender_public_key_base64": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+  "recipient_public_key_base64": "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=",
+  "sender_account_id": "hnd2:hnd-devnet-alpha:b8911e84c5ac9b4158d8dd5618bb7df7dba0d438e0242dce7ef0086b6c3866cb",
+  "recipient_account_id": "hnd2:hnd-devnet-alpha:37c9592c3a9881be2ee8d830ce6294186c203ed18c6493ef95a4219f0f7a53b8",
+  "canonical_payload_utf8": "{\"amount\":5,\"network_id\":\"hnd-devnet-alpha\",\"nonce\":0,\"protocol_version\":2,\"recipient\":\"hnd2:hnd-devnet-alpha:37c9592c3a9881be2ee8d830ce6294186c203ed18c6493ef95a4219f0f7a53b8\",\"sender\":\"hnd2:hnd-devnet-alpha:b8911e84c5ac9b4158d8dd5618bb7df7dba0d438e0242dce7ef0086b6c3866cb\"}",
+  "signing_preimage_hex": "484e442d4c45444745522f5458007b22616d6f756e74223a352c226e6574776f726b5f6964223a22686e642d6465766e65742d616c706861222c226e6f6e6365223a302c2270726f746f636f6c5f76657273696f6e223a322c22726563697069656e74223a22686e64323a686e642d6465766e65742d616c7068613a33376339353932633361393838316265326565386438333063653632393431383663323033656431386336343933656639356134323139663066376135336238222c2273656e646572223a22686e64323a686e642d6465766e65742d616c7068613a62383931316538346335616339623431353864386464353631386262376466376462613064343338653032343264636537656630303836623663333836366362227d",
   "transaction": {
     "amount": 5,
     "network_id": "hnd-devnet-alpha",
     "nonce": 0,
     "protocol_version": 2,
-    "recipient": "bob",
-    "sender": "alice",
-    "signature": "pYh6KqH+afovaoHx/Jrc1Ub0O/DD4IIwhcdE563LozIhChZVPL9oPdDsKQITTmfXP0LsKVe+HGlGerVCqVCCCA=="
+    "recipient": "hnd2:hnd-devnet-alpha:37c9592c3a9881be2ee8d830ce6294186c203ed18c6493ef95a4219f0f7a53b8",
+    "sender": "hnd2:hnd-devnet-alpha:b8911e84c5ac9b4158d8dd5618bb7df7dba0d438e0242dce7ef0086b6c3866cb",
+    "signature": "KjZxmtpUd6tPLjsRnF6S3hSiBdwug4EHDJgwBIVFtf4Ej3r/DTluB6vGLy6stmhWicYhEexN7xCfw5PtpohzBg=="
   },
-  "transaction_id_sha256": "ca072ded941c26c1fa50147d095e61e963649cfe24e20d9208548427de122421"
+  "transaction_id_sha256": "b92374a2b465cc7272d37308eb64dda50b6a598e15da471a834cabe55e43899c"
 }
