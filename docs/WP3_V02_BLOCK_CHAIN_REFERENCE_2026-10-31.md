@@ -58,7 +58,7 @@ Atomic local JSON save/load is included for reproducible tests. It is not a dist
 
 ## 6. Test suite
 
-The new block-chain suite contains 20 tests covering genesis block anchoring, valid and multi-transaction blocks, atomic rejection, duplicate transactions, block limits, strict timestamps, Merkle behavior, tampering, parent/height/network/protocol/Genesis checks, post-state commitment, detached block views, chain replay, snapshot tampering, reordering/deletion, and file save/load.
+The new block-chain suite contains 22 tests covering genesis block anchoring, valid and multi-transaction blocks, atomic rejection, duplicate transactions, block limits, strict timestamps, Merkle behavior, tampering, parent/height/network/protocol/Genesis checks, post-state commitment, detached block views, chain replay, snapshot tampering, reordering/deletion, and file save/load.
 
 The workflow runs this suite together with the three existing v0.2 suites. GitHub Actions completed successfully for commit `8c4b53ff36597ee57713b31f84951dbc0df4b74d`: **78 tests passed, 0 failed** (22 transaction/account-identity tests, 13 Genesis tests, 21 ledger/persistence tests, and 22 block/chain tests). The block suite ran in the same CI job as the full v0.2 suite. This is automated CI evidence for the committed tests, not an independent security audit or production-readiness certification.
 
