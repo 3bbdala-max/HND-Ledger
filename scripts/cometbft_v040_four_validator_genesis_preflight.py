@@ -114,7 +114,7 @@ def main() -> None:
             validator_records.append({
                 "address": key["address"],
                 "pub_key": key["pub_key"],
-                "power": VOTING_POWER,
+                "power": str(VOTING_POWER),
                 "name": f"hnd-validator-{index + 1}",
             })
 
