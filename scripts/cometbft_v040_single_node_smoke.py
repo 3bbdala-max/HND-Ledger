@@ -57,6 +57,27 @@ def rpc_get(path: str, params: dict[str, str] | None = None) -> dict:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"CometBFT RPC {path} returned HTTP {exc.code}: {body}") from exc
 
+def rpc_post(method: str, params: dict) -> dict:
+    """Call CometBFT JSON-RPC over POST so []byte uses its JSON base64 form."""
+    payload = json.dumps({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": params,
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        RPC + "/",
+        data=payload,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"CometBFT JSON-RPC {method} returned HTTP {exc.code}: {body}") from exc
+
 
 def decode_rpc_bytes(value: str | list[int] | None) -> bytes:
     if value is None or value == "":
@@ -318,11 +339,11 @@ def main() -> None:
             if before["balance"] != INITIAL_ALICE_BALANCE:
                 raise AssertionError(f"unexpected Genesis balance: {before}")
 
-            broadcast = rpc_get(
-                "/broadcast_tx_sync",
-                {"tx": json.dumps(base64.b64encode(tx_bytes).decode("ascii"))},
+            broadcast = rpc_post(
+                "broadcast_tx_sync",
+                {"tx": base64.b64encode(tx_bytes).decode("ascii")},
             )
-            check_tx = broadcast.get("result", {}).get("check_tx", {})
+            check_tx = broadcast.get("result", {})
             if int(check_tx.get("code", 0)) != 0:
                 raise RuntimeError(f"CometBFT rejected HND transaction: {broadcast}")
 
