@@ -93,7 +93,7 @@ class HNDABCIApplication:
             expected_genesis_hash=expected_genesis_hash,
         )
         self._last_committed_height = 0
-        self._mempool_ledger = self._clone_ledger(self._committed_ledger)
+        self._mempool_ledger = self._clone_committed()
         self._pending: dict[str, Any] | None = None
         self._initialized = False
 
