@@ -13,7 +13,7 @@ The module provides:
 
 - An exact transaction envelope with `protocol_version`, `network_id`, `sender`, `recipient`, `amount`, `nonce`, and `signature`.
 - Canonical JSON encoding (UTF-8, sorted keys, compact separators, NaN/Infinity disabled).
-- Ed25519 signatures over a domain-prefixed canonical payload. The fixed prefix is `HND-LEDGER/TX\\0`.
+- Ed25519 signatures over a domain-prefixed canonical payload. The fixed prefix is `HND-LEDGER/TX\0`.
 - A transaction identifier over the same domain-prefixed unsigned payload, so network and protocol version are included.
 - Strict integer checks using exact Python types, rejecting bool and float aliases.
 - Explicit network/version matching, amount bounds, unsigned-64-bit nonce range, balance checks, strict Base64 decoding, and Ed25519 verification.

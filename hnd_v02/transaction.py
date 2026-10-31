@@ -150,7 +150,7 @@ def validate_transaction(
 ) -> tuple[bool, str]:
     """Validate shape, strict numeric types/ranges, domain, funds, and signature.
 
-    Account lookup and binding of \`sender\` to \`sender_public_key\` are provided by
+    Account lookup and binding of `sender` to `sender_public_key` are provided by
     the caller. A cryptographic account-ID derivation rule is still a separate,
     unresolved protocol decision.
     """
@@ -158,7 +158,7 @@ def validate_transaction(
         return False, "schema"
 
     # Exact types matter: bool is a subclass of int and float 1.0 compares equal
-    # to integer 1 in Python, so \`isinstance\`/equality alone are insufficient.
+    # to integer 1 in Python, so `isinstance`/equality alone are insufficient.
     if type(tx["protocol_version"]) is not int or tx["protocol_version"] <= 0:
         return False, "protocol_version"
     if tx["protocol_version"] != config.protocol_version:
