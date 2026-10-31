@@ -1,4 +1,5 @@
 """Conformance tests for the isolated HND v0.2 transaction-envelope draft."""
+import json
 import unittest
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -116,6 +117,21 @@ class TestV02TransactionEnvelope(unittest.TestCase):
             ProtocolConfig("hnd-devnet-alpha", 2, True)
         with self.assertRaises(ValueError):
             ProtocolConfig("bad network id", 2, 100)
+
+    def test_published_deterministic_vector(self):
+        from pathlib import Path
+        vector_path = Path(__file__).resolve().parents[1] / "vectors" / "v0.2-transaction-envelope-example.json"
+        vector = json.loads(vector_path.read_text(encoding="utf-8"))
+        cfg = ProtocolConfig(**vector["protocol_config"])
+        tx = vector["transaction"]
+        self.assertEqual(
+            validate_transaction(
+                tx, config=cfg, expected_nonce=0, sender_balance=100,
+                sender_public_key=vector["sender_public_key_base64"],
+            ),
+            (True, "ok"),
+        )
+        self.assertEqual(transaction_id(tx), vector["transaction_id_sha256"])
 
     def test_transaction_id_is_deterministic_and_domain_specific(self):
         tx_a = self.tx()
