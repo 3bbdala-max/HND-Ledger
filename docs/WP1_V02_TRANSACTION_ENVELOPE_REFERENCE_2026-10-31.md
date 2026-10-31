@@ -42,8 +42,14 @@ Executed locally on the reference implementation:
 
 ```text
 python -m unittest -v tests.test_v02_transaction_envelope
-Ran 17 tests
+Ran 16 tests
 OK
+
+After this 16-test run, one additional unit test was committed for the published
+vector. The vector's canonical payload, signing preimage, Ed25519 signature,
+public-key length, and SHA-256 transaction ID were independently verified
+locally in a focused check. The full 17-test suite has not yet been rerun as a
+single command after adding that final test.
 ```
 
 Coverage includes valid signatures; rejection of boolean, float, string, zero, negative, and oversized amounts; rejection of malformed, boolean, float, negative, and overflowing nonces; stale nonce; insufficient balance; self-transfer; missing/unknown fields; malformed key/signature; wrong network and protocol version; signature invalidation when signed fields are changed, and verification of the published deterministic vector.
