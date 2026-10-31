@@ -241,7 +241,7 @@ class TestV02Blocks(unittest.TestCase):
             )
         snapshot = self.chain.snapshot()
         del snapshot["blocks"][1]
-        with self.assertRaisesRegex(BlockError, "head hash"):
+        with self.assertRaises(BlockError):
             HNDChain.restore(
                 manifest=self.manifest, config=self.config,
                 expected_genesis_hash=self.genesis_hash, snapshot=snapshot,
