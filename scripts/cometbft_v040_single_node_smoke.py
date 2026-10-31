@@ -246,7 +246,7 @@ def main() -> None:
             raise RuntimeError("could not set CometBFT abci = grpc")
         config_text = re.sub(
             r'(?m)^proxy_app\s*=\s*"[^"]*"',
-            'proxy_app = "tcp://127.0.0.1:26658"',
+            'proxy_app = "127.0.0.1:26658"',
             config_text,
             count=1,
         )
@@ -285,7 +285,7 @@ def main() -> None:
             [
                 "go", "run",
                 str(REPO_ROOT / "scripts" / "cometbft_v040_grpc_probe.go"),
-                "tcp://127.0.0.1:26658",
+                "127.0.0.1:26658",
             ],
             cwd=str(cometbft_source),
             capture_output=True,
