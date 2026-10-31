@@ -150,7 +150,7 @@ class TestV02Blocks(unittest.TestCase):
         tampered = copy.deepcopy(block)
         tampered["header"]["timestamp_ms"] = 2
         with self.assertRaisesRegex(BlockError, "block hash mismatch"):
-            self.chain.apply_block(tampered)
+            self.fresh_chain().apply_block(tampered)
 
     def test_wrong_parent_or_height_rejected(self):
         block = self.build()
@@ -189,7 +189,7 @@ class TestV02Blocks(unittest.TestCase):
         tampered["header"]["state_hash"] = "f" * 64
         tampered["block_hash"] = block_header_hash(tampered["header"])
         with self.assertRaisesRegex(BlockError, "post-state hash"):
-            self.chain.apply_block(tampered)
+            self.fresh_chain().apply_block(tampered)
 
     def test_block_hash_format_and_schema_checked(self):
         block = self.build()
@@ -200,7 +200,7 @@ class TestV02Blocks(unittest.TestCase):
         tampered = copy.deepcopy(block)
         tampered["block_hash"] = "not-a-hash"
         with self.assertRaisesRegex(BlockError, "format"):
-            self.chain.apply_block(tampered)
+            self.fresh_chain().apply_block(tampered)
 
     def test_blocks_property_returns_detached_data(self):
         blocks = self.chain.blocks
