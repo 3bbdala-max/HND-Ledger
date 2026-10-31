@@ -56,7 +56,10 @@ The full isolated v0.2 workflow completed successfully on code commit `fcc7928d0
 
 **109 tests passed, 0 failed, in 16.927 seconds.**
 
-Workflow: https://github.com/3bbdala-max/HND-Ledger/actions/runs/41234032644
+Workflow (code fix and first successful run): https://github.com/3bbdala-max/HND-Ledger/actions/runs/41234032644
+
+A second full CI run against the later documentation-updated branch head `77cf31812bee2effa228301d1b692b71ad6949e1` also completed successfully: **109 tests passed, 0 failed, in 16.494 seconds**.
+Workflow: https://github.com/3bbdala-max/HND-Ledger/actions/runs/41234124803
 
 The first run exposed a stale helper call left after cleanup; that failure was corrected before the successful run. The initial failure is retained in workflow history; it is not counted as a successful run.
 
