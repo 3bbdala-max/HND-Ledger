@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-31  
 **Workstream:** WP2 — Ledger state transitions  
-**Status:** Experimental in-memory reference; CI verification is triggered by the commit that adds this file.  
+**Status:** Experimental in-memory reference; GitHub Actions completed successfully for the 48-test v0.2 suite.  
 **Branch:** phase-0.2-planning
 
 ## 1. Scope
@@ -35,7 +35,9 @@ The snapshot is an in-memory JSON-compatible structure. Durable file storage, at
 
 The new ledger suite contains 13 test cases covering genesis initialization, successful transfers, sequential nonces, duplicate/replayed transactions, stale nonce rejection, overspending, unknown recipients, invalid signatures, snapshot round-trip recovery, snapshot tampering, wrong genesis binding, and unknown account views.
 
-A Python syntax compilation check was performed for the new ledger module and its tests. The complete unit suite is configured to run in GitHub Actions by the workflow added in this commit. Do not treat the CI run as successful until its status is checked after the push.
+The complete isolated v0.2 suite ran in GitHub Actions on 2026-10-31: **48 tests passed, 0 failed** (22 transaction/account-identity tests, 13 genesis tests, and 13 ledger tests). The workflow job completed with conclusion `success`. This is automated CI evidence for the committed test suite, not an independent security audit or proof of production readiness.
+
+Workflow run: https://github.com/3bbdala-max/HND-Ledger/actions/runs/41231949400
 
 ## 5. Limitations
 
