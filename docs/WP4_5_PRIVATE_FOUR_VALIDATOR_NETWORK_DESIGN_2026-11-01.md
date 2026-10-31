@@ -122,3 +122,21 @@ Implementation may begin only after the harness can create a valid four-validato
 
 ---
 This document is an engineering test plan, not a claim that WP4.5 has been implemented or passed.
+
+
+## 10. Pinned CometBFT v0.40.0 schema findings and preflight
+
+The implementation has now been checked against the pinned v0.40.0 source rather than relying on generic CometBFT examples:
+
+- `types.GenesisValidator` uses `address`, `pub_key`, `power`, and `name`; `GenesisDocFromFile` parses and validates the Genesis document and checks a supplied validator address against the public key's derived address.
+- `cometbft init --home <path>` creates an independent `priv_validator_key.json`, `node_key.json`, and starter Genesis under each home.
+- `cometbft show-node-id --home <path>` is the pinned CLI operation used to derive the P2P node ID for persistent-peer strings.
+- For four nodes on one loopback host, the pinned P2P config exposes `addr_book_strict` (set false for private/local networks) and `allow_duplicate_ip` (must be enabled to permit multiple peers from the same loopback IP). Each node must still have unique P2P and RPC ports.
+- Persistent peer entries use `nodeID@host:port`; each node should list the other three node IDs/endpoints.
+
+A new CI preflight was added:
+- `scripts/cometbft_v040_four_validator_genesis_preflight.py` creates four isolated homes and keys in a temporary directory, checks unique validator addresses and P2P node IDs, constructs one byte-identical four-validator HND Genesis, and invokes the pinned Go validator.
+- `scripts/cometbft_v040_genesis_validate.go` uses CometBFT's own `types.GenesisDocFromFile` from the cloned v0.40.0 module to parse the document and verify four validators.
+- The workflow now runs this preflight after the existing single-node smoke test.
+
+**Scope warning:** this preflight checks identities and Genesis schema only. It does not start four nodes, prove peer connectivity, commit blocks, test quorum continuation, or test catch-up. Those remain the actual WP4.5 multi-node integration acceptance tests.
