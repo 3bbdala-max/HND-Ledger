@@ -27,6 +27,11 @@ python -m unittest -v test_hnd.py
 - `tests/test_v02_ledger.py`: 21 ledger state-transition, persistence, and recovery tests.
 - `hnd_v02/blocks.py`: deterministic block headers, parent links, transaction Merkle roots, and full local chain replay.
 - `tests/test_v02_blocks.py`: block validation, atomic batch, chain integrity, and recovery tests.
+- `hnd_v02/abci_app.py`: transport-independent HND application lifecycle core for a future ABCI adapter; it does not implement CometBFT networking or consensus.
+- `tests/test_v02_abci_app.py`: 31 tests for proposal validation, committed/mempool isolation, finalize/commit lifecycle, and recovery.
+- `docs/WP4_CONSENSUS_SELECTION_AND_FAULT_MODEL_2026-10-31.md`: CometBFT candidate and validator fault model.
+- `docs/WP4_1_COMETBFT_ABCI_PYTHON_FEASIBILITY_2026-10-31.md`: pinned Python ABCI gRPC feasibility and integration plan.
+- `docs/WP4_2_ABCI_APPLICATION_CORE_2026-10-31.md`: WP4.2 scope, limitations, and CI evidence.
 - `docs/WP3_V02_BLOCK_CHAIN_REFERENCE_2026-10-31.md`: block format, hashing rules, test scope, and limitations.
 - `docs/WP2_V02_LEDGER_REFERENCE_2026-10-31.md`: ledger design, limits, and test status.
 - `.github/workflows/hnd-v02-tests.yml`: CI workflow for the isolated v0.2 suites.
@@ -36,7 +41,7 @@ python -m unittest -v test_hnd.py
 Run the isolated v0.2 tests from the repository root:
 
 ```bash
-python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger tests.test_v02_blocks
+python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger tests.test_v02_blocks tests.test_v02_abci_app
 ```
 
 The archived reports record the historical 3,000-transfer run; that run is not claimed as repeated here. HND v0.1 is a local educational prototype, and v0.2 is an isolated engineering reference. Neither is production software or an approved financial product. No public deployment, real funds, token sale, exchange listing, or payment integration is authorized.
