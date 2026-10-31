@@ -31,3 +31,29 @@ jobs:
           tests.test_v02_blocks
           tests.test_v02_abci_app
           tests.test_v02_cometbft_v040_adapter
+
+  cometbft-single-node-smoke:
+    needs: hnd-v02-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out HND
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Go for CometBFT v0.40.0
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.0"
+      - name: Install HND Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Generate pinned ABCI bindings
+        run: bash scripts/generate_cometbft_v040_python.sh
+      - name: Build pinned CometBFT binary
+        run: |
+          git clone --quiet --depth 1 --branch v0.40.0 https://github.com/cometbft/cometbft.git "$RUNNER_TEMP/cometbft-src"
+          cd "$RUNNER_TEMP/cometbft-src"
+          go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
+      - name: Run single-node ABCI integration smoke test
+        run: python scripts/cometbft_v040_single_node_smoke.py --binary "$RUNNER_TEMP/cometbft"
