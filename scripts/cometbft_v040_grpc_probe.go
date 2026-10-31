@@ -15,7 +15,7 @@ import (
 
 func main() {
 	if len(os.Args) != 2 {
-		panic("usage: grpc_probe <tcp://host:port>")
+		panic("usage: grpc_probe <host:port>")
 	}
 	conn, err := grpc.NewClient(
 		os.Args[1],
