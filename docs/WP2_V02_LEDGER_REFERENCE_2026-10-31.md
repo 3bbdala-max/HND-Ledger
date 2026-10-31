@@ -7,7 +7,7 @@
 
 ## 1. Scope
 
-This module connects the previously isolated transaction-envelope and genesis-manifest validators into one in-memory ledger. It initializes balances from a validated manifest, tracks account nonces, validates signed transfers, prevents transaction replay, preserves total supply, and supports deterministic snapshot/recovery by replaying transaction history from genesis.
+This module connects the previously isolated transaction-envelope and genesis-manifest validators into one local ledger, with in-memory state and atomic JSON snapshot files. It initializes balances from a validated manifest, tracks account nonces, validates signed transfers, prevents transaction replay, preserves total supply, and supports deterministic snapshot/recovery by replaying transaction history from genesis.
 
 It is not a peer-to-peer network, block format, persistent database, validator implementation, or consensus engine.
 
@@ -29,23 +29,25 @@ A snapshot contains protocol/network identifiers, the pinned genesis hash, total
 
 Recovery does not trust the serialized balances or nonce counters. It initializes from the validated genesis manifest, replays each signed transaction in order, and compares the resulting balances, nonces, accepted IDs, history, and state hash with the supplied snapshot. Tampered state is rejected.
 
-The snapshot is an in-memory JSON-compatible structure. Durable file storage, atomic filesystem writes, crash consistency, schema migrations, and backup management are not implemented.
+The ledger can atomically save a JSON snapshot to a sibling temporary file and replace the destination. Loading replays every signed transaction from the pinned Genesis and compares rebuilt balances, nonces, accepted IDs, history, and state hash. Snapshot accessors return detached history so callers cannot mutate the live ledger. This remains a simple local-file mechanism, not a transactional database; directory-level crash guarantees, schema migrations, file locking, backup management, and authenticated snapshot distribution are not implemented.
 
 ## 4. Tests
 
-The new ledger suite contains 13 test cases covering genesis initialization, successful transfers, sequential nonces, duplicate/replayed transactions, stale nonce rejection, overspending, unknown recipients, invalid signatures, snapshot round-trip recovery, snapshot tampering, wrong genesis binding, and unknown account views.
+The original ledger suite contains 13 test cases covering genesis initialization, successful transfers, sequential nonces, duplicate/replayed transactions, stale nonce rejection, overspending, unknown recipients, invalid signatures, snapshot round-trip recovery, snapshot tampering, wrong genesis binding, and unknown account views.
 
 The complete isolated v0.2 suite ran in GitHub Actions on 2026-10-31: **48 tests passed, 0 failed** (22 transaction/account-identity tests, 13 genesis tests, and 13 ledger tests). The workflow job completed with conclusion `success`. This is automated CI evidence for the committed test suite, not an independent security audit or proof of production readiness.
 
 Workflow run: https://github.com/3bbdala-max/HND-Ledger/actions/runs/41231949400
 
+The extended ledger suite adds 8 cases for atomic file save/load, malformed files, wrong Genesis binding, re-hashed balance tampering, strict snapshot types, detached history, and 2,000 signed transfers. The extended 21-case ledger suite passed locally. The last confirmed GitHub Actions result before this extension was 48 passing v0.2 tests; the CI run for the extended 56-test suite is pending.
+
 ## 5. Limitations
 
-- All state is held in process memory.
+- The live state is held in process memory; snapshots can be written to local JSON files and reconstructed by replay.
 - No blocks, peer discovery, networking, distributed consensus, validator selection, or Byzantine fault tolerance exist.
 - The account registry is created only from the Genesis manifest.
 - The state hash is a deterministic integrity checksum, not a Merkle tree or proof system.
-- Replay-based restoration is correct for this reference model but not optimized for long histories.
+- Replay-based restoration is correct for this reference model but not optimized for long histories; snapshots do not yet use checkpoints.
 - The Genesis hash must be pinned through a trusted release/configuration channel.
 - No independent security audit, cross-language implementation, fuzzing campaign, or production threat model has been completed.
 
