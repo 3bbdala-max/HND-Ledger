@@ -179,3 +179,11 @@ All work remains on `phase-0.2-planning`; `main` is not modified.
 - Full CI run [41246122343](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41246122343) completed successfully on commit `b89b99abc4c9193c0235b3f5ff52833ef9c0b91e`. The isolated v0.2 test job and the CometBFT integration job both passed; the latter reran the single-node smoke, four-validator Genesis preflight, and four-validator network integration.
 - Detailed scope and limitations are recorded in `docs/WP4_6_ABCI_GENESIS_IDENTITY_NEGATIVE_TESTS_2026-11-01.md`.
 - These checks cover only the stated initialization identity failures. They do not prove Byzantine fault tolerance, partition safety, resistance to malicious validators, or production security. `main` remains unchanged.
+
+
+## 13. WP4.7 network partition/reconnection design gate — 2026-11-01
+
+- Added `docs/WP4_7_NETWORK_PARTITION_RECONNECTION_TEST_DESIGN_2026-11-01.md` with explicit live 3/1 and 2/2 partition scenarios, quorum expectations for the four equal-power validators, bidirectional isolation evidence, reconnection convergence, and cleanup criteria.
+- **Design only; no partition test has been run or passed.** WP4.5's validator stop/restart test remains a crash-stop test and must not be described as partition testing.
+- Implementation is gated on proving a reversible, auditable network isolation mechanism on the CI runner while all validator and ABCI processes remain alive. If the runner cannot provide this, the test must fail closed or move to a dedicated environment; do not downgrade it to a process-stop test.
+- `main` remains unchanged.
