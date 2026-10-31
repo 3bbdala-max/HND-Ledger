@@ -20,6 +20,7 @@ PROTO_ROOT="$COMET_DIR/proto"
 GOOGLE_PROTO_ROOT="$(python -c 'import pathlib, grpc_tools; print(pathlib.Path(grpc_tools.__file__).parent / "_proto")')"
 
 mapfile -t PROTOS < <(find "$PROTO_ROOT/tendermint" -type f -name '*.proto' | sort)
+PROTOS+=("$GOGO_DIR/gogoproto/gogo.proto")
 
 python -m grpc_tools.protoc \
   -I "$PROTO_ROOT" \
