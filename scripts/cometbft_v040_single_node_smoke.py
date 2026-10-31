@@ -83,7 +83,7 @@ def query_account(account_id: str) -> dict:
         "/abci_query",
         {
             "path": json.dumps("/account"),
-            "data": json.dumps("0x" + account_id.encode("utf-8").hex()),
+            "data": json.dumps(account_id),
             "prove": "false",
         },
     )
