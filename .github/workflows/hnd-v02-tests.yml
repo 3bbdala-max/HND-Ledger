@@ -1,0 +1,28 @@
+name: HND v0.2 reference tests
+
+on:
+  push:
+    branches:
+      - phase-0.2-planning
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  hnd-v02-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependency
+        run: python -m pip install --upgrade "cryptography>=41.0"
+      - name: Run isolated v0.2 tests
+        run: >-
+          python -m unittest -v
+          tests.test_v02_transaction_envelope
+          tests.test_v02_genesis_manifest
+          tests.test_v02_ledger

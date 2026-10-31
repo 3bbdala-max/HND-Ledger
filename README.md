@@ -23,13 +23,17 @@ python -m unittest -v test_hnd.py
 - `vectors/v0.2-transaction-envelope-example.json`: deterministic public test vector.
 - `docs/WP1_V02_ACCOUNT_IDENTITY_DESIGN_2026-10-31.md`: account identity design, limits, and test record.
 - `hnd_v02/genesis.py`: deterministic genesis-manifest validation against a separately pinned hash.
+- `hnd_v02/ledger.py`: in-memory balances, signed transfers, nonce/replay checks, supply invariant, and replay-based snapshot recovery.
+- `tests/test_v02_ledger.py`: 13 ledger state-transition and recovery tests.
+- `docs/WP2_V02_LEDGER_REFERENCE_2026-10-31.md`: ledger design, limits, and test status.
+- `.github/workflows/hnd-v02-tests.yml`: CI workflow for the isolated v0.2 suites.
 - `tests/test_v02_genesis_manifest.py`: genesis validation tests.
 - `vectors/v0.2-genesis-devnet-example.json`: synthetic two-account devnet fixture; not a public allocation.
 
 Run the isolated v0.2 tests from the repository root:
 
 ```bash
-python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest
+python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis_manifest tests.test_v02_ledger
 ```
 
 The archived reports record the historical 3,000-transfer run; that run is not claimed as repeated here. HND v0.1 is a local educational prototype, and v0.2 is an isolated engineering reference. Neither is production software or an approved financial product. No public deployment, real funds, token sale, exchange listing, or payment integration is authorized.
