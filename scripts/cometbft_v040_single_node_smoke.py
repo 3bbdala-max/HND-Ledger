@@ -153,8 +153,12 @@ def start_node(binary: str, home: Path, log_handle):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True, help="path to pinned CometBFT v0.40.0 binary")
+    parser.add_argument("--cometbft-source", required=True, help="cloned CometBFT v0.40.0 source tree")
     args = parser.parse_args()
     binary = str(Path(args.binary).resolve())
+    cometbft_source = Path(args.cometbft_source).resolve()
+    if not (cometbft_source / "go.mod").is_file():
+        parser.error("--cometbft-source must be the v0.40.0 Go module root")
     if not Path(binary).is_file():
         parser.error("CometBFT binary does not exist")
 
@@ -272,6 +276,26 @@ def main() -> None:
         if preflight.message != "HND preflight":
             raise AssertionError("Python ABCI gRPC Echo preflight failed")
         print("HND_ABCI_GRPC_PREFLIGHT_OK", flush=True)
+
+        # Probe with CometBFT's own Go gRPC stack and the same custom dialer
+        # before launching the full node. This isolates protocol/transport
+        # incompatibility from the node's startup and consensus lifecycle.
+        probe = subprocess.run(
+            [
+                "go", "run",
+                str(REPO_ROOT / "scripts" / "cometbft_v040_grpc_probe.go"),
+                "tcp://127.0.0.1:26658",
+            ],
+            cwd=str(cometbft_source),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if probe.returncode != 0:
+            raise RuntimeError(
+                "CometBFT Go gRPC probe failed:\\n" + probe.stdout + "\\n" + probe.stderr
+            )
+        print(probe.stdout.strip(), flush=True)
 
         node_log = root / "cometbft-node.log"
         node_handle = node_log.open("w", encoding="utf-8")
