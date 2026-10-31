@@ -1,0 +1,21 @@
+{
+  "description": "Deterministic test-only Ed25519 vector. The private seed is not included.",
+  "protocol_config": {
+    "network_id": "hnd-devnet-alpha",
+    "protocol_version": 2,
+    "max_amount": 1000000
+  },
+  "canonical_payload_utf8": "{\"amount\":5,\"network_id\":\"hnd-devnet-alpha\",\"nonce\":0,\"protocol_version\":2,\"recipient\":\"bob\",\"sender\":\"alice\"}",
+  "signing_preimage_hex": "484e442d4c45444745522f5458007b22616d6f756e74223a352c226e6574776f726b5f6964223a22686e642d6465766e65742d616c706861222c226e6f6e6365223a302c2270726f746f636f6c5f76657273696f6e223a322c22726563697069656e74223a22626f62222c2273656e646572223a22616c696365227d",
+  "sender_public_key_base64": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+  "transaction": {
+    "amount": 5,
+    "network_id": "hnd-devnet-alpha",
+    "nonce": 0,
+    "protocol_version": 2,
+    "recipient": "bob",
+    "sender": "alice",
+    "signature": "pYh6KqH+afovaoHx/Jrc1Ub0O/DD4IIwhcdE563LozIhChZVPL9oPdDsKQITTmfXP0LsKVe+HGlGerVCqVCCCA=="
+  },
+  "transaction_id_sha256": "ca072ded941c26c1fa50147d095e61e963649cfe24e20d9208548427de122421"
+}
