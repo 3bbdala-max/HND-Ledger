@@ -258,5 +258,46 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             server.stop(grace=0).wait()
 
 
+    def test_init_chain_rejects_wrong_cometbft_chain_id(self):
+        app = HNDABCIApplication(
+            config=self.config,
+            manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+            state_path=Path(self.temp.name) / "wrong-chain.json",
+        )
+        servicer = HNDCometBFTv040Servicer(app)
+        with self.assertRaisesRegex(RuntimeError, "chain_id does not match"):
+            servicer.InitChain(
+                types_pb2.RequestInitChain(
+                    chain_id="attacker-selected-chain",
+                    app_state_bytes=app.application_genesis_bytes(),
+                ),
+                self.context,
+            )
+        self.assertFalse(app.state_path.exists())
+
+    def test_init_chain_rejects_wrong_pinned_manifest_hash(self):
+        app = HNDABCIApplication(
+            config=self.config,
+            manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+            state_path=Path(self.temp.name) / "wrong-manifest-hash.json",
+        )
+        servicer = HNDCometBFTv040Servicer(app)
+        wrong_payload = canonical_json({
+            "genesis_hash": "0" * 64,
+            "manifest": self.manifest,
+        })
+        with self.assertRaisesRegex(RuntimeError, "Genesis hash mismatch"):
+            servicer.InitChain(
+                types_pb2.RequestInitChain(
+                    chain_id=self.config.network_id,
+                    app_state_bytes=wrong_payload,
+                ),
+                self.context,
+            )
+        self.assertFalse(app.state_path.exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
