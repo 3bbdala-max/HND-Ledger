@@ -140,3 +140,28 @@ A new CI preflight was added:
 - The workflow now runs this preflight after the existing single-node smoke test.
 
 **Scope warning:** this preflight checks identities and Genesis schema only. It does not start four nodes, prove peer connectivity, commit blocks, test quorum continuation, or test catch-up. Those remain the actual WP4.5 multi-node integration acceptance tests.
+
+## 12. WP4.5 live four-validator integration — passed 2026-11-01
+
+**CI evidence:** [GitHub Actions run 41243674122](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41243674122)  
+**Tested branch commit:** `d2f2eb609b223f40265ad16d4ae062930657b6ba`  
+**Pinned consensus engine:** CometBFT v0.40.0  
+**Result marker:** `COMETBFT_V040_FOUR_VALIDATOR_NETWORK_OK`
+
+The workflow executed `scripts/cometbft_v040_four_validator_network_smoke.py` successfully. The harness created four isolated CometBFT homes and validator identities, four independent HND ABCI application processes/state files, and a shared four-validator chain configuration. All runtime keys and state were held in a temporary directory and were not retained as repository artifacts.
+
+Observed results from the successful CI log:
+
+- Four validators, each voting power 10 (total 40).
+- All four nodes converged; initial committed height was 1.
+- The signed transfer of 1,237 HND committed at height 2.
+- Alice balance after transfer: 598,763 HND; Bob balance after transfer: 401,237 HND.
+- Transaction block hash: `76DE3E39DFAE3E4F48837F3C184C4B09CBCA90FA58467851C0EF38B6E4CF0143`.
+- With one validator and its application stopped, the remaining three continued to height 3.
+- After restarting the stopped application and validator, it caught up; reported catch-up height was 4 and all four nodes converged.
+- Final block hash: `F0209E38C0F4E66A9DF6BDF911303AD225754A26A5D85F5FA6C5D7DF22F2BB8A`.
+- Application hash after transaction: `l4S3koPeJUCvKDJe0czbW+YtQgYShfilr4Y79nsZEKk=`.
+
+**Acceptance decision:** The local four-validator crash-stop integration scenario in this document is implemented and passed in CI. This does not prove Byzantine fault tolerance, network-partition safety, malicious-validator resistance, production durability, state-sync snapshot support, or production readiness. The HND application persistence remains file-based prototype storage. No public deployment or real-value use is authorized.
+
+The separate single-node and four-validator Genesis preflight steps also passed in the same workflow. The CI run checks out the tested branch commit shown above; `main` was not modified.
