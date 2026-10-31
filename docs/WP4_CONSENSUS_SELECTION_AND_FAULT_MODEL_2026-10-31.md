@@ -136,3 +136,34 @@ A four-validator permissioned devnet is only a safe first engineering test. A la
 ## 10. Release boundary
 
 WP4 is consensus design and controlled test planning only. No mainnet, public token issuance, sale, exchange listing, payment integration, custody service, or use of real funds is authorized by this work. Independent security assessment and jurisdiction-specific legal review remain mandatory gates before any public financial use.
+
+## 11. ABCI++ integration constraints and release review
+
+The CometBFT ABCI++ application requirements add important constraints to the integration plan:
+
+1. `ProcessProposal` must be deterministic. For a given last committed application state and the same proposed block, honest HND nodes must reach the same accept/reject result.
+2. `PrepareProposal` may construct or filter a candidate proposal, but any resulting ledger state must remain a separate candidate. It must not mutate the committed HND ledger.
+3. CometBFT may present multiple proposals for one height. The application must discard unused candidate states and bound memory/resource use; it must not assume only one proposal arrives per height.
+4. `FinalizeBlock` executes the block that consensus actually decided and computes the new application state/results. The application must not treat this call as its durable disk commit.
+5. The application persists the new state during `Commit`, and must report the last successfully committed height during recovery/handshake.
+
+This lifecycle means the current HND local chain cannot simply be called from an ABCI method without an adapter and explicit state separation. A candidate implementation should use cloned/candidate ledger states for proposal validation, deterministic transaction execution for the decided block, and atomic durable persistence at commit.
+
+Official references:
+- ABCI++ application requirements: https://github.com/cometbft/cometbft/blob/main/spec/abci/abci%2B%2B_app_requirements.md
+- ABCI++ basic concepts and method lifecycle: https://github.com/cometbft/cometbft/blob/main/spec/abci/abci%2B%2B_basic_concepts.md
+
+### Release review
+
+The upstream CometBFT releases page currently marks **v0.40.0** as the latest release, while also listing maintained release lines such as v0.39.4 and v0.38.26. This is a release-discovery observation, not a dependency pin. Before choosing a version, WP4.1 must review its supported Go toolchain, compatibility guidance, security advisories, upgrade notes, and reproducible build process. No CometBFT binary or dependency has been added to HND yet.
+
+Release source: https://github.com/cometbft/cometbft/releases (checked 2026-10-31).
+
+### Language boundary
+
+HND's reference ledger is currently Python. Do not assume that a first-party, production-ready Python ABCI++ adapter exists or is compatible with the chosen CometBFT release. WP4.1 must compare:
+- a maintained Python ABCI client/adapter, if one is demonstrably compatible;
+- a small, separately reviewed Go adapter that calls the Python state machine through a local, versioned interface; or
+- a Go implementation of the HND state-transition rules validated against the existing Python test vectors.
+
+The choice must be supported by an end-to-end prototype and parity tests. Do not duplicate consensus logic in Python, and do not silently create two independently evolving ledger implementations.
