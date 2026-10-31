@@ -59,3 +59,10 @@ The archived reports record the historical 3,000-transfer run; that run is not c
 - `docs/WP4_5_PRIVATE_FOUR_VALIDATOR_NETWORK_DESIGN_2026-11-01.md`: design, CI evidence, exact observations, and limitations.
 - CI pass: [run 41243674122](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41243674122), branch commit `d2f2eb609b223f40265ad16d4ae062930657b6ba`. The log contains `COMETBFT_V040_FOUR_VALIDATOR_NETWORK_OK`; transfer 1,237 HND committed at height 2, three validators continued to height 3 while one was stopped, and the restarted validator caught up with all four converged at height 4.
 - **Scope:** local four-validator crash-stop integration only—not Byzantine fault proof, security audit, production readiness, or public-release approval. Temporary keys/state are used; no public peers or real funds.
+
+
+## WP4.6 ABCI Genesis identity negative tests
+
+- `docs/WP4_6_ABCI_GENESIS_IDENTITY_NEGATIVE_TESTS_2026-11-01.md`: records negative InitChain tests for a mismatched CometBFT chain ID and a mismatched pinned HND Genesis hash, including the assertion that rejected initialization writes no state file.
+- CI pass: [run 41246122343](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41246122343), commit `b89b99abc4c9193c0235b3f5ff52833ef9c0b91e`. Both isolated v0.2 tests and the CometBFT integration job passed; the latter includes single-node smoke, four-validator Genesis preflight, and four-validator network integration.
+- **Scope:** these are targeted initialization identity checks, not a Byzantine-security proof, independent audit, production-readiness decision, or public-release authorization. `main` remains unchanged.
