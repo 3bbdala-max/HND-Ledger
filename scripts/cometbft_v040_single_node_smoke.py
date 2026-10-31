@@ -320,7 +320,7 @@ def main() -> None:
 
             broadcast = rpc_get(
                 "/broadcast_tx_sync",
-                {"tx": json.dumps("0x" + tx_bytes.hex())},
+                {"tx": json.dumps(base64.b64encode(tx_bytes).decode("ascii"))},
             )
             check_tx = broadcast.get("result", {}).get("check_tx", {})
             if int(check_tx.get("code", 0)) != 0:
