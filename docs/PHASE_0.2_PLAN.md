@@ -144,3 +144,13 @@ This status note supersedes the earlier "Immediate next actions" snapshot where 
 - The design explicitly records unresolved schema, networking, persistence, and state-sync risks. WP4.5 is **design-only** at this point; no four-validator network has been implemented or tested yet.
 - Next implementation step: validate CometBFT v0.40.0's exact genesis validator JSON and node-ID/persistent-peer generation using the pinned binary before building the multi-node harness.
 - `main` remains unchanged; all work remains on `phase-0.2-planning`.
+
+
+## 11. WP4.5 validator identity / Genesis preflight added — 2026-11-01
+
+- Added `scripts/cometbft_v040_four_validator_genesis_preflight.py`: creates four isolated CometBFT homes, extracts four independent validator keys and P2P node IDs, constructs a common HND Genesis document, and checks uniqueness and byte-identical Genesis copies.
+- Added `scripts/cometbft_v040_genesis_validate.go`: validates the generated Genesis using `types.GenesisDocFromFile` from the pinned CometBFT v0.40.0 source module.
+- Added this preflight to the existing CometBFT CI job after the single-node smoke test.
+- Pinned source review confirms the Genesis validator schema and the local-network P2P settings needed for multiple peers on loopback (`addr_book_strict=false`, `allow_duplicate_ip=true`).
+- The latest CI run for this addition is [41243006658](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41243006658); its HND v0.2 unit-test job has passed, while the CometBFT integration job was still running at the time of this note. Do not mark the new preflight passed until that job completes successfully.
+- This is still a Genesis/identity preflight, not a four-running-validator network. The WP4.5 consensus, transaction replication, one-validator outage, and restart/catch-up tests remain open.
