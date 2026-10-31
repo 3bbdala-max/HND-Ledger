@@ -154,3 +154,19 @@ This status note supersedes the earlier "Immediate next actions" snapshot where 
 - Pinned source review confirms the Genesis validator schema and the local-network P2P settings needed for multiple peers on loopback (`addr_book_strict=false`, `allow_duplicate_ip=true`).
 - The latest CI run for this addition is [41243006658](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41243006658); its HND v0.2 unit-test job has passed, while the CometBFT integration job was still running at the time of this note. Do not mark the new preflight passed until that job completes successfully.
 - This is still a Genesis/identity preflight, not a four-running-validator network. The WP4.5 consensus, transaction replication, one-validator outage, and restart/catch-up tests remain open.
+
+## 12. WP4.5 live four-validator integration — passed 2026-11-01
+
+The four-validator implementation and CI smoke test have now passed. This supersedes the earlier WP4.5 design-only and Genesis-preflight-only status notes above; those entries remain as historical progression records.
+
+- Harness: `scripts/cometbft_v040_four_validator_network_smoke.py`.
+- CI workflow: [run 41243674122](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41243674122), tested branch commit `d2f2eb609b223f40265ad16d4ae062930657b6ba`.
+- CometBFT v0.40.0, four isolated validators, voting power 10 each.
+- All four nodes converged from initial height 1; a signed 1,237 HND transfer committed at height 2. Alice ended at 598,763 HND and Bob at 401,237 HND.
+- With one validator and its HND app stopped, the remaining three advanced to height 3.
+- The stopped app and validator restarted and caught up; all four nodes converged at height 4.
+- CI emitted `COMETBFT_V040_FOUR_VALIDATOR_NETWORK_OK`. Temporary test keys and state were not retained as repository artifacts.
+
+**Scope limitation:** This is a local four-validator crash-stop integration test. It is not proof of Byzantine fault tolerance, partition safety, malicious-validator handling, production-grade persistence, or production readiness. Snapshot state sync is not implemented. Independent security review, broader adversarial/fault testing, operational controls, governance, and jurisdiction-specific legal review remain open. Public release remains blocked by the existing G2–G4 gates.
+
+All work remains on `phase-0.2-planning`; `main` is not modified.
