@@ -23,10 +23,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hnd_v02.abci_app import HNDABCIApplication
-from hnd_v02.cometbft_v040_server import start_grpc_server
+from hnd_v02.cometbft_v040_server import start_grpc_server, types_pb2, types_pb2_grpc
 from hnd_v02.genesis import genesis_manifest_hash
 from hnd_v02.transaction import (
     ProtocolConfig,
@@ -260,6 +261,18 @@ def main() -> None:
             state_path=state_path,
         )
         server, _ = start_grpc_server(app, bind_address=ABCI_LISTEN, max_workers=16)
+        # Prove the Python endpoint is reachable before CometBFT attempts its
+        # own gRPC Echo handshake. This separates server readiness from node
+        # startup/configuration failures.
+        with grpc.insecure_channel(ABCI_LISTEN) as channel:
+            preflight = types_pb2_grpc.ABCIStub(channel).Echo(
+                types_pb2.RequestEcho(message="HND preflight"),
+                timeout=5,
+            )
+        if preflight.message != "HND preflight":
+            raise AssertionError("Python ABCI gRPC Echo preflight failed")
+        print("HND_ABCI_GRPC_PREFLIGHT_OK", flush=True)
+
         node_log = root / "cometbft-node.log"
         node_handle = node_log.open("w", encoding="utf-8")
         node = None
