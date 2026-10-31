@@ -217,7 +217,7 @@ def start_grpc_server(
     if type(max_workers) is not int or max_workers < 4:
         raise ValueError("max_workers must be an integer >= 4 for ABCI concurrency")
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-    types_pb2_grpc.add_ABCIServiceServicer_to_server(
+    types_pb2_grpc.add_ABCIServicer_to_server(
         HNDCometBFTv040Servicer(application), server
     )
     port = server.add_insecure_port(bind_address)
