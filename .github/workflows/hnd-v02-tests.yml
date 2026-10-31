@@ -27,3 +27,4 @@ jobs:
           tests.test_v02_genesis_manifest
           tests.test_v02_ledger
           tests.test_v02_blocks
+          tests.test_v02_abci_app
