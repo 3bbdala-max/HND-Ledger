@@ -63,27 +63,26 @@ Tested code commit: `8e49d924dcbcb547fc13c8b5819770f421290392`.
 
 The first wire-test run found that the generator had omitted the imported `gogoproto/gogo.proto` file. The generator was corrected to generate that dependency too; the successful run above uses the corrected generator.
 
-## 5. What is not proven
+## 5. What WP4.3 alone did not prove
 
-This milestone does **not** yet prove:
-1. A CometBFT v0.40.0 node can connect to and complete its startup handshake with this Python server.
-2. CometBFT can initialize the application from a real node Genesis file.
-3. A transaction can be broadcast through the node, included in a native CometBFT block, committed, and queried after restart.
-4. Multiple independent nodes converge on the same app hash.
-5. Four-validator safety/liveness under crash, partition, Byzantine, or delayed-message scenarios.
+At the time WP4.3 was completed, its adapter tests did not prove that a CometBFT node could initialize, commit a native block, or recover after restart. Those integration gaps were subsequently addressed by WP4.4.
 
-The current end-to-end gRPC test is a Python client calling the real local server; it is not a CometBFT node test.
+## 6. Next milestone — WP4.4 completed; next gate is multi-validator testing
 
-## 6. Next milestone — WP4.4
+WP4.4 has now passed in GitHub Actions. See `docs/WP4_4_COMETBFT_V040_SINGLE_NODE_INTEGRATION_2026-10-31.md`.
 
-Run a pinned CometBFT v0.40.0 single-node integration:
-- obtain/build the exact v0.40.0 binary and verify its checksum/provenance;
-- create a disposable one-validator development Genesis with a fixed chain ID and the exact HND application Genesis bytes/hash;
-- start the Python server on loopback and CometBFT with gRPC ABCI;
-- prove Echo/Info startup handshake, InitChain, one signed HND transaction, native block commit, Info/Query after commit, and restart recovery;
-- record native CometBFT height/hash separately from HND application hash.
+**Successful CI run:** https://github.com/3bbdala-max/HND-Ledger/actions/runs/41242087625  
+**Tested commit:** `ede5acf8a786d1d29e8af1d9c54b583f4446ec3f`.
 
-Only after the single-node integration passes should the four-validator network be created.
+The disposable CometBFT v0.40.0 one-validator integration:
+- completed the node-to-ABCI gRPC startup handshake and HND Genesis initialization;
+- accepted a signed 1,237 HND transfer with CheckTx code 0;
+- committed it at native CometBFT height 2;
+- changed the synthetic sender balance from 600,000 to 598,763 HND;
+- stopped and restarted the application and node, then recovered the same committed height and account state;
+- emitted `COMETBFT_V040_SINGLE_NODE_SMOKE_OK`.
+
+The next engineering gate is a separately scoped multi-validator private test network with matching application hashes, validator restart/state synchronization, partition/delay tests, and validator-key/transport isolation. Single-node success does not prove distributed safety or BFT.
 
 ## 7. Release boundary
 
