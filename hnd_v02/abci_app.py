@@ -100,15 +100,6 @@ class HNDABCIApplication:
         if self.state_path.exists():
             self._load_store()
 
-    @staticmethod
-    def _clone_ledger(ledger: HNDLedger) -> HNDLedger:
-        return HNDLedger.restore(
-            manifest=ledger_manifest_placeholder,
-            config=ledger.config,
-            expected_genesis_hash=ledger.genesis_hash,
-            snapshot=ledger.snapshot(),
-        )
-
     def _clone_committed(self) -> HNDLedger:
         return HNDLedger.restore(
             manifest=self.manifest,
