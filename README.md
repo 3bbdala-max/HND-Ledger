@@ -51,3 +51,11 @@ python -m unittest -v tests.test_v02_transaction_envelope tests.test_v02_genesis
 ```
 
 The archived reports record the historical 3,000-transfer run; that run is not claimed as repeated here. HND v0.1 is a local educational prototype, and v0.2 is an isolated engineering reference. Neither is production software or an approved financial product. No public deployment, real funds, token sale, exchange listing, or payment integration is authorized.
+
+## WP4.5 private four-validator integration
+
+- `scripts/cometbft_v040_four_validator_genesis_preflight.py` and `scripts/cometbft_v040_genesis_validate.go`: validate four isolated validator identities and a common Genesis against pinned CometBFT v0.40.0.
+- `scripts/cometbft_v040_four_validator_network_smoke.py`: starts four independent CometBFT nodes and HND ABCI applications on loopback, verifies block/transaction/state agreement, stops one validator while the other three continue, then restarts it and verifies catch-up.
+- `docs/WP4_5_PRIVATE_FOUR_VALIDATOR_NETWORK_DESIGN_2026-11-01.md`: design, CI evidence, exact observations, and limitations.
+- CI pass: [run 41243674122](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41243674122), branch commit `d2f2eb609b223f40265ad16d4ae062930657b6ba`. The log contains `COMETBFT_V040_FOUR_VALIDATOR_NETWORK_OK`; transfer 1,237 HND committed at height 2, three validators continued to height 3 while one was stopped, and the restarted validator caught up with all four converged at height 4.
+- **Scope:** local four-validator crash-stop integration only—not Byzantine fault proof, security audit, production readiness, or public-release approval. Temporary keys/state are used; no public peers or real funds.
