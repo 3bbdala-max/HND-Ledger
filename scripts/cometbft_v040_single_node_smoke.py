@@ -326,7 +326,28 @@ def main() -> None:
             if int(check_tx.get("code", 0)) != 0:
                 raise RuntimeError(f"CometBFT rejected HND transaction: {broadcast}")
 
-            after = wait_for_balance(alice_id, INITIAL_ALICE_BALANCE - TRANSFER_AMOUNT)
+            print("HND_BROADCAST_RESULT", json.dumps(broadcast, sort_keys=True), flush=True)
+            try:
+                after = wait_for_balance(alice_id, INITIAL_ALICE_BALANCE - TRANSFER_AMOUNT)
+            except TimeoutError as exc:
+                diagnostics = {}
+                for endpoint in ("/status", "/unconfirmed_txs", "/block"):
+                    try:
+                        diagnostics[endpoint] = rpc_get(endpoint)
+                    except Exception as diagnostic_error:
+                        diagnostics[endpoint] = repr(diagnostic_error)
+                try:
+                    diagnostics["tx_search"] = rpc_get(
+                        "/tx_search",
+                        {"query": json.dumps("tx.hash='" + broadcast.get("result", {}).get("hash", "") + "'")},
+                    )
+                except Exception as diagnostic_error:
+                    diagnostics["tx_search"] = repr(diagnostic_error)
+                tail = node_log.read_text(encoding="utf-8", errors="replace")[-16000:]
+                raise RuntimeError(
+                    f"{exc}; post-broadcast diagnostics={json.dumps(diagnostics, sort_keys=True)}"
+                    f"\\nCometBFT node log tail:\\n{tail}"
+                ) from exc
             height_after_tx = int(
                 rpc_get("/status")["result"]["sync_info"]["latest_block_height"]
             )
