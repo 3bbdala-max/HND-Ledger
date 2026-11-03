@@ -173,12 +173,23 @@ func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string) {
 	}
 	pv := privval.LoadFilePV(keyPath, statePath)
 	logger := log.NewNopLogger()
-	dialer := privval.NewSignerDialerEndpoint(logger, privval.DialUnixFn(socketPath))
+	dialer := privval.NewSignerDialerEndpoint(
+		logger,
+		privval.DialUnixFn(socketPath),
+		privval.SignerDialerEndpointConnRetries(100),
+	)
 	server := privval.NewSignerServer(dialer, signerChainID, pv)
 	if err := server.Start(); err != nil {
 		fail("start persistent signer server: %v", err)
 	}
-	fmt.Println("HND_REMOTE_SIGNER_SERVICE_READY")
+	deadline := time.Now().Add(10 * time.Second)
+	for !dialer.IsConnected() && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !dialer.IsConnected() {
+		fail("remote signer did not establish its node connection")
+	}
+	fmt.Println("HND_REMOTE_SIGNER_CONNECTED")
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	<-signals
