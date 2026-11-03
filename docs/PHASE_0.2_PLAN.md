@@ -279,3 +279,13 @@ All work remains on `phase-0.2-planning`. The `main` branch is unchanged. Public
 - Next gate: run the honest remote-signer as an independently managed process in the four-validator harness, then design/execute withheld-vote and reconnect scenarios. Inspect and validate the pinned Noise signer identity/dialer lifecycle before claiming authenticated transport. Malicious equivocation remains blocked until an auditable, pinned-version-supported injection path is demonstrated.
 
 All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.9 — separate-process probe regression and four-validator integration design — 2026-11-04
+
+- The regression workflow [41738336580](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41738336580), commit `513c8730dbcb8b8a1d06c2f38aef6c50bae1eb6b`, completed successfully. Both jobs passed, including the process-isolated remote-signer probe (step 10), single-node ABCI integration, Genesis/identity preflight, and the full existing private four-validator network smoke (step 13). The isolated HND v0.2 test job also passed.
+- Added `docs/WP4_9_FOUR_VALIDATOR_REMOTE_SIGNER_INTEGRATION_DESIGN_2026-11-04.md`. It defines the next implementation gate: validator 4 uses a separate signer process and temporary Unix socket; its disposable signing key and last-sign state remain in signer-owned temporary storage; the node's `priv_validator_laddr` config is set from the exact CometBFT v0.40.0 `BaseConfig.PrivValidatorListenAddr` field; the other three validators remain on local FilePV.
+- The design requires Genesis public-key matching, an honest four-node transfer/convergence baseline, signer restart/reconnect, validator catch-up, fail-closed behavior, and cleanup. It does not claim that this design is implemented or passed.
+- **Current state:** separate-process standalone signer probe passed; the pre-existing four-validator crash-stop/partition regression passed again in the same CI run; the four-validator remote-signer integration itself remains not yet implemented. Withheld-vote and malicious-equivocation scenarios remain open.
+
+All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
