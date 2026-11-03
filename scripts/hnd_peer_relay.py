@@ -74,17 +74,17 @@ class DirectedTCPRelay:
             except OSError:
                 break
             with self._lock:
-                allowed = self._enabled and not self._closed
-            if not allowed:
-                client.close()
-                continue
-            worker = threading.Thread(
-                target=self._bridge,
-                args=(client,),
-                name="hnd-peer-relay-bridge",
-                daemon=True,
-            )
-            with self._lock:
+                if not self._enabled or self._closed:
+                    client.close()
+                    continue
+                worker = threading.Thread(
+                    target=self._bridge,
+                    args=(client,),
+                    name="hnd-peer-relay-bridge",
+                    daemon=True,
+                )
+                # Register under the same lock used by close(), so shutdown
+                # cannot miss a worker accepted immediately before closure.
                 self._workers.add(worker)
             worker.start()
 
