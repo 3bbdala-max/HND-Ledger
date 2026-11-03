@@ -187,3 +187,63 @@ All work remains on `phase-0.2-planning`; `main` is not modified.
 - **Design only; no partition test has been run or passed.** WP4.5's validator stop/restart test remains a crash-stop test and must not be described as partition testing.
 - Implementation is gated on proving a reversible, auditable network isolation mechanism on the CI runner while all validator and ABCI processes remain alive. If the runner cannot provide this, the test must fail closed or move to a dedicated environment; do not downgrade it to a process-stop test.
 - `main` remains unchanged.
+
+
+## 14. Current verified status — 2026-11-04
+
+This section supersedes earlier design-only status statements where later evidence has passed. Earlier sections remain as a dated implementation history.
+
+### WP4.7 — live network partition and reconnection
+
+- Implemented 12 directed loopback-only TCP relays for the four-validator local harness; PEX is disabled and validator P2P peer IDs are checked against the exact expected peer set.
+- **3/1 scenario:** the 3-validator side advanced while the isolated fourth validator remained unchanged; after reconnection all four converged.
+- **2/2 scenario:** neither half advanced during the 12-second observation window; after reconnection all four converged.
+- The tests require all four CometBFT and all four HND ABCI processes to remain alive during partition.
+- Strict-peer-check CI evidence: [run 41721112365](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41721112365), commit `4c19be099860cb801bfcfe88bb2f558e4ce75b1b`.
+- Regression evidence with the signer guard added: [run 41723251514](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41723251514), commit `027a0db12ac391462ff97027df138491a3e83102`.
+
+WP4.7 is implemented and CI-tested for these bounded local scenarios. It is not a Byzantine fault-tolerance proof.
+
+### WP4.8 — CometBFT FilePV signer guard
+
+- Added `scripts/cometbft_v040_privval_signing_smoke.go`, using the pinned CometBFT v0.40.0 `privval.FilePV`.
+- The test verifies same-HRS signature reuse, rejection of conflicting votes and proposals, rejection of height/round regressions, valid prevote-to-precommit step progression, and persistence of the signing guard across signer reload.
+- CI emitted `COMETBFT_V040_PRIVVAL_SIGNER_GUARD_OK`.
+- Detailed report: `docs/WP4_8_COMETBFT_VALIDATOR_SIGNER_GUARD_2026-11-04.md`.
+
+This verifies selected local FilePV behavior only. It does not validate malicious remote signers, Byzantine network behavior, or consensus safety under arbitrary faults.
+
+### Durable application-store hardening
+
+- Application store schema advanced to version 2.
+- Added a deterministic SHA-256 integrity checksum over canonicalized store metadata and snapshot fields.
+- Added duplicate JSON object-key rejection and tests for height metadata tampering and invalid checksums.
+- Schema v1 stores are not automatically migrated by the current loader.
+- The unkeyed checksum is an integrity check, not an authenticity mechanism or MAC.
+
+### Full CI evidence
+
+The full workflow [41723251514](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41723251514) completed successfully on commit `027a0db12ac391462ff97027df138491a3e83102`:
+
+- 133 Python tests passed.
+- CometBFT v0.40.0 build and signer guard smoke passed.
+- Single-node ABCI integration and restart passed.
+- Four-validator Genesis/identity preflight passed.
+- Four-validator crash-stop/restart, 3/1 partition, 2/2 partition, and reconnection convergence passed.
+
+All these tests use disposable local test identities and synthetic HND allocations. They do not authorize public token issuance or real-value activity.
+
+### Next work package — WP4.9 adversarial consensus-message test design
+
+The next technical gate is a controlled remote-signer / Byzantine-message fault-injection design:
+
+1. Use only CometBFT v0.40.0's documented remote-signer interfaces, isolated to loopback or a temporary Unix socket.
+2. Use disposable test keys and a deliberately faulty test signer, never a production key.
+3. Exercise one validator withholding votes and, separately, a signer attempting to issue conflicting votes at the same height/round/type.
+4. Record whether honest validators remain on one committed history, whether CometBFT reports duplicate-vote evidence, and whether the remaining quorum can make progress.
+5. Keep 2/2 no-quorum behavior as a separate safety/liveness observation; do not treat it as proof against arbitrary Byzantine behavior.
+6. Require deterministic cleanup and CI logs that do not contain private keys.
+
+This is **planned work**, not implemented or passed. Snapshot/state-sync, production database durability, remote signer/HSM security, operational key custody, independent security review, governance, and jurisdiction-specific legal review remain open gates.
+
+All work remains on `phase-0.2-planning`. The `main` branch is unchanged. Public release and real-value activity remain blocked by the G2–G4 gates.
