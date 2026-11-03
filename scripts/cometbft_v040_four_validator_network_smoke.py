@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_v02.genesis import genesis_manifest_hash
 from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, canonical_json, create_signed_transaction, public_key_b64
+from scripts.hnd_peer_relay import DirectedTCPRelay
 
 CHAIN = "hnd-cometbft-v040-four-validator"
 N, POWER, SUPPLY, ALICE, TRANSFER, BASE = 4, 10, 1_000_000, 600_000, 1237, 28600
@@ -62,6 +63,29 @@ def app_hash(url):
     r=http(url, "/abci_info")["result"]["response"]["last_block_app_hash"]
     return r
 
+def peer_ids(url):
+    peers=http(url, "/net_info")["result"]["peers"]
+    return {p["node_info"]["id"] for p in peers}
+
+def partition_ready(urls, nodeids, groups):
+    group_for={node: group_index for group_index, group in enumerate(groups) for node in group}
+    for i, url in enumerate(urls):
+        actual=peer_ids(url)
+        allowed={nodeids[j] for j in range(N) if j != i and group_for[j] == group_for[i]}
+        if actual - allowed:
+            return None
+        if allowed and not (actual & allowed):
+            return None
+    return True
+
+def set_partition(relays, groups):
+    group_for={node: group_index for group_index, group in enumerate(groups) for node in group}
+    for (source, target), relay in relays.items():
+        if group_for[source] == group_for[target]:
+            relay.enable()
+        else:
+            relay.disable()
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True)
@@ -93,14 +117,25 @@ def main():
         gbytes=(gtext.replace('"app_state": {}','"app_state": '+canonical_json(appstate).decode())+"\n").encode()
         for h in homes: (h/"config/genesis.json").write_bytes(gbytes)
         eps=[{"p2p":f"127.0.0.1:{BASE+3*i}","rpc":f"http://127.0.0.1:{BASE+3*i+1}","abci":f"127.0.0.1:{BASE+3*i+2}"} for i in range(N)]
+        relays={}
+        try:
+            for i in range(N):
+                for j in range(N):
+                    if i != j:
+                        target_host, target_port=eps[j]["p2p"].split(":")
+                        relays[(i,j)]=DirectedTCPRelay(target_host,int(target_port))
+        except Exception:
+            for relay in relays.values(): relay.close()
+            raise
         for i,h in enumerate(homes):
             p=h/"config/config.toml"; t=p.read_text()
             t=set_toml(t,None,"proxy_app",json.dumps(eps[i]["abci"]))
             t=set_toml(t,None,"abci",'"grpc"')
             t=set_toml(t,"rpc","laddr",json.dumps("tcp://"+eps[i]["rpc"].split("://")[1]))
             t=set_toml(t,"p2p","laddr",json.dumps("tcp://"+eps[i]["p2p"]))
-            peers=",".join(f"{nodeids[j]}@{eps[j]['p2p']}" for j in range(N) if j!=i)
+            peers=",".join(f"{nodeids[j]}@127.0.0.1:{relays[(i,j)].address[1]}" for j in range(N) if j!=i)
             t=set_toml(t,"p2p","persistent_peers",json.dumps(peers))
+            t=set_toml(t,"p2p","pex","false")
             t=set_toml(t,"p2p","addr_book_strict","false")
             t=set_toml(t,"p2p","allow_duplicate_ip","true")
             p.write_text(t)
@@ -145,10 +180,79 @@ def main():
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
             if any(x["balance"]!=ALICE-TRANSFER for x in final_accounts) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
+            # WP4.7-A: isolate validator 4 while all four node/app processes remain alive.
+            partition_groups_31=[[0,1,2],[3]]
+            set_partition(relays,partition_groups_31)
+            wait(lambda:partition_ready(urls,nodeids,partition_groups_31),"3/1 peer isolation")
+            baseline31=[rpc_status(u) for u in urls]
+            baseheight31=int(baseline31[0]["sync_info"]["latest_block_height"])
+            baseblock31=baseline31[0]["sync_info"]["latest_block_hash"]
+            baseapp31=[app_hash(u) for u in urls]
+            basealice31=account(urls[3],aid)["balance"]
+            part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
+            part_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(part_tx).decode()})["result"]
+            if int(part_broadcast.get("code",0)): raise RuntimeError(f"3/1 partition CheckTx rejected: {part_broadcast}")
+            def three_commit_isolated():
+                side=converged(urls[:3],baseheight31+1)
+                if not side: return None
+                isolated=rpc_status(urls[3])
+                if int(isolated["sync_info"]["latest_block_height"]) != baseheight31: return None
+                if isolated["sync_info"]["latest_block_hash"] != baseblock31: return None
+                if account(urls[3],aid)["balance"] != basealice31: return None
+                if app_hash(urls[3]) != baseapp31[3]: return None
+                if any(account(u,aid)["balance"] != ALICE-TRANSFER-77 for u in urls[:3]): return None
+                if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls[:3]): return None
+                return side
+            side31=wait(three_commit_isolated,"3/1 quorum commit with isolated validator stalled",150)
+            print(json.dumps({"result":"COMETBFT_V040_3_1_PARTITION_OK","partition":[3,1],"all_four_processes_alive":all(p and p.poll() is None for p in nodes+apps),"quorum_height":int(side31[0]["sync_info"]["latest_block_height"]),"isolated_height":baseheight31,"isolated_state_unchanged":True},sort_keys=True),flush=True)
+
+            # Restore the full mesh and require the isolated validator to catch up.
+            set_partition(relays,[[0,1,2,3]])
+            wait(lambda:partition_ready(urls,nodeids,[[0,1,2,3]]),"3/1 reconnection peer mesh",90)
+            def reconnect31():
+                state=converged(urls,int(side31[0]["sync_info"]["latest_block_height"]))
+                if not state: return None
+                if any(account(u,aid)["balance"] != ALICE-TRANSFER-77 for u in urls): return None
+                if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
+                hashes=[app_hash(u) for u in urls]
+                return (state,hashes) if len(set(hashes))==1 else None
+            reconnected31,hashes31=wait(reconnect31,"all validators converge after 3/1 reconnection",150)
+            print(json.dumps({"result":"COMETBFT_V040_PARTITION_RECONNECTION_OK","scenario":"3/1","height":int(reconnected31[0]["sync_info"]["latest_block_height"]),"block_hash":reconnected31[0]["sync_info"]["latest_block_hash"],"application_hash":hashes31[0],"all_four_converged":True},sort_keys=True),flush=True)
+
+            # WP4.7-B: 2/2 partition; neither half has the required 30/40 voting power.
+            partition_groups_22=[[0,1],[2,3]]
+            set_partition(relays,partition_groups_22)
+            wait(lambda:partition_ready(urls,nodeids,partition_groups_22),"2/2 peer isolation")
+            baseline22=[rpc_status(u) for u in urls]
+            heights22=[int(x["sync_info"]["latest_block_height"]) for x in baseline22]
+            blocks22=[x["sync_info"]["latest_block_hash"] for x in baseline22]
+            apps22=[app_hash(u) for u in urls]
+            time.sleep(12)
+            after22=[rpc_status(u) for u in urls]
+            if [int(x["sync_info"]["latest_block_height"]) for x in after22] != heights22: raise AssertionError("2/2 partition unexpectedly advanced a validator height")
+            if [x["sync_info"]["latest_block_hash"] for x in after22] != blocks22: raise AssertionError("2/2 partition changed a validator block hash")
+            if [app_hash(u) for u in urls] != apps22: raise AssertionError("2/2 partition changed HND application state")
+            print(json.dumps({"result":"COMETBFT_V040_2_2_PARTITION_OK","partition":[2,2],"observation_seconds":12,"heights_unchanged":True,"block_hashes_unchanged":True,"application_hashes_unchanged":True,"all_four_processes_alive":all(p and p.poll() is None for p in nodes+apps)},sort_keys=True),flush=True)
+
+            # Reconnect and verify the full mesh and committed HND state remain identical.
+            set_partition(relays,[[0,1,2,3]])
+            wait(lambda:partition_ready(urls,nodeids,[[0,1,2,3]]),"2/2 reconnection peer mesh",90)
+            def final_partition_convergence():
+                state=converged(urls,max(heights22))
+                if not state: return None
+                ahashes=[app_hash(u) for u in urls]
+                if len(set(ahashes))!=1: return None
+                if any(account(u,aid)["balance"] != ALICE-TRANSFER-77 for u in urls): return None
+                if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
+                return (state,ahashes)
+            final22,final22_hashes=wait(final_partition_convergence,"2/2 reconnection convergence",150)
+            print(json.dumps({"result":"COMETBFT_V040_PARTITION_RECONNECTION_OK","scenario":"2/2","height":int(final22[0]["sync_info"]["latest_block_height"]),"block_hash":final22[0]["sync_info"]["latest_block_hash"],"application_hash":final22_hashes[0],"all_four_converged":True},sort_keys=True),flush=True)
+
             print(json.dumps({"result":"COMETBFT_V040_FOUR_VALIDATOR_NETWORK_OK","chain_id":CHAIN,"validators":N,"voting_power_each":POWER,"initial_height":h0,"transaction_height":txheight,"transaction_block_hash":txblock,"application_hash_after_transaction":hashes1[0],"alice_balance_after":final_accounts[0]["balance"],"bob_balance_after":account(urls[0],bid)["balance"],"transfer":TRANSFER,"height_with_one_validator_stopped":qheight,"height_after_catchup":int(sfinal[0]["sync_info"]["latest_block_height"]),"final_block_hash":sfinal[0]["sync_info"]["latest_block_hash"],"all_four_nodes_converged":True,"temporary_keys_and_state_only":True,"scope":"local four-validator crash-stop integration; not Byzantine fault proof"},sort_keys=True),flush=True)
         finally:
             for p in nodes: stop(p)
             for p in apps: stop(p)
+            for relay in relays.values(): relay.close()
             for f in ah+nh: f.close()
 
 if __name__=="__main__": main()
