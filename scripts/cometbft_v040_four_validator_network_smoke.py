@@ -242,8 +242,8 @@ def main():
                 if isolated["sync_info"]["latest_block_hash"] != baseblock31: return None
                 if account(urls[3],aid)["balance"] != basealice31: return None
                 if app_hash(urls[3]) != baseapp31[3]: return None
-                if any(account(u,aid)["balance"] != ALICE-TRANSFER-77 for u in urls[:3]): return None
-                if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls[:3]): return None
+                if any(account(u,aid)["balance"] != expected_alice_partition for u in urls[:3]): return None
+                if any(account(u,bid)["balance"] != expected_bob_partition for u in urls[:3]): return None
                 return side
             side31=wait(three_commit_isolated,"3/1 quorum commit with isolated validator stalled",150)
             if not all(p and p.poll() is None for p in nodes+apps):
