@@ -31,6 +31,7 @@ jobs:
           tests.test_v02_blocks
           tests.test_v02_abci_app
           tests.test_v02_cometbft_v040_adapter
+          tests.test_v02_tcp_peer_relay
 
   cometbft-single-node-smoke:
     needs: hnd-v02-tests
