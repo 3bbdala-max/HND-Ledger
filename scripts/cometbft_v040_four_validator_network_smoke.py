@@ -223,12 +223,18 @@ def main():
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
             if a.remote_signer_binary:
+                # Require a connection marker written by this signer process,
+                # not a stale marker from the earlier signer lifecycle.
+                signer_log.flush()
+                signer_log_offset=(root/"signer4.log").stat().st_size
                 signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def restarted_signer_connected():
                     if signer.poll() is not None: return None
                     signer_log.flush()
-                    return True if "HND_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text() else None
-                wait(restarted_signer_connected,"remote signer reconnect to restarted validator",30)
+                    current_log=(root/"signer4.log").read_bytes()
+                    fresh_log=current_log[signer_log_offset:].decode("utf-8",errors="replace")
+                    return True if "HND_REMOTE_SIGNER_CONNECTED" in fresh_log else None
+                wait(restarted_signer_connected,"new remote signer process connected to restarted validator",30)
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
             if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
