@@ -316,8 +316,8 @@ def main():
                 if not state: return None
                 ahashes=[app_hash(u) for u in urls]
                 if len(set(ahashes))!=1: return None
-                if any(account(u,aid)["balance"] != ALICE-TRANSFER-77 for u in urls): return None
-                if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
+                if any(account(u,aid)["balance"] != expected_alice_partition for u in urls): return None
+                if any(account(u,bid)["balance"] != expected_bob_partition for u in urls): return None
                 return (state,ahashes)
             final22,final22_hashes=wait(final_partition_convergence,"2/2 reconnection convergence",150)
             print(json.dumps({"result":"COMETBFT_V040_PARTITION_RECONNECTION_OK","scenario":"2/2","height":int(final22[0]["sync_info"]["latest_block_height"]),"block_hash":final22[0]["sync_info"]["latest_block_hash"],"application_hash":final22_hashes[0],"all_four_converged":True},sort_keys=True),flush=True)
