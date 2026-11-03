@@ -162,7 +162,35 @@ func runNodeParent() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_PROCESS_PROBE_OK")
 }
 
+func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string) {
+	if _, err := os.Stat(keyPath); err != nil {
+		fail("signer key file unavailable: %v", err)
+	}
+	pv := privval.LoadFilePV(keyPath, statePath)
+	logger := log.NewNopLogger()
+	dialer := privval.NewSignerDialerEndpoint(logger, privval.DialUnixFn(socketPath))
+	server := privval.NewSignerServer(dialer, signerChainID, pv)
+	if err := server.Start(); err != nil {
+		fail("start persistent signer server: %v", err)
+	}
+	fmt.Println("HND_REMOTE_SIGNER_SERVICE_READY")
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	<-signals
+	signal.Stop(signals)
+	if err := server.Stop(); err != nil {
+		fail("stop persistent signer server: %v", err)
+	}
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--serve" {
+		if len(os.Args) != 6 {
+			fail("usage: --serve <socket> <key-file> <state-file> <chain-id>")
+		}
+		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--signer-child" {
 		if len(os.Args) != 5 {
 			fail("usage: --signer-child <socket> <key-file> <state-file>")
