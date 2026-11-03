@@ -338,6 +338,17 @@ class HNDABCIApplication:
                 os.fsync(handle.fileno())
             os.replace(temp_name, self.state_path)
             temp_name = None
+            # Persist the directory entry as well as the file contents. Without
+            # this, a power loss can lose the rename even after the file fsync.
+            if os.name == "posix":
+                directory_fd = os.open(
+                    self.state_path.parent,
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+                )
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
         finally:
             if temp_name is not None:
                 try:
