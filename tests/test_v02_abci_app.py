@@ -283,6 +283,14 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.assertEqual(restored.info(), self.app.info())
         self.assertEqual(restored.account_view(self.alice_id), self.app.account_view(self.alice_id))
 
+    def test_commit_fsyncs_state_file_and_parent_directory(self):
+        self.app.finalize_block(height=1, transactions=[self.raw(amount=10, nonce=0)])
+        real_fsync = __import__("os").fsync
+        with patch("hnd_v02.abci_app.os.fsync", wraps=real_fsync) as fsync_spy:
+            self.app.commit()
+        expected_calls = 2 if __import__("os").name == "posix" else 1
+        self.assertEqual(fsync_spy.call_count, expected_calls)
+
     def test_commit_without_finalize_is_rejected(self):
         with self.assertRaisesRegex(ABCIApplicationError, "no finalized block"):
             self.app.commit()
