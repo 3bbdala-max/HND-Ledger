@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -26,6 +27,12 @@ import (
 
 const chainID = "hnd-cometbft-v040-remote-signer-process-probe"
 
+type voteWithholdingPV struct { cmttypes.PrivValidator }
+
+func (pv voteWithholdingPV) SignVote(string, *cmtproto.Vote) error {
+	return errors.New("test signer intentionally withholds vote signatures")
+}
+
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "HND_REMOTE_SIGNER_PROCESS_PROBE_FAILED: "+format+"\n", args...)
 	os.Exit(1)
@@ -41,12 +48,16 @@ func blockID(label string) cmttypes.BlockID {
 	}
 }
 
-func runSignerChild(socketPath, keyPath, statePath string) {
+func runSignerChild(socketPath, keyPath, statePath string, withholdVotes bool) {
 	logger := log.NewNopLogger()
 	pv := privval.GenFilePV(keyPath, statePath)
 	pv.Save()
 	dialer := privval.NewSignerDialerEndpoint(logger, privval.DialUnixFn(socketPath))
-	server := privval.NewSignerServer(dialer, chainID, pv)
+	var signer cmttypes.PrivValidator = pv
+	if withholdVotes {
+		signer = voteWithholdingPV{PrivValidator: pv}
+	}
+	server := privval.NewSignerServer(dialer, chainID, signer)
 	if err := server.Start(); err != nil {
 		fail("start child signer server: %v", err)
 	}
@@ -57,6 +68,47 @@ func runSignerChild(socketPath, keyPath, statePath string) {
 	if err := server.Stop(); err != nil {
 		fail("stop child signer server: %v", err)
 	}
+}
+
+
+func runWithholdingProbe() {
+	root, err := os.MkdirTemp("", "hnd-remote-signer-withhold-v040-")
+	if err != nil { fail("create withholding probe directory: %v", err) }
+	defer os.RemoveAll(root)
+	socketPath := filepath.Join(root, "privval.sock")
+	rawListener, err := net.Listen("unix", socketPath)
+	if err != nil { fail("listen for withholding signer: %v", err) }
+	defer rawListener.Close()
+	if err := os.Chmod(socketPath, 0o600); err != nil { fail("restrict withholding socket: %v", err) }
+	logger := log.NewNopLogger()
+	endpoint := privval.NewSignerListenerEndpoint(logger, privval.NewUnixListener(rawListener))
+	client, err := privval.NewSignerClient(endpoint, chainID)
+	if err != nil { fail("create withholding probe client: %v", err) }
+	defer client.Close()
+	executable, err := os.Executable()
+	if err != nil { fail("resolve probe executable: %v", err) }
+	keyPath, statePath := filepath.Join(root, "key.json"), filepath.Join(root, "state.json")
+	child := exec.Command(executable, "--signer-child", socketPath, keyPath, statePath, "--withhold-votes")
+	child.Stdout, child.Stderr = os.Stdout, os.Stderr
+	if err := child.Start(); err != nil { fail("start withholding signer child: %v", err) }
+	defer func() { if child.Process != nil { _ = child.Process.Kill(); _ = child.Wait() } }()
+	if err := client.WaitForConnection(10*time.Second); err != nil { fail("wait for withholding signer connection: %v", err) }
+	if err := client.Ping(); err != nil { fail("withholding signer initial ping: %v", err) }
+	pubKey, err := client.GetPubKey()
+	if err != nil { fail("withholding signer GetPubKey: %v", err) }
+	vote := (&cmttypes.Vote{
+		ValidatorAddress: cmttypes.Address(pubKey.Address()), ValidatorIndex: 0,
+		Height: 1, Round: 0, Type: cmtproto.PrevoteType,
+		Timestamp: cmttime.Now(), BlockID: blockID("withheld-vote"),
+	}).ToProto()
+	if err := client.SignVote(chainID, vote); err == nil {
+		fail("withholding signer unexpectedly signed a vote")
+	}
+	if len(vote.Signature) != 0 { fail("withholding signer returned a vote signature despite refusal") }
+	if err := client.Ping(); err != nil { fail("signer connection did not remain usable after vote refusal: %v", err) }
+	if _, err := client.GetPubKey(); err != nil { fail("signer connection lost GetPubKey after vote refusal: %v", err) }
+	if child.ProcessState != nil && child.ProcessState.Exited() { fail("withholding signer process exited during probe") }
+	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_CONNECTED_WITH_VOTE_WITHHOLDING_OK")
 }
 
 func runNodeParent() {
@@ -207,11 +259,16 @@ func main() {
 		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--withholding-probe" {
+		runWithholdingProbe()
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--signer-child" {
-		if len(os.Args) != 5 {
-			fail("usage: --signer-child <socket> <key-file> <state-file>")
+		if len(os.Args) < 5 || len(os.Args) > 6 {
+			fail("usage: --signer-child <socket> <key-file> <state-file> [--withhold-votes]")
 		}
-		runSignerChild(os.Args[2], os.Args[3], os.Args[4])
+		withhold := len(os.Args) == 6 && os.Args[5] == "--withhold-votes"
+		runSignerChild(os.Args[2], os.Args[3], os.Args[4], withhold)
 		return
 	}
 	runNodeParent()
