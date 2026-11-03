@@ -289,3 +289,15 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Current state:** separate-process standalone signer probe passed; the pre-existing four-validator crash-stop/partition regression passed again in the same CI run; the four-validator remote-signer integration itself remains not yet implemented. Withheld-vote and malicious-equivocation scenarios remain open.
 
 All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.9 — four-validator external remote-signer integration and outage recovery passed — 2026-11-04
+
+- Full GitHub Actions workflow [41741779949](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41741779949) completed with **success** on commit `e30768db086b89fbb58bbb8edf1214c376b0b971`; both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs passed.
+- The CometBFT job passed the FilePV signer guard, remote-signer protocol conformance probe, separate-process remote-signer probe, single-node ABCI integration/restart, four-validator Genesis/identity preflight, ordinary four-validator network regression, and the four-validator external remote-signer integration.
+- External signer outage recovery emitted `COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK`: validator 4's signer process was stopped; the remaining three validators committed the next transfer; the signer was restarted; and all four validators converged at height 4 with matching HND account state.
+- Validator 4 process restart/catch-up passed after the test harness removed the stale disposable Unix-socket pathname and waited for the restarted node-side listener before launching a fresh signer process.
+- In the same external-signer run, live 3/1 isolation and reconnection passed, the 2/2 no-quorum observation held for 12 seconds with heights/block hashes/application hashes unchanged, and all four validators converged after reconnection. The run emitted `COMETBFT_V040_FOUR_VALIDATOR_NETWORK_OK`.
+- This closes the honest external remote-signer integration and bounded crash/restart/partition recovery gate for the tested local Unix-socket configuration.
+- **Still open:** deliberate withheld-vote behavior (distinct from signer process outage), correct remote signer's conflicting same-HRS vote/proposal refusal and durable refusal after restart, malicious equivocation injection/evidence capture, authenticated/encrypted remote transport review, production key custody, and independent security review. The current integration does not prove arbitrary Byzantine fault tolerance.
+- All keys/state were disposable local test material. No public endpoint, production key, real-value transfer, or mainnet was used. `main` remains unchanged; public release and real-value activity remain blocked by G2–G4.
