@@ -267,3 +267,15 @@ All work remains on `phase-0.2-planning`. The `main` branch is unchanged. Public
 - **Status: design only. No WP4.9 remote-signer or Byzantine-message scenario has been implemented or passed.** The next implementation gate is a pinned-source remote-signer protocol conformance probe using disposable keys, followed by the honest remote-signer baseline.
 - Any malicious conflicting-vote injection must use an auditable test path supported by the pinned version; if none exists, that scenario remains design-only rather than modifying consensus internals to manufacture a pass.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.9 — separate-process remote-signer baseline passed — 2026-11-04
+
+- The process-isolated probe `scripts/cometbft_v040_remote_signer_process_probe.go` passed in GitHub Actions run [41738318170](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41738318170), tested commit `5afc626e49076d7555c171dcd4c98199cfd8e622`, step 10: `Run process-isolated pinned CometBFT remote signer probe`.
+- The step ran after the pinned CometBFT v0.40.0 build and both signer smoke probes, and before the single-node ABCI, four-validator Genesis/identity preflight, and private four-validator network smoke steps. Both jobs in this run completed successfully.
+- The probe launches the signer as a separate child process and connects through a private temporary Unix socket. It checks Ping, public-key retrieval, vote/proposal signing and signature verification, and wrong-chain-ID refusal; temporary resources are cleaned up.
+- This closes the separate-process baseline gate for the local Unix-socket test. It does **not** establish encrypted/authenticated transport, remote-host security, HSM isolation, or resistance to a malicious signer. Unix sockets are unencrypted and remain local-test-only here.
+- A later workflow run [41738336580](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41738336580) has also passed the isolated HND v0.2 test job and the process-isolated signer step; its private four-validator network integration step was still in progress at the latest check. Do not record that later full workflow as green until its network step and job finish successfully.
+- Next gate: run the honest remote-signer as an independently managed process in the four-validator harness, then design/execute withheld-vote and reconnect scenarios. Inspect and validate the pinned Noise signer identity/dialer lifecycle before claiming authenticated transport. Malicious equivocation remains blocked until an auditable, pinned-version-supported injection path is demonstrated.
+
+All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
