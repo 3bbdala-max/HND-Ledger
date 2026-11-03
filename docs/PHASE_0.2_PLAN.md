@@ -249,6 +249,15 @@ This is **planned work**, not implemented or passed. Snapshot/state-sync, produc
 All work remains on `phase-0.2-planning`. The `main` branch is unchanged. Public release and real-value activity remain blocked by the G2–G4 gates.
 
 
+### WP4.9 — pinned remote-signer source inspection — 2026-11-04
+
+- Inspected the exact upstream CometBFT `v0.40.0` `privval` implementation and recorded findings in `docs/WP4_9_COMETBFT_V040_REMOTE_SIGNER_SOURCE_INSPECTION_2026-11-04.md`.
+- Confirmed the remote private-validator protocol uses length-delimited protobuf `privval.Message` envelopes, not gRPC. The node-side listener accepts the external signer connection; the signer-side dialer connects to it.
+- Distinguished the HND ABCI gRPC server/probe from the separate private-validator signing protocol.
+- Recorded transport security distinctions: Unix sockets are unencrypted; TCP uses CometBFT secret connections; the pinned source also exposes a Noise listener with signer peer-ID allowlisting. No public endpoint or production key is used for the initial probe.
+- **Status: source inspection complete; remote-signer implementation and conformance test not yet implemented or passed.** Next gate: add a disposable-key protocol probe using the pinned Go APIs, then run the honest remote-signer baseline.
+- CI runs #100 and #101 both completed the isolated HND v0.2 tests successfully. Their single-node/4-validator job had passed the signer anti-double-sign smoke, single-node ABCI smoke, and Genesis/identity preflight; the private four-validator network smoke was still running at the latest status check. No full-workflow success is claimed.
+
 ### WP4.9 — adversarial consensus-message test design added — 2026-11-04
 
 - Added `docs/WP4_9_ADVERSARIAL_CONSENSUS_TEST_DESIGN_2026-11-04.md`.
