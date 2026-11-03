@@ -39,6 +39,16 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant: {value}")
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate object keys instead of silently accepting the last value."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
 def _decode_canonical_object(raw: bytes, *, label: str) -> dict[str, Any]:
     """Decode an exact canonical JSON object; reject aliases and duplicate keys."""
     if type(raw) is not bytes or not raw:
@@ -370,6 +380,7 @@ class HNDABCIApplication:
                 payload = json.load(
                     handle,
                     parse_constant=_reject_json_constant,
+                    object_pairs_hook=_reject_duplicate_json_keys,
                 )
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise ABCIApplicationError("application state file cannot be decoded") from exc

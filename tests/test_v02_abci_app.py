@@ -363,10 +363,27 @@ class TestV02ABCIApplication(unittest.TestCase):
             self.make_app()
 
     def test_corrupted_application_hash_is_rejected_on_restart(self):
+        import hashlib
+        from hnd_v02.transaction import canonical_json
         payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         payload["app_hash"] = "0" * 64
+        unsigned = {key: value for key, value in payload.items() if key != "store_hash"}
+        payload["store_hash"] = hashlib.sha256(
+            b"HND-ABCI-STORE-V2\\\\0" + canonical_json(unsigned)
+        ).hexdigest()
         self.state_path.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(ABCIApplicationError, "app hash mismatch"):
+            self.make_app()
+
+    def test_duplicate_json_keys_in_persisted_store_are_rejected(self):
+        raw = self.state_path.read_text(encoding="utf-8")
+        raw = raw.replace(
+            '"last_committed_height": 0,',
+            '"last_committed_height": 0,\\n  "last_committed_height": 0,',
+            1,
+        )
+        self.state_path.write_text(raw, encoding="utf-8")
+        with self.assertRaisesRegex(ABCIApplicationError, "cannot be decoded"):
             self.make_app()
 
     def test_recovery_metadata_tampering_is_rejected_by_store_hash(self):
