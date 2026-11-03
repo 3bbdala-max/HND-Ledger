@@ -369,6 +369,22 @@ class TestV02ABCIApplication(unittest.TestCase):
         with self.assertRaisesRegex(ABCIApplicationError, "app hash mismatch"):
             self.make_app()
 
+    def test_recovery_metadata_tampering_is_rejected_by_store_hash(self):
+        self.app.finalize_block(height=1, transactions=[self.raw(amount=40, nonce=0)])
+        self.app.commit()
+        payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        payload["last_committed_height"] = 99
+        self.state_path.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ABCIApplicationError, "store hash mismatch"):
+            self.make_app()
+
+    def test_store_hash_must_be_lowercase_sha256_hex(self):
+        payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        payload["store_hash"] = "Z" * 64
+        self.state_path.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ABCIApplicationError, "store hash"):
+            self.make_app()
+
     def test_transaction_count_limit_is_enforced(self):
         result = self.app.process_proposal(transactions=[b"x"] * 1001)
         self.assertFalse(result["accepted"])
