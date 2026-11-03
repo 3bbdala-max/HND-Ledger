@@ -116,6 +116,66 @@ func runWithholdingProbe() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_CONNECTED_WITH_VOTE_WITHHOLDING_OK")
 }
 
+
+func runRemoteAntiDoubleSignProbe() {
+	root, err := os.MkdirTemp("", "hnd-remote-signer-anti-double-v040-")
+	if err != nil { fail("create anti-double-sign probe directory: %v", err) }
+	defer os.RemoveAll(root)
+	socketPath := filepath.Join(root, "privval.sock")
+	rawListener, err := net.Listen("unix", socketPath)
+	if err != nil { fail("listen for anti-double-sign signer: %v", err) }
+	defer rawListener.Close()
+	if err := os.Chmod(socketPath, 0o600); err != nil { fail("restrict anti-double-sign socket: %v", err) }
+	endpoint := privval.NewSignerListenerEndpoint(log.NewNopLogger(), privval.NewUnixListener(rawListener))
+	client, err := privval.NewSignerClient(endpoint, chainID)
+	if err != nil { fail("create anti-double-sign client: %v", err) }
+	defer client.Close()
+	executable, err := os.Executable()
+	if err != nil { fail("resolve anti-double-sign executable: %v", err) }
+	keyPath, statePath := filepath.Join(root, "key.json"), filepath.Join(root, "state.json")
+	startChild := func(load bool) *exec.Cmd {
+		args := []string{"--signer-child", socketPath, keyPath, statePath}
+		if load { args = append(args, "--load-existing") }
+		cmd := exec.Command(executable, args...)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Start(); err != nil { fail("start anti-double-sign signer child: %v", err) }
+		return cmd
+	}
+	child := startChild(false)
+	if err := client.WaitForConnection(10*time.Second); err != nil { fail("wait for first anti-double-sign signer: %v", err) }
+	pubKey, err := client.GetPubKey()
+	if err != nil { fail("get anti-double-sign public key: %v", err) }
+	makeVote := func(label string) *cmtproto.Vote {
+		return (&cmttypes.Vote{ValidatorAddress: cmttypes.Address(pubKey.Address()), ValidatorIndex: 0, Height: 44, Round: 2, Type: cmtproto.PrevoteType, Timestamp: cmttime.Now(), BlockID: blockID(label)}).ToProto()
+	}
+	first := makeVote("anti-double-A")
+	if err := client.SignVote(chainID, first); err != nil { fail("first remote vote signature: %v", err) }
+	if len(first.Signature) == 0 || !pubKey.VerifySignature(cmttypes.VoteSignBytes(chainID, first), first.Signature) { fail("first remote vote signature is invalid") }
+	firstSig := append([]byte(nil), first.Signature...)
+	retry := makeVote("anti-double-A")
+	if err := client.SignVote(chainID, retry); err != nil { fail("identical remote vote retry: %v", err) }
+	if !bytes.Equal(firstSig, retry.Signature) { fail("identical remote retry did not reuse persisted signature") }
+	conflict := makeVote("anti-double-B")
+	if err := client.SignVote(chainID, conflict); err == nil { fail("remote signer accepted conflicting vote at identical H/R/type") }
+	if err := child.Process.Signal(syscall.SIGTERM); err != nil { fail("stop first remote signer: %v", err) }
+	if err := child.Wait(); err != nil { fail("wait for first remote signer exit: %v", err) }
+	deadline := time.Now().Add(5*time.Second)
+	for client.IsConnected() && time.Now().Before(deadline) { time.Sleep(25*time.Millisecond) }
+	child = startChild(true)
+	if err := client.WaitForConnection(10*time.Second); err != nil { fail("wait for restarted anti-double-sign signer: %v", err) }
+	restartedPub, err := client.GetPubKey()
+	if err != nil { fail("get public key after signer restart: %v", err) }
+	if !bytes.Equal(pubKey.Bytes(), restartedPub.Bytes()) { fail("remote signer identity changed after restart") }
+	retryAfterRestart := makeVote("anti-double-A")
+	if err := client.SignVote(chainID, retryAfterRestart); err != nil { fail("identical remote retry after restart: %v", err) }
+	if !bytes.Equal(firstSig, retryAfterRestart.Signature) { fail("restarted remote signer did not reuse persisted signature") }
+	conflictAfterRestart := makeVote("anti-double-B")
+	if err := client.SignVote(chainID, conflictAfterRestart); err == nil { fail("restarted remote signer accepted conflicting vote") }
+	_ = child.Process.Signal(syscall.SIGTERM)
+	_ = child.Wait()
+	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_ANTI_DOUBLE_SIGN_RESTART_OK")
+}
+
 func runNodeParent() {
 	root, err := os.MkdirTemp("", "hnd-remote-signer-process-v040-")
 	if err != nil {
@@ -262,6 +322,10 @@ func main() {
 			fail("usage: --serve <socket> <key-file> <state-file> <chain-id>")
 		}
 		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--remote-anti-double-sign-probe" {
+		runRemoteAntiDoubleSignProbe()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--withholding-probe" {
