@@ -1,6 +1,6 @@
 # WP4.7 — Network Partition and Reconnection Test Design
 
-**Status:** Design only; no partition test is claimed as implemented or passed  
+**Status:** Implemented; local CI partition and reconnection scenarios passed  
 **Target branch:** `phase-0.2-planning`  
 **Consensus engine:** CometBFT v0.40.0  
 **Predecessor:** WP4.5 private four-validator crash-stop integration; WP4.6 Genesis identity negative tests
@@ -86,10 +86,8 @@ These tests exercise selected network-partition behaviors under a controlled loc
 
 ## 7. Decision
 
-WP4.7 remains **design-only** until the isolation primitive is demonstrated to work bidirectionally and repeatably on the selected CI runner. The current WP4.5 crash-stop test remains valid and unchanged. All work stays on `phase-0.2-planning`; `main` is not modified.
+The relay-based isolation topology has been implemented and exercised by the local CI harness. The recorded WP4.7 scenarios pass on the tested commit below. The stricter exact-peer-set assertion is also included in that tested commit. This establishes selected crash-stop and network-partition behavior in a controlled local topology; it is not a Byzantine fault-tolerance proof, an independent security audit, or production-readiness evidence. All work stays on `phase-0.2-planning`; `main` is not modified.
 
----
-This document is a test design and acceptance gate, not evidence that a network partition test has passed.
 ## 7.1 Selected isolation topology for the local CI harness
 
 The current four-validator smoke harness places every node on 127.0.0.1 with distinct listening ports. A host firewall rule that drops traffic by destination or source P2P port alone is not sufficient to prove a peer-specific partition: outbound TCP connections use ephemeral source ports, and a broad port rule can also block healthy intra-group links.
@@ -106,3 +104,43 @@ The implementation must therefore use a directed TCP relay for each ordered vali
 The relay implementation must bind only to 127.0.0.1, reject new cross-partition connections, close already-established cross-partition sockets when a partition is applied, use bounded socket timeouts, and shut down every listener/thread/socket in finally. The harness must fail closed if any node can establish a P2P connection outside its configured relay route.
 
 This is the selected implementation approach, not evidence that WP4.7 has passed. The 3/1 and 2/2 scenarios remain unimplemented until the relay topology and bypass checks are exercised in CI.
+
+## 8. Implementation and CI evidence
+
+**Tested commit:** `4c19be099860cb801bfcfe88bb2f558e4ce75b1b`  
+**GitHub Actions run:** [41721112365](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41721112365)  
+**CometBFT:** v0.40.0  
+**Workflow conclusion:** `success` for both `hnd-v02-tests` and `cometbft-single-node-smoke`.
+
+The harness uses 12 directed loopback TCP relays, disables PEX, and routes persistent peer connections through the dedicated relay for each ordered validator pair. The `partition_ready` check requires the observed peer-ID set to equal the exact expected in-group peer set, rejecting missing peers and unexpected cross-group peers. The test also asserts that all four CometBFT processes and all four HND ABCI application processes remain alive during both partition scenarios.
+
+### 8.1 Observed 3/1 scenario
+
+- Voting power: 10 per validator; total 40.
+- Before partition, the four-node network was converged.
+- With validator 4 isolated, the three-validator quorum advanced from height 3 to height 4.
+- The isolated validator remained at height 3; its block hash, application hash, and Alice account balance remained unchanged.
+- All four node and ABCI processes remained alive.
+- After reconnection, all four validators converged at height 7 with the same block hash and HND application hash.
+- CI marker: `COMETBFT_V040_3_1_PARTITION_OK`; reconnection marker: `COMETBFT_V040_PARTITION_RECONNECTION_OK` (`scenario=3/1`).
+
+### 8.2 Observed 2/2 scenario
+
+- The two groups each held voting power 20 of 40.
+- During the 12-second observation window, every validator's height, block hash, and HND application hash remained unchanged.
+- All four node and ABCI processes remained alive.
+- After reconnection, all four validators converged at height 9 with matching block hash and application hash.
+- CI marker: `COMETBFT_V040_2_2_PARTITION_OK`; reconnection marker: `COMETBFT_V040_PARTITION_RECONNECTION_OK` (`scenario=2/2`).
+
+### 8.3 Workflow-level results
+
+The same workflow also passed the pinned CometBFT single-node ABCI integration smoke test and the four-validator Genesis/identity preflight. The four-validator network smoke test reported four validators, voting power 10 each, transfer of 1,237 HND at height 2, Alice balance 598,763 HND and Bob balance 401,314 HND after the subsequent 77 HND partition-scenario transfer, and successful convergence after the earlier single-validator stop/restart scenario.
+
+The 2/2 test demonstrates no commits during the bounded 12-second observation interval under this harness; it does not establish a universal safety theorem. The current cleanup path closes node processes, ABCI processes, relays, and log handles in `finally`, but this run does not independently prove host-level absence of every transient socket after process exit.
+
+## 9. Security scope and remaining gaps
+
+WP4.7 is now implemented and CI-passing for the two specified partition shapes. It does not test malicious validator behavior, equivocation, double-signing, conflicting votes, compromised keys, Byzantine message fabrication, censorship, DDoS, WAN packet loss, or long-duration partitions. It does not establish BFT safety beyond the tested scenarios. Those remain separate security work packages. The file-based application store, lack of snapshots/state sync, and absence of independent security review remain release blockers.
+
+---
+This report records bounded integration-test evidence only. It is not a security certification, financial-product approval, or release authorization.
