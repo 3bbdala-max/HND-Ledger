@@ -184,14 +184,14 @@ def main():
             if a.remote_signer_binary:
                 if not signer or signer.poll() is not None: raise AssertionError("remote signer process exited before outage test")
                 stop(signer); signer=None
-                outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
+                outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=(2 if a.remote_signer_binary else 1)))
                 outage_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(outage_tx).decode()})["result"]
                 if int(outage_broadcast.get("code",0)): raise RuntimeError(f"signer-outage CheckTx rejected: {outage_broadcast}")
                 def three_commit_without_signer():
                     side=converged(urls[:3],txheight+1)
                     if not side: return None
-                    if any(account(u,aid)["balance"]!=ALICE-TRANSFER-77 for u in urls[:3]): return None
-                    if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls[:3]): return None
+                    if any(account(u,aid)["balance"]!=expected_alice_partition for u in urls[:3]): return None
+                    if any(account(u,bid)["balance"]!=expected_bob_partition for u in urls[:3]): return None
                     return side
                 outage_state=wait(three_commit_without_signer,"three validators commit while validator-4 signer is stopped",150)
                 if not all(p and p.poll() is None for p in nodes+apps): raise AssertionError("node or ABCI app exited during signer outage")
@@ -205,6 +205,8 @@ def main():
                     return state
                 recovered=wait(signer_recovered,"remote signer reconnect and four-node state convergence",150)
                 print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
+            expected_alice_prepartition = ALICE-TRANSFER-(77 if a.remote_signer_binary else 0)
+            expected_bob_prepartition = SUPPLY-ALICE+TRANSFER+(77 if a.remote_signer_binary else 0)
             # Stop one node and its app; 3/4 voting power remains.
             stop(nodes[3]); nodes[3]=None; stop(apps[3]); apps[3]=None
             s3=wait(lambda:converged(urls[:3],txheight+1),"three validators commit after one stops")
@@ -217,7 +219,7 @@ def main():
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
-            if any(x["balance"]!=ALICE-TRANSFER for x in final_accounts) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
+            if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
             # WP4.7-A: isolate validator 4 while all four node/app processes remain alive.
             partition_groups_31=[[0,1,2],[3]]
             set_partition(relays,partition_groups_31)
@@ -228,6 +230,8 @@ def main():
             baseapp31=[app_hash(u) for u in urls]
             basealice31=account(urls[3],aid)["balance"]
             part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
+            expected_alice_partition=expected_alice_prepartition-77
+            expected_bob_partition=expected_bob_prepartition+77
             part_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(part_tx).decode()})["result"]
             if int(part_broadcast.get("code",0)): raise RuntimeError(f"3/1 partition CheckTx rejected: {part_broadcast}")
             def three_commit_isolated():
