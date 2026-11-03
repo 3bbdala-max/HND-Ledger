@@ -207,6 +207,11 @@ def main():
                 print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
             expected_alice_prepartition = ALICE-TRANSFER-(77 if a.remote_signer_binary else 0)
             expected_bob_prepartition = SUPPLY-ALICE+TRANSFER+(77 if a.remote_signer_binary else 0)
+            # Stop the external signer before restarting its node-side listener.
+            # The pinned SignerDialerEndpoint is a startup connection, not a
+            # reconnecting supervisor; restart it after the validator listener returns.
+            if a.remote_signer_binary:
+                stop(signer); signer=None
             # Stop one node and its app; 3/4 voting power remains.
             stop(nodes[3]); nodes[3]=None; stop(apps[3]); apps[3]=None
             s3=wait(lambda:converged(urls[:3],txheight+1),"three validators commit after one stops")
@@ -217,6 +222,13 @@ def main():
             wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[3].poll() is None else False,"restarted ABCI app",30)
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
+            if a.remote_signer_binary:
+                signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                def restarted_signer_connected():
+                    if signer.poll() is not None: return None
+                    signer_log.flush()
+                    return True if "HND_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text() else None
+                wait(restarted_signer_connected,"remote signer reconnect to restarted validator",30)
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
             if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
