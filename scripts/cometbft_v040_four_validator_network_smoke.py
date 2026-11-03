@@ -184,14 +184,14 @@ def main():
             if a.remote_signer_binary:
                 if not signer or signer.poll() is not None: raise AssertionError("remote signer process exited before outage test")
                 stop(signer); signer=None
-                outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=(2 if a.remote_signer_binary else 1)))
+                outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
                 outage_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(outage_tx).decode()})["result"]
                 if int(outage_broadcast.get("code",0)): raise RuntimeError(f"signer-outage CheckTx rejected: {outage_broadcast}")
                 def three_commit_without_signer():
                     side=converged(urls[:3],txheight+1)
                     if not side: return None
-                    if any(account(u,aid)["balance"]!=expected_alice_partition for u in urls[:3]): return None
-                    if any(account(u,bid)["balance"]!=expected_bob_partition for u in urls[:3]): return None
+                    if any(account(u,aid)["balance"]!=ALICE-TRANSFER-77 for u in urls[:3]): return None
+                    if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls[:3]): return None
                     return side
                 outage_state=wait(three_commit_without_signer,"three validators commit while validator-4 signer is stopped",150)
                 if not all(p and p.poll() is None for p in nodes+apps): raise AssertionError("node or ABCI app exited during signer outage")
@@ -229,7 +229,7 @@ def main():
             baseblock31=baseline31[0]["sync_info"]["latest_block_hash"]
             baseapp31=[app_hash(u) for u in urls]
             basealice31=account(urls[3],aid)["balance"]
-            part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
+            part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=(2 if a.remote_signer_binary else 1)))
             expected_alice_partition=expected_alice_prepartition-77
             expected_bob_partition=expected_bob_prepartition+77
             part_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(part_tx).decode()})["result"]
