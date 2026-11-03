@@ -6,6 +6,7 @@ version-pinned ABCI server can call.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -16,7 +17,7 @@ from typing import Any, Mapping
 from .ledger import HNDLedger, LedgerError
 from .transaction import ProtocolConfig, canonical_json
 
-APP_STORE_VERSION = 1
+APP_STORE_VERSION = 2
 MAX_BLOCK_TRANSACTIONS = 1000
 _STORE_KEYS = {
     "schema_version",
@@ -26,6 +27,7 @@ _STORE_KEYS = {
     "last_committed_height",
     "ledger_snapshot",
     "app_hash",
+    "store_hash",
 }
 
 
@@ -303,7 +305,7 @@ class HNDABCIApplication:
 
     def _store_payload(self, ledger: HNDLedger, height: int) -> dict[str, Any]:
         snapshot = ledger.snapshot()
-        return {
+        payload = {
             "schema_version": APP_STORE_VERSION,
             "network_id": self.config.network_id,
             "protocol_version": self.config.protocol_version,
@@ -312,6 +314,12 @@ class HNDABCIApplication:
             "ledger_snapshot": snapshot,
             "app_hash": snapshot["state_hash"],
         }
+        # Bind recovery metadata (especially height) to the persisted snapshot.
+        # This is an integrity checksum, not an authentication secret or MAC.
+        payload["store_hash"] = hashlib.sha256(
+            b"HND-ABCI-STORE-V2\\0" + canonical_json(payload)
+        ).hexdigest()
+        return payload
 
     def _write_store(self, ledger: HNDLedger, height: int) -> None:
         payload = self._store_payload(ledger, height)
@@ -370,6 +378,21 @@ class HNDABCIApplication:
             raise ABCIApplicationError("application state file schema")
         if type(payload["schema_version"]) is not int or payload["schema_version"] != APP_STORE_VERSION:
             raise ABCIApplicationError("application state file version")
+        store_hash = payload["store_hash"]
+        if (
+            type(store_hash) is not str
+            or len(store_hash) != 64
+            or any(char not in "0123456789abcdef" for char in store_hash)
+        ):
+            raise ABCIApplicationError("application state store hash")
+        unsigned_payload = {
+            key: value for key, value in payload.items() if key != "store_hash"
+        }
+        expected_store_hash = hashlib.sha256(
+            b"HND-ABCI-STORE-V2\\0" + canonical_json(unsigned_payload)
+        ).hexdigest()
+        if store_hash != expected_store_hash:
+            raise ABCIApplicationError("application state store hash mismatch")
         if payload["network_id"] != self.config.network_id:
             raise ABCIApplicationError("application state network mismatch")
         if type(payload["protocol_version"]) is not int or payload["protocol_version"] != self.config.protocol_version:
