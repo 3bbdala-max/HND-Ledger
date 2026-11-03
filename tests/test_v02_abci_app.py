@@ -227,13 +227,35 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.assertEqual(self.app.account_view(self.alice_id)["balance"], 600_000)
         self.assertEqual(self.state_path.read_bytes(), before_store)
 
-    def test_finalize_block_rejects_invalid_tx_without_pending_state(self):
+    def test_finalize_block_marks_invalid_tx_and_continues_with_valid_transactions(self):
         invalid = self.raw(amount=100, nonce=5)
-        with self.assertRaisesRegex(ABCIApplicationError, "invalid HND transaction"):
-            self.app.finalize_block(height=1, transactions=[invalid])
-        with self.assertRaisesRegex(ABCIApplicationError, "no finalized block"):
-            self.app.commit()
-        self.assertEqual(self.app.last_committed_height, 0)
+        valid = self.raw(amount=75, nonce=0)
+        before_store = self.state_path.read_bytes()
+
+        result = self.app.finalize_block(height=1, transactions=[invalid, valid])
+
+        self.assertEqual([item["code"] for item in result["tx_results"]], [1, 0])
+        self.assertEqual(result["tx_results"][0]["data"], "")
+        self.assertIn("nonce", result["tx_results"][0]["log"])
+        self.assertEqual(len(bytes.fromhex(result["tx_results"][1]["data"])), 32)
+        self.assertEqual(self.app.account_view(self.alice_id)["balance"], 600_000)
+        self.assertEqual(self.state_path.read_bytes(), before_store)
+
+        self.app.commit()
+        self.assertEqual(self.app.last_committed_height, 1)
+        self.assertEqual(self.app.account_view(self.alice_id)["balance"], 599_925)
+        self.assertEqual(self.app.account_view(self.alice_id)["next_nonce"], 1)
+
+    def test_finalize_block_invalid_transaction_does_not_partially_change_candidate(self):
+        valid = self.raw(amount=40, nonce=0)
+        invalid = self.raw(amount=100, nonce=0)
+        result = self.app.finalize_block(height=1, transactions=[valid, invalid])
+
+        self.assertEqual([item["code"] for item in result["tx_results"]], [0, 1])
+        self.assertIn("nonce", result["tx_results"][1]["log"])
+        self.app.commit()
+        self.assertEqual(self.app.account_view(self.alice_id)["balance"], 599_960)
+        self.assertEqual(self.app.account_view(self.alice_id)["next_nonce"], 1)
 
     def test_finalize_block_requires_next_height_and_single_pending_block(self):
         with self.assertRaisesRegex(ABCIApplicationError, "height"):
