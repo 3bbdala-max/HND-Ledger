@@ -44,3 +44,17 @@ The source review identifies the production message-processing route, but does n
 ## 6. Security boundary
 
 This is a controlled local test design, not a formal BFT proof, security audit, or production certification. No production key, public endpoint, public chain, real-value transaction, or live network is permitted. No HND release or trading authorization follows from a passing test.
+
+## 7. Pinned upstream regression discovered and wired into CI
+
+The exact pinned CometBFT v0.40.0 source already contains `consensus/byzantine_test.go:TestByzantinePrevoteEquivocation`. This is stronger than a speculative harness: it creates four validator consensus states and connected P2P switches, disables normal anti-double-sign checks only for the disposable Byzantine mock validator, signs two different prevotes (proposal block and nil) at height 2, and sends both signed messages to every peer on the real `VoteChannel`.
+
+The test subscribes to each validator's committed-block events and waits for duplicate-vote evidence to appear in a block. It checks the evidence type, Byzantine validator address, and equivocation height. The test also uses a lazy proposer to exercise evidence timestamp handling.
+
+The HND CI workflow now runs this exact test from the checked-out CometBFT `v0.40.0` source using:
+
+```sh
+go test ./consensus -run '^TestByzantinePrevoteEquivocation$' -count=1 -v
+```
+
+This is a pinned upstream consensus/evidence regression, not a claim that the HND application has its own custom malicious-peer test yet. It validates the upstream CometBFT path on which HND depends. The four-validator HND integration remains a separate test and must pass independently.
