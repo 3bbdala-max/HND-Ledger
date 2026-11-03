@@ -220,9 +220,19 @@ def main():
             al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(root/"state4.json"),"--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
             host,port=eps[3]["abci"].split(":")
             wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[3].poll() is None else False,"restarted ABCI app",30)
+            if a.remote_signer_binary:
+                # A stopped Unix listener can leave its pathname behind.
+                # Remove only this disposable test socket before rebinding.
+                if signer_socket.exists():
+                    signer_socket.unlink()
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
             if a.remote_signer_binary:
+                def restarted_listener_ready():
+                    if nodes[3].poll() is not None:
+                        raise RuntimeError(f"validator 4 exited during listener restart: {nodes[3].returncode}")
+                    return signer_socket.exists()
+                wait(restarted_listener_ready,"restarted validator Unix signer socket",30)
                 # Require a connection marker written by this signer process,
                 # not a stale marker from the earlier signer lifecycle.
                 signer_log.flush()
