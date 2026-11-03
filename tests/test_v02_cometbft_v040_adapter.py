@@ -230,12 +230,18 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertNotEqual(inserted.code, 0)
         self.assertEqual(list(reaped.txs), [])
 
-    def test_invalid_finalized_block_fails_precondition(self):
-        with self.assertRaisesRegex(RuntimeError, "FAILED_PRECONDITION"):
-            self.servicer.FinalizeBlock(
-                types_pb2.RequestFinalizeBlock(height=1, txs=[b"invalid"]),
-                self.context,
-            )
+    def test_invalid_transaction_returns_nonzero_result_without_failing_block(self):
+        response = self.servicer.FinalizeBlock(
+            types_pb2.RequestFinalizeBlock(height=1, txs=[b"invalid"]),
+            self.context,
+        )
+        self.assertEqual(len(response.tx_results), 1)
+        self.assertNotEqual(response.tx_results[0].code, 0)
+        self.assertEqual(response.tx_results[0].data, b"")
+        self.assertEqual(len(response.app_hash), 32)
+        committed = self.servicer.Commit(types_pb2.RequestCommit(), self.context)
+        self.assertEqual(committed.retain_height, 0)
+        self.assertEqual(self.app.last_committed_height, 1)
 
     def test_real_grpc_echo_and_info_with_concurrent_calls(self):
         server, port = start_grpc_server(
