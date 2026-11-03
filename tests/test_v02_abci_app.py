@@ -60,6 +60,14 @@ class TestV02ABCIApplication(unittest.TestCase):
             state_path=self.state_path,
         )
 
+    @staticmethod
+    def reseal_store(payload):
+        import hashlib
+        unsigned = {key: value for key, value in payload.items() if key != "store_hash"}
+        payload["store_hash"] = hashlib.sha256(
+            b"HND-ABCI-STORE-V2" + bytes((92, 48)) + canonical_json(unsigned)
+        ).hexdigest()
+
     def signed(self, amount=25, nonce=0):
         return create_signed_transaction(
             self.alice_key,
@@ -358,19 +366,15 @@ class TestV02ABCIApplication(unittest.TestCase):
         payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         payload["ledger_snapshot"]["balances"][self.alice_id] -= 1
         payload["ledger_snapshot"]["balances"][self.bob_id] += 1
+        self.reseal_store(payload)
         self.state_path.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(ABCIApplicationError, "snapshot failed verification"):
             self.make_app()
 
     def test_corrupted_application_hash_is_rejected_on_restart(self):
-        import hashlib
-        from hnd_v02.transaction import canonical_json
         payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         payload["app_hash"] = "0" * 64
-        unsigned = {key: value for key, value in payload.items() if key != "store_hash"}
-        payload["store_hash"] = hashlib.sha256(
-            b"HND-ABCI-STORE-V2\\\\0" + canonical_json(unsigned)
-        ).hexdigest()
+        self.reseal_store(payload)
         self.state_path.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(ABCIApplicationError, "app hash mismatch"):
             self.make_app()
@@ -379,7 +383,7 @@ class TestV02ABCIApplication(unittest.TestCase):
         raw = self.state_path.read_text(encoding="utf-8")
         raw = raw.replace(
             '"last_committed_height": 0,',
-            '"last_committed_height": 0,\\n  "last_committed_height": 0,',
+            '"last_committed_height": 0,' + chr(10) + '  "last_committed_height": 0,',
             1,
         )
         self.state_path.write_text(raw, encoding="utf-8")
