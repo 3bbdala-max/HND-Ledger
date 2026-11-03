@@ -306,6 +306,26 @@ class TestV02ABCIApplication(unittest.TestCase):
         # Pending state remains available for a safe retry after the storage fault clears.
         self.assertEqual(self.app.commit(), bytes.fromhex(self.app.committed_state_hash))
 
+    def test_restart_after_durable_replace_recovers_committed_height_and_hash(self):
+        raw = self.raw(amount=60, nonce=0)
+        finalized = self.app.finalize_block(height=1, transactions=[raw])
+        real_replace = __import__("os").replace
+
+        def replace_then_simulate_process_loss(source, destination):
+            real_replace(source, destination)
+            raise OSError("simulated process loss after durable rename")
+
+        with patch("hnd_v02.abci_app.os.replace", side_effect=replace_then_simulate_process_loss):
+            with self.assertRaisesRegex(OSError, "simulated process loss"):
+                self.app.commit()
+
+        self.assertEqual(self.app.last_committed_height, 0)
+        restarted = self.make_app()
+        self.assertEqual(restarted.last_committed_height, 1)
+        self.assertEqual(restarted.info()["last_block_app_hash"], finalized["app_hash"])
+        self.assertEqual(restarted.account_view(self.alice_id)["balance"], 599_940)
+        self.assertEqual(restarted.account_view(self.alice_id)["next_nonce"], 1)
+
     def test_mempool_view_resets_to_committed_state_after_commit(self):
         raw = self.raw(amount=25, nonce=0)
         self.assertEqual(self.app.check_tx(raw)["code"], 0)
