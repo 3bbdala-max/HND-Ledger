@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-31  
 **Workstream:** WP4.2 — ABCI application-state lifecycle core  
-**Status:** Implemented and CI-tested as a Python reference layer; not yet an ABCI server or CometBFT integration  
+**Status:** Implemented and CI-tested; subsequently integrated with CometBFT v0.40.0 through WP4.3–WP4.8  
 **Branch:** `phase-0.2-planning`
 
 ## 1. What was implemented
@@ -37,9 +37,20 @@ Application state uses the existing versioned HND ledger snapshot and replay-ver
 
 These are properties of the tested application core. The actual ABCI server must still handle CometBFT's multiple concurrent connections and map every request/response correctly.
 
+## 2.1 Subsequent durable-store hardening (2026-11-04)
+
+The application store was advanced to schema version 2. Its persisted payload now contains a deterministic SHA-256 integrity checksum over the canonicalized schema version, network ID, protocol version, Genesis hash, committed height, ledger snapshot, and application hash. The loader validates the checksum before restoring the ledger. Persisted JSON is also decoded with duplicate-object-key rejection.
+
+Two limits apply:
+
+- This checksum detects accidental corruption or edits not accompanied by a recomputed checksum. It is **not** a keyed MAC, digital signature, or authenticity guarantee; an attacker able to rewrite the file can recompute an unkeyed SHA-256 checksum.
+- Schema version 1 files are not automatically migrated by the current loader. A state upgrade requires a separately designed and validated migration process, or fresh approved Genesis for disposable test networks.
+
+Regression tests cover invalid checksum format, metadata tampering, duplicate JSON keys, and deeper ledger/application-hash validation after deliberately resealing modified test fixtures.
+
 ## 3. Test coverage
 
-Added `tests/test_v02_abci_app.py` with **31 tests**, covering:
+Added `tests/test_v02_abci_app.py` initially with **31 targeted tests**; subsequent hardening expanded application and repository-wide coverage. The tests cover:
 - correct/wrong chain ID and Genesis hash;
 - canonical Genesis payload;
 - Info height and application hash;
@@ -63,27 +74,25 @@ Workflow: https://github.com/3bbdala-max/HND-Ledger/actions/runs/41234124803
 
 The first run exposed a stale helper call left after cleanup; that failure was corrected before the successful run. The initial failure is retained in workflow history; it is not counted as a successful run.
 
-## 4. What is not yet implemented
+## 4. Subsequent integration milestones (WP4.3–WP4.8)
 
-This milestone does **not** yet include:
-1. Python-generated Protobuf/gRPC stubs from the pinned CometBFT v0.40.0 `proto/tendermint/abci/types.proto`.
-2. A Python gRPC `ABCI` servicer implementing the exact tagged request/response contract.
-3. A real CometBFT process connecting to the application.
-4. Correct end-to-end ABCI handshake / InitChain / Info / Query / Snapshot RPC interoperability.
-5. Four independent validator processes, validator signing keys, or real consensus.
-6. Network-partition, Byzantine-validator, crash/restart catch-up, or four-node convergence tests.
+The following work has since been implemented and CI-tested on `phase-0.2-planning`:
 
-The 109 passing tests validate the application lifecycle core and the older v0.2 suites only. They do not validate CometBFT wire compatibility or multi-node consensus.
+1. Python Protobuf/gRPC bindings generated from the pinned CometBFT v0.40.0 schema, and an ABCI gRPC servicer mapping the application lifecycle methods.
+2. A real CometBFT v0.40.0 process connected to the HND application; CI covers handshake, Genesis initialization, transaction delivery, commit, restart, and application-hash recovery.
+3. A disposable four-validator local network with separate CometBFT homes and separate HND application state files.
+4. Four-validator crash-stop/restart catch-up and relay-backed 3/1 and 2/2 network-partition/reconnection tests.
+5. A pinned FilePV signer smoke test covering conflicting votes/proposals at the same height/round/step and persistence of anti-double-sign state across restart.
 
-## 5. Next work
+The full workflow passed **133 Python tests** and the CometBFT single-node, signer-guard, four-validator Genesis/preflight, four-validator network, and partition/reconnection stages on commit `027a0db12ac391462ff97027df138491a3e83102`:
+https://github.com/3bbdala-max/HND-Ledger/actions/runs/41723251514
 
-**WP4.3 — pinned ABCI gRPC transport adapter:**
-1. Generate Python stubs exclusively from the v0.40.0 tagged Protobuf tree, not `main` or a different CometBFT/Cosmos SDK release.
-2. Implement the required gRPC servicer methods and explicit conversions from generated Protobuf types to the tested core.
-3. Add request/response tests for every method used by CometBFT v0.40.0.
-4. Start one local CometBFT node against the Python application and prove the handshake, genesis initialization, one transaction, commit, restart, and app-hash handshake.
-5. Only after the single-node path is stable, construct the disposable four-validator network.
+This does **not** mean that every Byzantine behavior is tested. Deliberate malicious-validator behavior, 1/3+ fault scenarios, remote-signer security, snapshots/state sync, WAN behavior, and independent security review remain open.
+
+## 5. Current next work
+
+WP4.8's local FilePV guard is implemented and CI-verified. Next security work should exercise adversarial consensus-message and fault-injection scenarios against the four-validator harness, while preserving the distinction between CometBFT signer protections, consensus fault tolerance, and HND application transaction validation. Snapshot/state-sync support, production-grade storage, key custody, and external audit remain release gates.
 
 ## 6. Release boundary
 
-This is an experimental local application adapter core. No public network, public token issuance, sale, exchange listing, payment integration, custody, validator rewards, or real funds are in scope. No independent security audit, legal approval, or production readiness is claimed.
+This is still an experimental permissioned development network. No public network, public token issuance, sale, exchange listing, payment integration, custody, validator rewards, or real funds are authorized. No independent security audit, legal approval, or production readiness is claimed.
