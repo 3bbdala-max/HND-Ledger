@@ -256,8 +256,8 @@ def main():
             def reconnect31():
                 state=converged(urls,int(side31[0]["sync_info"]["latest_block_height"]))
                 if not state: return None
-                if any(account(u,aid)["balance"] != ALICE-TRANSFER-77 for u in urls): return None
-                if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
+                if any(account(u,aid)["balance"] != expected_alice_partition for u in urls): return None
+                if any(account(u,bid)["balance"] != expected_bob_partition for u in urls): return None
                 hashes=[app_hash(u) for u in urls]
                 return (state,hashes) if len(set(hashes))==1 else None
             reconnected31,hashes31=wait(reconnect31,"all validators converge after 3/1 reconnection",150)
