@@ -116,7 +116,7 @@ func runNodeParent() {
 	}
 
 	vote := (&cmttypes.Vote{
-		ValidatorAddress: nil, // FilePV fills/validates the signer identity from its own key.
+		ValidatorAddress: cmttypes.Address(pubKey.Address()),
 		ValidatorIndex:   0,
 		Height:           1,
 		Round:            0,
