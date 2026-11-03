@@ -72,9 +72,10 @@ def partition_ready(urls, nodeids, groups):
     for i, url in enumerate(urls):
         actual=peer_ids(url)
         allowed={nodeids[j] for j in range(N) if j != i and group_for[j] == group_for[i]}
-        if actual - allowed:
-            return None
-        if allowed and not (actual & allowed):
+        # Require the exact peer set, not merely the absence of known
+        # cross-partition peers. This also proves every expected in-group
+        # validator remains connected and rejects unexpected peer routes.
+        if actual != allowed:
             return None
     return True
 
@@ -204,7 +205,9 @@ def main():
                 if any(account(u,bid)["balance"] != SUPPLY-ALICE+TRANSFER+77 for u in urls[:3]): return None
                 return side
             side31=wait(three_commit_isolated,"3/1 quorum commit with isolated validator stalled",150)
-            print(json.dumps({"result":"COMETBFT_V040_3_1_PARTITION_OK","partition":[3,1],"all_four_processes_alive":all(p and p.poll() is None for p in nodes+apps),"quorum_height":int(side31[0]["sync_info"]["latest_block_height"]),"isolated_height":baseheight31,"isolated_state_unchanged":True},sort_keys=True),flush=True)
+            if not all(p and p.poll() is None for p in nodes+apps):
+                raise AssertionError("a validator or ABCI app process exited during 3/1 partition")
+            print(json.dumps({"result":"COMETBFT_V040_3_1_PARTITION_OK","partition":[3,1],"all_four_processes_alive":True,"quorum_height":int(side31[0]["sync_info"]["latest_block_height"]),"isolated_height":baseheight31,"isolated_state_unchanged":True},sort_keys=True),flush=True)
 
             # Restore the full mesh and require the isolated validator to catch up.
             set_partition(relays,[[0,1,2,3]])
@@ -232,7 +235,9 @@ def main():
             if [int(x["sync_info"]["latest_block_height"]) for x in after22] != heights22: raise AssertionError("2/2 partition unexpectedly advanced a validator height")
             if [x["sync_info"]["latest_block_hash"] for x in after22] != blocks22: raise AssertionError("2/2 partition changed a validator block hash")
             if [app_hash(u) for u in urls] != apps22: raise AssertionError("2/2 partition changed HND application state")
-            print(json.dumps({"result":"COMETBFT_V040_2_2_PARTITION_OK","partition":[2,2],"observation_seconds":12,"heights_unchanged":True,"block_hashes_unchanged":True,"application_hashes_unchanged":True,"all_four_processes_alive":all(p and p.poll() is None for p in nodes+apps)},sort_keys=True),flush=True)
+            if not all(p and p.poll() is None for p in nodes+apps):
+                raise AssertionError("a validator or ABCI app process exited during 2/2 partition")
+            print(json.dumps({"result":"COMETBFT_V040_2_2_PARTITION_OK","partition":[2,2],"observation_seconds":12,"heights_unchanged":True,"block_hashes_unchanged":True,"application_hashes_unchanged":True,"all_four_processes_alive":True},sort_keys=True),flush=True)
 
             # Reconnect and verify the full mesh and committed HND state remain identical.
             set_partition(relays,[[0,1,2,3]])
