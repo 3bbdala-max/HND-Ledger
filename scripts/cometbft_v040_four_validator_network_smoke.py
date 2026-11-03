@@ -62,6 +62,87 @@ def app_hash(url):
     r=http(url, "/abci_info")["result"]["response"]["last_block_app_hash"]
     return r
 
+
+class LoopbackP2PPartition:
+    """Reversible, loopback-only P2P isolation using dedicated iptables chains."""
+    def __init__(self):
+        self.in_chain = f"HNDI{os.getpid()}"
+        self.out_chain = f"HNDO{os.getpid()}"
+        self.installed = False
+        # Fail closed: do not run consensus assertions unless privileged filtering exists.
+        cmd(["sudo", "-n", "iptables", "--version"])
+        cmd(["sudo", "-n", "iptables", "-N", self.in_chain])
+        try:
+            cmd(["sudo", "-n", "iptables", "-N", self.out_chain])
+            cmd(["sudo", "-n", "iptables", "-I", "INPUT", "1", "-i", "lo", "-j", self.in_chain])
+            cmd(["sudo", "-n", "iptables", "-I", "OUTPUT", "1", "-o", "lo", "-j", self.out_chain])
+            self.installed = True
+        except Exception:
+            self.restore()
+            raise
+
+    def block_peer_ports(self, ports):
+        if not self.installed:
+            raise RuntimeError("partition filter is not installed")
+        for port in sorted(set(int(p) for p in ports)):
+            # Incoming packets from a peer's listening port and outgoing packets
+            # addressed to that port are both dropped, only on loopback.
+            cmd(["sudo", "-n", "iptables", "-A", self.in_chain,
+                 "-p", "tcp", "--sport", str(port), "-j", "DROP"])
+            cmd(["sudo", "-n", "iptables", "-A", self.out_chain,
+                 "-p", "tcp", "--dport", str(port), "-j", "DROP"])
+
+    def restore(self):
+        if not self.installed:
+            # Also clean up partially-created chains after a failed constructor.
+            for chain in (self.in_chain, self.out_chain):
+                subprocess.run(["sudo", "-n", "iptables", "-F", chain],
+                               capture_output=True, text=True)
+                subprocess.run(["sudo", "-n", "iptables", "-X", chain],
+                               capture_output=True, text=True)
+            return
+        for table_chain, interface, chain in (
+            ("INPUT", "-i", self.in_chain),
+            ("OUTPUT", "-o", self.out_chain),
+        ):
+            subprocess.run(["sudo", "-n", "iptables", "-D", table_chain,
+                            interface, "lo", "-j", chain],
+                           capture_output=True, text=True)
+        for chain in (self.in_chain, self.out_chain):
+            cmd(["sudo", "-n", "iptables", "-F", chain])
+            cmd(["sudo", "-n", "iptables", "-X", chain])
+        self.installed = False
+
+
+def peer_ids(url):
+    result = http(url, "/net_info")["result"]
+    return {p["node_info"]["id"] for p in result.get("peers", [])}
+
+
+def assert_four_processes_alive(nodes, apps, eps, urls):
+    for i in range(4):
+        if nodes[i] is None or nodes[i].poll() is not None:
+            raise AssertionError(f"validator {i+1} process exited during partition")
+        if apps[i] is None or apps[i].poll() is not None:
+            raise AssertionError(f"ABCI app {i+1} process exited during partition")
+        rpc_status(urls[i])
+        host, port = eps[i]["abci"].split(":")
+        with socket.create_connection((host, int(port)), timeout=1):
+            pass
+
+
+def partition_has_no_cross_peers(urls, nodeids, groups):
+    membership = {}
+    for group_index, group in enumerate(groups):
+        for node_index in group:
+            membership[nodeids[node_index]] = group_index
+    for i, url in enumerate(urls):
+        peers = peer_ids(url)
+        own_group = membership[nodeids[i]]
+        if any(membership.get(peer, own_group) != own_group for peer in peers):
+            return False
+    return True
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True)
@@ -123,8 +204,32 @@ def main():
             h0=int(s0[0]["sync_info"]["latest_block_height"])
             if any(x["node_info"]["network"]!=CHAIN for x in s0): raise AssertionError("chain ID mismatch")
             if any(account(u,aid)["balance"]!=ALICE for u in urls): raise AssertionError("Genesis balances differ")
-            b=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(tx).decode()})["result"]
-            if int(b.get("code",0)): raise RuntimeError(f"CheckTx rejected: {b}")
+            # WP4.7-A: live 3/1 network partition. Keep all four nodes and apps alive.
+            p2p = LoopbackP2PPartition()
+            try:
+                p2p.block_peer_ports([BASE + 9])
+                wait(lambda: partition_has_no_cross_peers(urls, nodeids, [[0,1,2],[3]]),
+                     "effective bidirectional 3/1 P2P isolation", 60)
+                assert_four_processes_alive(nodes, apps, eps, urls)
+                isolated_height = int(rpc_status(urls[3])["sync_info"]["latest_block_height"])
+                b=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(tx).decode()})["result"]
+                if int(b.get("code",0)): raise RuntimeError(f"CheckTx rejected during 3/1 partition: {b}")
+                def three_commit():
+                    ss=converged(urls[:3],h0+1)
+                    if not ss: return None
+                    aa=[account(u,aid) for u in urls[:3]]
+                    return (ss,aa) if all(x["balance"]==ALICE-TRANSFER for x in aa) else None
+                s3, a3 = wait(three_commit,"3/1 quorum commits signed transfer",90)
+                if int(rpc_status(urls[3])["sync_info"]["latest_block_height"]) != isolated_height:
+                    raise AssertionError("isolated validator committed while 3/1 partition was active")
+                if account(urls[3],aid)["balance"] != ALICE:
+                    raise AssertionError("isolated validator applied the partitioned transfer")
+                assert_four_processes_alive(nodes, apps, eps, urls)
+            finally:
+                p2p.restore()
+            s_rejoined=wait(lambda:converged(urls,h0+1),
+                            "all four validators converge after 3/1 reconnection",150)
+            assert_four_processes_alive(nodes, apps, eps, urls)
             def tx_all():
                 s=converged(urls,h0+1); ac=[account(u,aid) for u in urls] if s else []
                 ahashes=[app_hash(u) for u in urls] if s else []
@@ -132,6 +237,27 @@ def main():
             s1,ac1,hashes1=wait(tx_all,"transaction committed identically on four nodes")
             txheight=int(s1[0]["sync_info"]["latest_block_height"]); txblock=s1[0]["sync_info"]["latest_block_hash"]
             if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER for u in urls): raise AssertionError("recipient balances differ")
+            # WP4.7-B: 2/2 partition. No side has the required 30/40 voting power.
+            cross_ports=[BASE+3*i for i in (2,3,0,1)]
+            p2p = LoopbackP2PPartition()
+            try:
+                p2p.block_peer_ports(cross_ports)
+                wait(lambda: partition_has_no_cross_peers(urls, nodeids, [[0,1],[2,3]]),
+                     "effective bidirectional 2/2 P2P isolation", 60)
+                assert_four_processes_alive(nodes, apps, eps, urls)
+                before=[int(rpc_status(u)["sync_info"]["latest_block_height"]) for u in urls]
+                before_hash=[rpc_status(u)["sync_info"]["latest_block_hash"] for u in urls]
+                time.sleep(12)
+                after=[int(rpc_status(u)["sync_info"]["latest_block_height"]) for u in urls]
+                after_hash=[rpc_status(u)["sync_info"]["latest_block_hash"] for u in urls]
+                if after != before or after_hash != before_hash:
+                    raise AssertionError(f"2/2 partition unexpectedly advanced: before={before}, after={after}")
+                assert_four_processes_alive(nodes, apps, eps, urls)
+            finally:
+                p2p.restore()
+            wait(lambda:converged(urls,max(before)),
+                 "all four validators reconverge after 2/2 reconnection",150)
+            assert_four_processes_alive(nodes, apps, eps, urls)
             # Stop one node and its app; 3/4 voting power remains.
             stop(nodes[3]); nodes[3]=None; stop(apps[3]); apps[3]=None
             s3=wait(lambda:converged(urls[:3],txheight+1),"three validators commit after one stops")
