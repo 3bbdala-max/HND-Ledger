@@ -250,12 +250,22 @@ class HNDABCIApplication:
 
             candidate = self._clone_committed()
             results: list[dict[str, Any]] = []
-            try:
-                for raw in transactions:
-                    txid = candidate.apply_transaction(self._decode_tx(raw))
-                    results.append({"code": 0, "data": bytes.fromhex(txid), "log": "ok"})
-            except (ABCIApplicationError, LedgerError, TypeError, ValueError) as exc:
-                raise ABCIApplicationError(f"decided block contains invalid HND transaction: {exc}") from exc
+            for raw in transactions:
+                # Isolate each execution: a rejected transaction must not mutate
+                # the candidate state used by later transactions in this block.
+                trial = HNDLedger.restore(
+                    manifest=self.manifest,
+                    config=self.config,
+                    expected_genesis_hash=self.expected_genesis_hash,
+                    snapshot=candidate.snapshot(),
+                )
+                try:
+                    txid = trial.apply_transaction(self._decode_tx(raw))
+                except (ABCIApplicationError, LedgerError, TypeError, ValueError) as exc:
+                    results.append({"code": 1, "data": b"", "log": str(exc)})
+                    continue
+                candidate = trial
+                results.append({"code": 0, "data": bytes.fromhex(txid), "log": "ok"})
 
             app_hash = bytes.fromhex(candidate.state_hash)
             self._pending = {
