@@ -166,6 +166,11 @@ func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string) {
 	if _, err := os.Stat(keyPath); err != nil {
 		fail("signer key file unavailable: %v", err)
 	}
+	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+		// Initialize a signer-owned last-sign state exactly once before service startup.
+		pv := privval.LoadFilePVEmptyState(keyPath, statePath)
+		pv.Save()
+	}
 	pv := privval.LoadFilePV(keyPath, statePath)
 	logger := log.NewNopLogger()
 	dialer := privval.NewSignerDialerEndpoint(logger, privval.DialUnixFn(socketPath))
