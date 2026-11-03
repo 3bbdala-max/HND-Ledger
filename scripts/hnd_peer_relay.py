@@ -86,7 +86,9 @@ class DirectedTCPRelay:
                 # Register under the same lock used by close(), so shutdown
                 # cannot miss a worker accepted immediately before closure.
                 self._workers.add(worker)
-            worker.start()
+                # Start before releasing the lock; close() must never try to
+                # join a registered thread that has not started yet.
+                worker.start()
 
     def _bridge(self, client: socket.socket) -> None:
         upstream = None
