@@ -28,7 +28,7 @@ The test must read actual validator-set voting power from the running test netwo
 
 ## 3. Remote-signer integration approach
 
-Use only the remote private-validator interface supported by the exact pinned CometBFT v0.40.0 source and binary. Before implementation, inspect the pinned source for the concrete `priv_validator_laddr` / remote signer endpoint, message types, connection direction, framing, chain-ID validation, and retry behavior. Do not copy protocol assumptions from another CometBFT release.
+Use only the remote private-validator interface supported by the exact pinned CometBFT v0.40.0 source and binary. The source inspection is recorded in `docs/WP4_9_COMETBFT_V040_REMOTE_SIGNER_SOURCE_INSPECTION_2026-11-04.md`. The pinned protocol is length-delimited protobuf `privval.Message` framing, not gRPC; the node-side `SignerListenerEndpoint` listens and the signer-side `SignerDialerEndpoint` dials in. The pinned source supports Unix sockets (unencrypted), TCP secret connections, and a Noise listener with signer-peer allowlisting. ABCI gRPC in the HND Python server is a separate transport and must not be reused for private-validator signing. The first probe must use the official pinned client/server abstractions and disposable keys. Do not copy protocol assumptions from another CometBFT release.
 
 The implementation must:
 
@@ -138,7 +138,7 @@ Independent security review, remote-signer threat modeling, key-custody design, 
 
 ## 8. Implementation sequence
 
-1. Pin and inspect CometBFT v0.40.0 remote-signer source and exact protocol.
+1. Pin and inspect CometBFT v0.40.0 remote-signer source and exact protocol (source inspection recorded; implementation remains pending).
 2. Add a protocol conformance probe that uses disposable keys and verifies the signer connection without enabling fault injection.
 3. Add the honest remote-signer baseline to the existing four-validator harness.
 4. Add the withheld-vote scenario and reconnection/catch-up assertions.
