@@ -68,6 +68,10 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
           go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go"
+      - name: Run connected remote signer vote-withholding probe
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go" --withholding-probe
       - name: Build pinned persistent remote signer helper
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
