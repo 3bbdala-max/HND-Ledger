@@ -247,3 +247,14 @@ The next technical gate is a controlled remote-signer / Byzantine-message fault-
 This is **planned work**, not implemented or passed. Snapshot/state-sync, production database durability, remote signer/HSM security, operational key custody, independent security review, governance, and jurisdiction-specific legal review remain open gates.
 
 All work remains on `phase-0.2-planning`. The `main` branch is unchanged. Public release and real-value activity remain blocked by the G2–G4 gates.
+
+
+### WP4.9 — adversarial consensus-message test design added — 2026-11-04
+
+- Added `docs/WP4_9_ADVERSARIAL_CONSENSUS_TEST_DESIGN_2026-11-04.md`.
+- The design separates the honest remote-signer baseline, withheld-vote liveness test, correct-signer same-HRS conflict refusal, malicious equivocation injection, and 2/2 no-quorum control.
+- The existing four-validator voting power is 10 each (40 total): three validators provide 30/40 (75%), which is above the strict two-thirds threshold; two validators provide 20/40 (50%), which is insufficient.
+- The design requires the remote-signer wire protocol and connection behavior to be verified against the exact pinned CometBFT v0.40.0 source before implementation. No assumed protocol or unverified test hook may be introduced.
+- **Status: design only. No WP4.9 remote-signer or Byzantine-message scenario has been implemented or passed.** The next implementation gate is a pinned-source remote-signer protocol conformance probe using disposable keys, followed by the honest remote-signer baseline.
+- Any malicious conflicting-vote injection must use an auditable test path supported by the pinned version; if none exists, that scenario remains design-only rather than modifying consensus internals to manufacture a pass.
+- All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
