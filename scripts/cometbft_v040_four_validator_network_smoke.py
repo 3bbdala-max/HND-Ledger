@@ -1,6 +1,6 @@
 """Disposable four-validator CometBFT v0.40.0 integration smoke test."""
 from __future__ import annotations
-import argparse, base64, json, os, re, socket, subprocess, sys, tempfile, time
+import argparse, base64, json, os, re, shutil, socket, subprocess, sys, tempfile, time
 import urllib.parse, urllib.request
 from pathlib import Path
 
@@ -89,7 +89,7 @@ def set_partition(relays, groups):
 
 def main():
     ap=argparse.ArgumentParser()
-    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True)
+    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary")
     a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve()
     if not Path(binary).is_file() or not (source/"go.mod").is_file(): ap.error("missing pinned CometBFT binary/source")
     cfg=ProtocolConfig(network_id=CHAIN,protocol_version=2,max_amount=SUPPLY)
@@ -117,6 +117,13 @@ def main():
         if '"app_state": {}' not in gtext: raise RuntimeError("Genesis app_state placeholder not found")
         gbytes=(gtext.replace('"app_state": {}','"app_state": '+canonical_json(appstate).decode())+"\n").encode()
         for h in homes: (h/"config/genesis.json").write_bytes(gbytes)
+        signer_socket = root/"validator4-privval.sock"
+        signer_key_path = root/"signer4"/"priv_validator_key.json"
+        signer_state_path = root/"signer4"/"priv_validator_state.json"
+        if a.remote_signer_binary:
+            (root/"signer4").mkdir(mode=0o700)
+            shutil.move(str(homes[3]/"config/priv_validator_key.json"), str(signer_key_path))
+            os.chmod(signer_key_path, 0o600)
         eps=[{"p2p":f"127.0.0.1:{BASE+3*i}","rpc":f"http://127.0.0.1:{BASE+3*i+1}","abci":f"127.0.0.1:{BASE+3*i+2}"} for i in range(N)]
         relays={}
         try:
@@ -139,8 +146,10 @@ def main():
             t=set_toml(t,"p2p","pex","false")
             t=set_toml(t,"p2p","addr_book_strict","false")
             t=set_toml(t,"p2p","allow_duplicate_ip","true")
+            if i==3 and a.remote_signer_binary:
+                t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_socket)))
             p.write_text(t)
-        apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]
+        apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]; signer=None; signer_log=None
         try:
             for i,h in enumerate(homes):
                 al=(root/f"app{i+1}.log").open("w"); nl=(root/f"node{i+1}.log").open("w"); ah.append(al); nh.append(nl)
@@ -151,6 +160,9 @@ def main():
             for i,h in enumerate(homes):
                 env=os.environ.copy(); env["CMTHOME"]=str(h)
                 nodes[i]=subprocess.Popen([binary,"node","--home",str(h)],cwd=root,env=env,stdout=nh[i],stderr=subprocess.STDOUT)
+                if i==3 and a.remote_signer_binary:
+                    signer_log=(root/"signer4.log").open("w")
+                    signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
             def converged(urls, minheight=1):
                 s=[rpc_status(u) for u in urls]; heights=[int(x["sync_info"]["latest_block_height"]) for x in s]; hashes=[x["sync_info"]["latest_block_hash"] for x in s]
                 return s if min(heights)>=minheight and len(set(heights))==1 and len(set(hashes))==1 else None
@@ -168,6 +180,31 @@ def main():
             s1,ac1,hashes1=wait(tx_all,"transaction committed identically on four nodes")
             txheight=int(s1[0]["sync_info"]["latest_block_height"]); txblock=s1[0]["sync_info"]["latest_block_hash"]
             if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER for u in urls): raise AssertionError("recipient balances differ")
+
+            if a.remote_signer_binary:
+                if not signer or signer.poll() is not None: raise AssertionError("remote signer process exited before outage test")
+                stop(signer); signer=None
+                outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
+                outage_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(outage_tx).decode()})["result"]
+                if int(outage_broadcast.get("code",0)): raise RuntimeError(f"signer-outage CheckTx rejected: {outage_broadcast}")
+                def three_commit_without_signer():
+                    side=converged(urls[:3],txheight+1)
+                    if not side: return None
+                    if any(account(u,aid)["balance"]!=ALICE-TRANSFER-77 for u in urls[:3]): return None
+                    if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls[:3]): return None
+                    return side
+                outage_state=wait(three_commit_without_signer,"three validators commit while validator-4 signer is stopped",150)
+                if not all(p and p.poll() is None for p in nodes+apps): raise AssertionError("node or ABCI app exited during signer outage")
+                signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                def signer_recovered():
+                    if signer.poll() is not None: return None
+                    state=converged(urls,int(outage_state[0]["sync_info"]["latest_block_height"]))
+                    if not state: return None
+                    if any(account(u,aid)["balance"]!=ALICE-TRANSFER-77 for u in urls): return None
+                    if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
+                    return state
+                recovered=wait(signer_recovered,"remote signer reconnect and four-node state convergence",150)
+                print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
             # Stop one node and its app; 3/4 voting power remains.
             stop(nodes[3]); nodes[3]=None; stop(apps[3]); apps[3]=None
             s3=wait(lambda:converged(urls[:3],txheight+1),"three validators commit after one stops")
@@ -257,7 +294,9 @@ def main():
         finally:
             for p in nodes: stop(p)
             for p in apps: stop(p)
+            stop(signer)
             for relay in relays.values(): relay.close()
             for f in ah+nh: f.close()
+            if signer_log: signer_log.close()
 
 if __name__=="__main__": main()
