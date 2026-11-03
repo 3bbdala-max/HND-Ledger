@@ -68,9 +68,15 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
           go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go"
+      - name: Build pinned persistent remote signer helper
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go build -o "$RUNNER_TEMP/hnd-remote-signer" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go"
       - name: Run single-node ABCI integration smoke test
         run: python scripts/cometbft_v040_single_node_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src"
       - name: Run four-validator Genesis and identity preflight
         run: python scripts/cometbft_v040_four_validator_genesis_preflight.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src"
       - name: Run private four-validator network integration smoke test
         run: python scripts/cometbft_v040_four_validator_network_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src"
+      - name: Run four-validator external remote-signer integration and outage recovery
+        run: python scripts/cometbft_v040_four_validator_network_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src" --remote-signer-binary "$RUNNER_TEMP/hnd-remote-signer"
