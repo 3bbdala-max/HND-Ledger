@@ -90,3 +90,19 @@ WP4.7 remains **design-only** until the isolation primitive is demonstrated to w
 
 ---
 This document is a test design and acceptance gate, not evidence that a network partition test has passed.
+## 7.1 Selected isolation topology for the local CI harness
+
+The current four-validator smoke harness places every node on 127.0.0.1 with distinct listening ports. A host firewall rule that drops traffic by destination or source P2P port alone is not sufficient to prove a peer-specific partition: outbound TCP connections use ephemeral source ports, and a broad port rule can also block healthy intra-group links.
+
+The implementation must therefore use a directed TCP relay for each ordered validator pair:
+
+- Create 12 loopback-only relay listeners, one for each source-to-target pair.
+- Configure each validator's persistent_peers entries to use its own directed relay endpoint, while each relay forwards only to the intended target's P2P listener.
+- Disable peer exchange (pex = false) in these disposable test homes so nodes cannot bypass the relays through learned direct addresses.
+- Keep RPC and ABCI endpoints on their existing local addresses; they are not routed through the P2P relays.
+- A partition disables and closes both directed relays for every cross-group pair. Intra-group relays remain enabled.
+- Reconnection re-enables the affected relays; the test must observe peer IDs returning through /net_info and then verify block and application-state convergence.
+
+The relay implementation must bind only to 127.0.0.1, reject new cross-partition connections, close already-established cross-partition sockets when a partition is applied, use bounded socket timeouts, and shut down every listener/thread/socket in finally. The harness must fail closed if any node can establish a P2P connection outside its configured relay route.
+
+This is the selected implementation approach, not evidence that WP4.7 has passed. The 3/1 and 2/2 scenarios remain unimplemented until the relay topology and bypass checks are exercised in CI.
