@@ -48,10 +48,15 @@ func blockID(label string) cmttypes.BlockID {
 	}
 }
 
-func runSignerChild(socketPath, keyPath, statePath string, withholdVotes bool) {
+func runSignerChild(socketPath, keyPath, statePath string, withholdVotes, loadExisting bool) {
 	logger := log.NewNopLogger()
-	pv := privval.GenFilePV(keyPath, statePath)
-	pv.Save()
+	var pv *privval.FilePV
+	if loadExisting {
+		pv = privval.LoadFilePV(keyPath, statePath)
+	} else {
+		pv = privval.GenFilePV(keyPath, statePath)
+		pv.Save()
+	}
 	dialer := privval.NewSignerDialerEndpoint(logger, privval.DialUnixFn(socketPath))
 	var signer cmttypes.PrivValidator = pv
 	if withholdVotes {
@@ -268,7 +273,7 @@ func main() {
 			fail("usage: --signer-child <socket> <key-file> <state-file> [--withhold-votes]")
 		}
 		withhold := len(os.Args) == 6 && os.Args[5] == "--withhold-votes"
-		runSignerChild(os.Args[2], os.Args[3], os.Args[4], withhold)
+		runSignerChild(os.Args[2], os.Args[3], os.Args[4], withhold, len(os.Args) == 6 && os.Args[5] == "--load-existing")
 		return
 	}
 	runNodeParent()
