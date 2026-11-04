@@ -75,6 +75,9 @@ class SyntheticAnchor:
         self._lock = threading.Lock()
         self._record: AnchorRecord | None = None
         self._operations: dict[str, tuple[str, AnchorRecord]] = {}
+        # Shared by every model instance using this anchor; deliberately in-memory.
+        self._host_epoch = 1
+        self._active_host = "synthetic-host-1"
         self.available = True
 
     def read(self) -> AnchorRecord | None:
@@ -111,11 +114,36 @@ class SyntheticAnchor:
                 raise StaleTransition("anchor compare-and-swap predecessor is stale")
             if record.sequence != expected_sequence + 1:
                 raise StaleTransition("anchor sequence must increase by exactly one")
+            expected_predecessor = _digest(self._record.unsigned()) if self._record else "0" * 64
+            if not hmac.compare_digest(record.predecessor_digest, expected_predecessor):
+                raise StaleTransition("anchor predecessor digest does not match current record")
             if record.status != "PREPARED":
                 raise ReferenceModelError("new anchor operation must begin PREPARED")
             self._record = record
             self._operations[record.operation_id] = (transaction_digest, record)
             return record
+
+    def host_epoch(self) -> int:
+        with self._lock:
+            if not self.available:
+                raise AnchorUnavailable("synthetic anchor unavailable")
+            return self._host_epoch
+
+    def host_is_current(self, host_id: str, epoch: int) -> bool:
+        with self._lock:
+            if not self.available:
+                raise AnchorUnavailable("synthetic anchor unavailable")
+            return host_id == self._active_host and epoch == self._host_epoch
+
+    def fence_host(self, new_host_id: str) -> int:
+        with self._lock:
+            if not self.available:
+                raise AnchorUnavailable("synthetic anchor unavailable")
+            if not new_host_id or new_host_id == self._active_host:
+                raise ValueError("new distinct host ID required")
+            self._host_epoch += 1
+            self._active_host = new_host_id
+            return self._host_epoch
 
     def operation(self, operation_id: str) -> AnchorRecord | None:
         with self._lock:
@@ -134,7 +162,7 @@ class OfflineAntiRollbackModel:
         self.identity = (network_id, genesis_hash, validator_id, signer_id)
         self.generations: dict[str, dict] = {}
         self._prepared: dict[str, AnchorRecord] = {}
-        self._host_epoch = 1
+        self._host_epoch = anchor.host_epoch()
         self._active_host = "synthetic-host-1"
 
     def _validate_identity(self, record: AnchorRecord) -> None:
@@ -147,10 +175,14 @@ class OfflineAntiRollbackModel:
                 height: int, round: int = 0, step: int = 0) -> AnchorRecord:
         if not operation_id or not host_id:
             raise ValueError("operation_id and host_id are required")
-        if host_id != self._active_host:
+        if not self.anchor.host_is_current(host_id, self._host_epoch):
             raise ReferenceModelError("fenced host cannot prepare state")
         if not isinstance(height, int) or isinstance(height, bool) or height < 0:
             raise ValueError("height must be a non-negative integer")
+        if not isinstance(round, int) or isinstance(round, bool) or round < 0:
+            raise ValueError("round must be a non-negative integer")
+        if not isinstance(step, int) or isinstance(step, bool) or step < 0:
+            raise ValueError("step must be a non-negative integer")
         current = self.anchor.read()
         existing = self.anchor.operation(operation_id)
         if existing is not None:
@@ -235,11 +267,10 @@ class OfflineAntiRollbackModel:
         return json.loads(_canonical(state))
 
     def fence_and_takeover(self, new_host_id: str) -> int:
-        if not new_host_id or new_host_id == self._active_host:
-            raise ValueError("new distinct host ID required")
-        self._host_epoch += 1
+        epoch = self.anchor.fence_host(new_host_id)
+        self._host_epoch = epoch
         self._active_host = new_host_id
-        return self._host_epoch
+        return epoch
 
     def signing_allowed(self, host_id: str) -> bool:
         try:
@@ -249,7 +280,7 @@ class OfflineAntiRollbackModel:
             self._validate_identity(record)
             state = self.generations.get(record.generation_id)
             return (
-                host_id == self._active_host
+                self.anchor.host_is_current(host_id, self._host_epoch)
                 and state is not None
                 and _digest(state) == record.state_digest
             )
