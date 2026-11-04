@@ -537,3 +537,13 @@ This update records the completion of CI run [41890718611](https://github.com/3b
 **WP4.14 disposition:** Stage B's synthetic offline reference-model test suite has passed CI. Stage A independent security review remains OPEN; the internal review register is not an independent audit. Stages C and D remain unauthorized/not started. No production keys, live HSM/KMS, provider credentials, or production signing endpoint may be introduced. G2–G4 remain closed.
 
 All work remains on `phase-0.2-planning`. The `main` branch remains unchanged.
+
+### WP4.14 — follow-up four-validator partition test stabilization passed — 2026-11-04
+
+- CI run [41897803356](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41897803356) completed successfully on commit `097646a1795d59abc6044bf8993ebcbd68d2c882`; both `hnd-v02-tests` and `cometbft-single-node-smoke` passed.
+- The 2/2 partition harness now waits for a stable four-validator height/block-hash snapshot before beginning its no-quorum observation window, avoiding a false failure caused by a block already in flight at the instant relays are isolated.
+- The run passed the authenticated Noise four-validator integration, 3/1 partition and reconnection, 2/2 partition and reconnection, and final convergence checks.
+- Detailed follow-up evidence is recorded in `docs/WP4_14_CI_TECHNICAL_ACCEPTANCE_EVIDENCE_2026-11-04.md`.
+
+**Acceptance boundary:** This validates the corrected bounded CI scenario only. It does not prove arbitrary Byzantine safety/liveness, production key custody, independent monotonic anti-rollback, or production readiness. Stage A independent review remains OPEN; Stages C/D remain unauthorized/not started; G2–G4 remain closed. All changes remain on `phase-0.2-planning`; `main` remains unchanged.
+
