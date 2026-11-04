@@ -390,6 +390,25 @@ class TestV02ABCIApplication(unittest.TestCase):
         with self.assertRaisesRegex(ABCIApplicationError, "cannot be decoded"):
             self.make_app()
 
+    def test_recovery_mode_requires_existing_durable_state(self):
+        missing = Path(self.temp.name) / "missing-recovery-state.json"
+        with self.assertRaisesRegex(ABCIApplicationError, "recovery mode requires"):
+            HNDABCIApplication(
+                config=self.config,
+                manifest=self.manifest,
+                expected_genesis_hash=self.genesis_hash,
+                state_path=missing,
+                require_existing_state=True,
+            )
+        recovered = HNDABCIApplication(
+            config=self.config,
+            manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+            state_path=self.state_path,
+            require_existing_state=True,
+        )
+        self.assertEqual(recovered.info(), self.app.info())
+
     def test_truncated_persisted_store_is_rejected_on_restart(self):
         self.state_path.write_bytes(b'{"schema_version":')
         with self.assertRaisesRegex(ABCIApplicationError, "cannot be decoded"):
