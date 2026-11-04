@@ -74,6 +74,9 @@ class SyntheticAnchor:
     def __init__(self):
         self._lock = threading.Lock()
         self._record: AnchorRecord | None = None
+        # Keep the last committed generation separately while a newer
+        # operation is PREPARED. This is an in-memory model, not durable storage.
+        self._last_committed: AnchorRecord | None = None
         self._operations: dict[str, tuple[str, AnchorRecord]] = {}
         # Shared by every model instance using this anchor; deliberately in-memory.
         self._host_epoch = 1
@@ -108,6 +111,7 @@ class SyntheticAnchor:
                     if self._record != prior[1] or record.sequence != prior[1].sequence:
                         raise StaleTransition("prepared operation is no longer the current anchor record")
                     self._record = record
+                    self._last_committed = record
                     self._operations[record.operation_id] = (transaction_digest, record)
                     return record
                 if prior[1] == record:
@@ -131,6 +135,13 @@ class SyntheticAnchor:
             self._record = record
             self._operations[record.operation_id] = (transaction_digest, record)
             return record
+
+    def read_last_committed(self) -> AnchorRecord | None:
+        """Return the last committed record, even while a newer prepare is pending."""
+        with self._lock:
+            if not self.available:
+                raise AnchorUnavailable("synthetic anchor unavailable")
+            return self._last_committed
 
     def host_epoch(self) -> int:
         with self._lock:
