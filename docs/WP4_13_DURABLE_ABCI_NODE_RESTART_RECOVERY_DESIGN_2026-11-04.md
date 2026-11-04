@@ -95,3 +95,22 @@ The core restart/recovery implementation is now exercised by the pinned CometBFT
 **Core WP4.13 restart/recovery integration: passed for the scenarios exercised above.** Do not interpret this as closure of every negative control in Section 4. Additional explicit coverage remains required for alternate/replaced signer-state files, validator-identity mismatch on restart, bounded recovery-timeout behavior, and deliberately induced post-recovery application divergence as distinct WP4.13 negative cases. Existing unauthorized Noise peer rejection, vote-withholding, and WP4.12 state-divergence tests are related evidence, but are not substitutes for all of those exact recovery-specific cases.
 
 The result remains a loopback-only, disposable CI test. It does not prove power-loss durability, production backup/restore, snapshot state sync, production key custody, or general Byzantine safety/liveness. No production transport or public release is approved.
+
+
+## 8. Final integrated verification — 2026-11-04
+
+The updated bounded-readiness implementation and the recovery negative-control additions were verified on the current branch head.
+
+- Workflow [41883929479](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41883929479) completed with **success** on commit `f723cf981841a9c228bf1944a078a13b151de605`.
+- Both workflow jobs completed successfully: `hnd-v02-tests` and `cometbft-single-node-smoke`.
+- The isolated Python suite reported **146 tests, all passing**.
+- The integration log explicitly recorded `HND_WP4_13_PRE_RESTART_EVIDENCE`, `HND_WP4_13_PROCESSES_STOPPED`, `HND_WP4_13_DURABLE_ABCI_RECOVERY_OK`, and `HND_WP4_13_COMETBFT_NODE_RESTART_CATCHUP_OK`. The recovery sequence was exercised repeatedly, including after Unix and authenticated Noise remote-signer outage/recovery.
+- The run rejected substituted consensus public-key and P2P node identities (`HND_WP4_13_ALTERNATE_CONSENSUS_IDENTITY_REJECTED`, `HND_WP4_13_ALTERNATE_P2P_IDENTITY_REJECTED`).
+- The private four-validator scenario passed 3/1 isolation and reconnection, 2/2 partition observation and reconnection, and four-way state convergence. The run explicitly labels its scope as local crash-stop integration, not Byzantine fault proof.
+- The integrated unit suite exercised bounded readiness timeout termination without changing durable state, rejection of height/block-hash mismatch, and rejection of post-recovery application-hash divergence. Existing persistence tests also reject truncated state and mismatched network/Genesis state. Remote-signer recovery probes reject missing and substituted anti-double-sign state.
+
+### WP4.13 disposition
+
+**The WP4.13 CI acceptance gate is passed for the enumerated local test scenarios on commit `f723cf9`.** This closes the implementation-and-test work package as a regression milestone, not as a production certification. The older Section 7 note describing outstanding negative-control coverage is historical; the additional cases listed above are now represented in the successful integrated run.
+
+The test environment remains disposable and loopback-only, with temporary keys and state. This result does not establish arbitrary Byzantine fault tolerance, power-loss/filesystem crash consistency, production backup/restore, rollback-resistant custody, independent security assurance, legal compliance, or production readiness. WP4.14 custody/backup/recovery remains a separate design and implementation gate. No public launch or real-value activity is authorized.
