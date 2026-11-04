@@ -400,3 +400,15 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Status: design only; HND-specific P2P-to-ABCI evidence injection has not yet been implemented or passed.**
 - No slashing or balance changes are authorized by this workstream. The evidence journal remains audit-only.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.11 — HND P2P equivocation-to-ABCI evidence integration passed — 2026-11-04
+
+- Full workflow [41840460178](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41840460178) passed on commit `7864986c27f1b6bf0daaa2d13d03365988e9e52d`; both CI jobs succeeded.
+- The HND-specific integration reuses the pinned CometBFT v0.40.0 Byzantine test harness and retains the real P2P VoteChannel conflicting-prevote injection and CometBFT evidence-pool path while connecting four independent live HND ABCI applications.
+- The integration emitted `HND_WP4_11_P2P_EVIDENCE_REPLICAS_OK`: four replicas, one evidence record, infraction/evidence height 2, committed height 3, unchanged balances, and successful restart verification.
+- The reported common application hash was `bafc894edeb3fd89fb2bf79b7953368787504d39add4e3e6fa3e7abe5e5cf661`; the test acceptance checks compare canonical evidence journal bytes, evidence IDs, committed heights, and 32-byte app hashes across all four replicas.
+- **WP4.11 test gate: passed for this disposable CI scenario.** This does not establish production Byzantine fault tolerance or HND-side independent cryptographic verification of the signed vote pair; HND persists CometBFT's ABCI misbehavior summary as audit evidence only.
+- No slashing, burning, freezing, confiscation, or balance changes are implemented. Test keys and state are disposable and loopback-only.
+- Next engineering gate: multi-node deterministic state-hash consistency and broader fault-injection coverage, followed by production key-custody/operations design and independent security review. Governance and jurisdiction-specific legal review remain mandatory before any public release or real-value activity.
+- All changes remain on `phase-0.2-planning`; `main` is unchanged. G2–G4 release gates remain closed.
