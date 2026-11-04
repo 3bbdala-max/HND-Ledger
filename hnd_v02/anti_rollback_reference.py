@@ -86,10 +86,14 @@ class SyntheticAnchor:
                 raise AnchorUnavailable("synthetic anchor unavailable")
             return self._record
 
-    def compare_and_swap(self, expected_sequence: int, record: AnchorRecord) -> AnchorRecord:
+    def compare_and_swap(self, expected_sequence: int, record: AnchorRecord, *,
+                          host_id: str, host_epoch: int) -> AnchorRecord:
+        """Atomically fence the caller and transition the anchor record."""
         with self._lock:
             if not self.available:
                 raise AnchorUnavailable("synthetic anchor unavailable")
+            if host_id != self._active_host or host_epoch != self._host_epoch:
+                raise StaleTransition("fenced host cannot change anchor state")
             prior = self._operations.get(record.operation_id)
             transaction_digest = _digest({
                 key: value for key, value in record.unsigned().items()
@@ -222,7 +226,9 @@ class OfflineAntiRollbackModel:
             operation_id=operation_id, status="PREPARED",
         )
         record = AnchorRecord(**fields, mac=_mac(fields))
-        stored = self.anchor.compare_and_swap(expected, record)
+        stored = self.anchor.compare_and_swap(
+            expected, record, host_id=host_id, host_epoch=self._host_epoch
+        )
         self._prepared[operation_id] = stored
         return stored
 
@@ -243,7 +249,10 @@ class OfflineAntiRollbackModel:
         committed_fields = prepared.unsigned()
         committed_fields["status"] = "COMMITTED"
         committed = AnchorRecord(**committed_fields, mac=_mac(committed_fields))
-        result = self.anchor.compare_and_swap(prepared.sequence - 1, committed)
+        result = self.anchor.compare_and_swap(
+            prepared.sequence - 1, committed,
+            host_id=self._active_host, host_epoch=self._host_epoch,
+        )
         if simulate_lost_reply:
             raise AmbiguousCommit("commit may have completed; reconcile by operation ID")
         return result
