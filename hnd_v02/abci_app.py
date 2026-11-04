@@ -269,7 +269,7 @@ class HNDABCIApplication:
         records = {item["evidence_id"]: _json_copy(item) for item in existing}
         for item in incoming:
             required = {"type", "validator_address", "validator_power", "height", "time", "total_voting_power"}
-            if type(item) is not dict or set(item) != required:
+            if type(item) is not dict or set(item) not in (required, required | {"evidence_id"}):
                 raise ABCIApplicationError("misbehavior record schema")
             if type(item["type"]) is not int or item["type"] not in (1, 2):
                 raise ABCIApplicationError("unsupported misbehavior type")
@@ -285,15 +285,18 @@ class HNDABCIApplication:
             if type(stamp) is not str:
                 raise ABCIApplicationError("invalid misbehavior timestamp")
             try:
-                parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-                canonical = parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
-                if parsed.tzinfo is None or parsed.utcoffset() is None or canonical != stamp:
-                    raise ValueError("timestamp must be canonical UTC")
+                parts = stamp.split(":")
+                if len(parts) != 3 or parts[0] != "unix" or not parts[1].lstrip("-").isdigit() or len(parts[2]) != 9 or not parts[2].isdigit():
+                    raise ValueError("timestamp must be unix seconds and nanoseconds")
+                if int(parts[2]) >= 1_000_000_000 or stamp != f"unix:{int(parts[1])}:{int(parts[2]):09d}":
+                    raise ValueError("timestamp is not canonical")
             except ValueError as exc:
                 raise ABCIApplicationError("invalid misbehavior timestamp") from exc
             normalized = dict(item)
             identity = {"type": item["type"], "validator_address": address, "height": infraction_height}
             normalized["evidence_id"] = hashlib.sha256(b"HND-EVIDENCE-ID-V1" + bytes((0,)) + canonical_json(identity)).hexdigest()
+            if "evidence_id" in item and item["evidence_id"] != normalized["evidence_id"]:
+                raise ABCIApplicationError("evidence identifier mismatch")
             previous = records.get(normalized["evidence_id"])
             if previous is not None and previous != normalized:
                 raise ABCIApplicationError("conflicting metadata for duplicate evidence")
