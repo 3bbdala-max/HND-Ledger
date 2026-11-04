@@ -451,3 +451,12 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - No key export, production signing, or custody integration will be implemented before the architecture, threat model, and independent security review are complete.
 - Added `docs/WP4_14_KEY_CUSTODY_BACKUP_RECOVERY_DESIGN_2026-11-04.md` with the key inventory, threat model, signer isolation, HSM/KMS/offline custody options, backup/restore ceremony, rotation/revocation, incident response, and verification gates.
 - **Status:** design gate only; no production custody implementation or approval. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.13 — negative recovery controls design recorded — 2026-11-04
+
+- Added `docs/WP4_13_NEGATIVE_RECOVERY_CONTROLS_DESIGN_2026-11-04.md` after reviewing the current signer helper and four-validator recovery harness.
+- The design specifies four distinct negative controls: alternate signer anti-double-sign state substitution, valid-but-unexpected consensus/P2P identity substitution, bounded recovery timeout, and deliberate post-recovery replica divergence.
+- **Status: design only. No new negative-control implementation or CI pass is claimed.** The existing WP4.13 happy-path integration remains passed for its documented scope; WP4.13 remains open until the exact controls are implemented and CI-tested.
+- The design explicitly distinguishes a CI-run expected digest from production anti-rollback protection. Production rollback resistance still requires an independently trusted anchor, such as an HSM/KMS monotonic counter or separately protected signing-state service.
+- All changes remain on `phase-0.2-planning`; `main` is unchanged. G2–G4 remain closed.
