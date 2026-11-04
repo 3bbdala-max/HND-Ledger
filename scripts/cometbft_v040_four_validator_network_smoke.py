@@ -176,6 +176,8 @@ def main():
             shutil.move(str(signer_state_source), str(signer_state_path))
             os.chmod(signer_key_path, 0o600)
             os.chmod(signer_state_path, 0o600)
+            # Pin the signer anti-double-sign state before the signer starts; reuse this exact digest for recovery.
+            pre_signer_state_digest = sha256_file(signer_state_path)
         eps=[{"p2p":f"127.0.0.1:{BASE+3*i}","rpc":f"http://127.0.0.1:{BASE+3*i+1}","abci":f"127.0.0.1:{BASE+3*i+2}"} for i in range(N)]
         relays={}
         try:
@@ -294,7 +296,6 @@ def main():
             pre_alice=account(urls[3],aid)["balance"]
             pre_bob=account(urls[3],bid)["balance"]
             pre_state_digest=sha256_file(state4)
-            pre_signer_state_digest=sha256_file(signer_state_path) if signer_binary else None
             validator_key_path=homes[3]/"config"/"priv_validator_key.json"
             node_key_path=homes[3]/"config"/"node_key.json"
             pre_validator_key_digest=sha256_file(validator_key_path)
