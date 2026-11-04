@@ -371,3 +371,14 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Next gate:** implement an HND-specific malicious-peer equivocation/evidence test using the actual pinned CometBFT P2P VoteChannel path, disposable faulty test identities, and verified evidence lifecycle; do not bypass the reactor with direct VoteSet insertion. Then complete production key-custody/operational threat review and obtain independent security review.
 - Production peer identity provisioning/rotation, HSM/KMS or offline key custody, backup/rollback protection, operational controls, independent security review, governance, and jurisdiction-specific legal review remain open. Public release and real-value activity remain blocked by G2–G4.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged.
+
+
+### WP4.10 — ABCI evidence-handling boundary reviewed; design recorded — 2026-11-04
+
+- Pinned CometBFT v0.40.0 source confirms ABCI++ `RequestFinalizeBlock` carries repeated `Misbehavior` summaries (type, validator address/power, infraction height/time, and total voting power). The full signed vote pair remains in CometBFT's internal evidence object; the ABCI summary is not the full cryptographic evidence.
+- Inspection of `hnd_v02/cometbft_v040_server.py` and `hnd_v02/abci_app.py` found that the current HND adapter passes only block height and transactions to `finalize_block`; it currently ignores `request.misbehavior`. Thus CometBFT evidence detection is tested upstream, but HND application-level evidence accounting is not implemented.
+- Added `docs/WP4_10_ABCI_EVIDENCE_HANDLING_DESIGN_2026-11-04.md` proposing a deterministic, append-only, non-punitive evidence audit journal, including validation, state commitment, persistence, queries, and end-to-end tests.
+- No slashing, burning, freezing, confiscation, or balance changes are proposed: HND v0.2 has no defined staking, validator ownership, appeal, or governance penalty policy. Any economic consequence requires a separate protocol decision.
+- **Status: source review/design only; no application evidence journal or HND-specific end-to-end evidence test has been implemented or passed.** Next gate is implementing the neutral audit journal and proving ABCI misbehavior reaches and persists in HND application state.
+- This is separate from the successful Noise four-validator integration in run [41795296240](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41795296240), which remains a bounded local transport/recovery test, not a Byzantine proof.
+- All work remains on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
