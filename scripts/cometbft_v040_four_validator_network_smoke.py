@@ -175,7 +175,16 @@ def main():
                 s=[rpc_status(u) for u in urls]; heights=[int(x["sync_info"]["latest_block_height"]) for x in s]; hashes=[x["sync_info"]["latest_block_hash"] for x in s]
                 return s if min(heights)>=minheight and len(set(heights))==1 and len(set(hashes))==1 else None
             urls=[e["rpc"] for e in eps]
-            s0=wait(lambda:converged(urls),"four nodes initial consensus")
+            try:
+                s0=wait(lambda:converged(urls),"four nodes initial consensus")
+            except Exception as exc:
+                diagnostics={"error":repr(exc),"node_logs":[],"signer_log":""}
+                for index,log_path in enumerate([root/f"node{i+1}.log" for i in range(N)]):
+                    try: diagnostics["node_logs"].append({"validator":index+1,"tail":log_path.read_text(errors="replace")[-12000:]})
+                    except Exception as log_exc: diagnostics["node_logs"].append({"validator":index+1,"read_error":repr(log_exc)})
+                try: diagnostics["signer_log"]=(root/"signer4.log").read_text(errors="replace")[-12000:]
+                except Exception as log_exc: diagnostics["signer_log"]=repr(log_exc)
+                raise RuntimeError("initial consensus diagnostics: "+json.dumps(diagnostics,sort_keys=True)) from exc
             if noise_mode:
                 wait(lambda: "HND_NOISE_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text(errors="replace"),"authenticated Noise signer connection marker",30)
                 rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",noise_addr,str(homes[3]/"config/node_key.json")])
