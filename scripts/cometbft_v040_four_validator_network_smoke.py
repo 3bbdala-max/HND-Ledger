@@ -280,7 +280,20 @@ def main():
                     if any(account(u,aid)["balance"]!=ALICE-TRANSFER-77 for u in urls): return None
                     if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
                     return state
-                recovered=wait(signer_recovered,"remote signer reconnect and four-node state convergence",150)
+                try:
+                    if not wait(lambda: ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in (root/"signer4.log").read_text(errors="replace"),"restarted remote signer connection marker",45):
+                        raise TimeoutError("remote signer connection marker missing")
+                    recovered=wait(signer_recovered,"remote signer reconnect and four-node state convergence",150)
+                except Exception as exc:
+                    try: signer_log_tail=(root/"signer4.log").read_text(errors="replace")[-12000:]
+                    except Exception as log_exc: signer_log_tail=repr(log_exc)
+                    try: node4_log_tail=(root/"node4.log").read_text(errors="replace")[-12000:]
+                    except Exception as log_exc: node4_log_tail=repr(log_exc)
+                    heights=[]
+                    for url in urls:
+                        try: heights.append(rpc_status(url)["sync_info"]["latest_block_height"])
+                        except Exception: heights.append(None)
+                    raise RuntimeError("remote signer outage recovery diagnostics: "+json.dumps({"error":repr(exc),"signer_exit":signer.poll() if signer else None,"signer_log":signer_log_tail,"node4_log":node4_log_tail,"heights":heights},sort_keys=True)) from exc
                 print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","transport":"noise" if noise_mode else "unix","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
             expected_alice_prepartition = ALICE-TRANSFER-(77 if signer_binary else 0)
             expected_bob_prepartition = SUPPLY-ALICE+TRANSFER+(77 if signer_binary else 0)
