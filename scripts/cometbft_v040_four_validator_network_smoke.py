@@ -436,7 +436,31 @@ def main():
                 if any(account(u,aid)["balance"] != expected_alice_partition for u in urls[:3]): return None
                 if any(account(u,bid)["balance"] != expected_bob_partition for u in urls[:3]): return None
                 return side
-            side31=wait(three_commit_isolated,"3/1 quorum commit with isolated validator stalled",150)
+            try:
+                side31=wait(three_commit_isolated,"3/1 quorum commit with isolated validator stalled",150)
+            except Exception as exc:
+                diagnostics={"error":repr(exc),"validators":[],"processes":[]}
+                for index,url in enumerate(urls):
+                    item={"validator":index+1}
+                    try:
+                        status=rpc_status(url)
+                        item["height"]=status["sync_info"]["latest_block_height"]
+                        item["block_hash"]=status["sync_info"]["latest_block_hash"]
+                        item["peers"]=sorted(peer_ids(url))
+                        item["alice_balance"]=account(url,aid)["balance"]
+                        item["bob_balance"]=account(url,bid)["balance"]
+                        item["app_hash"]=app_hash(url)
+                    except Exception as probe_exc:
+                        item["probe_error"]=repr(probe_exc)
+                    diagnostics["validators"].append(item)
+                for index,(node,app) in enumerate(zip(nodes,apps)):
+                    diagnostics["processes"].append({"validator":index+1,"node_exit":node.poll() if node else None,"abci_exit":app.poll() if app else None})
+                for index in range(N):
+                    try:
+                        diagnostics.setdefault("node_log_tails",[]).append({"validator":index+1,"tail":(root/f"node{index+1}.log").read_text(errors="replace")[-5000:]})
+                    except Exception as log_exc:
+                        diagnostics.setdefault("node_log_tails",[]).append({"validator":index+1,"read_error":repr(log_exc)})
+                raise RuntimeError("3/1 partition diagnostics: "+json.dumps(diagnostics,sort_keys=True)) from exc
             if not all(p and p.poll() is None for p in nodes+apps):
                 raise AssertionError("a validator or ABCI app process exited during 3/1 partition")
             print(json.dumps({"result":"COMETBFT_V040_3_1_PARTITION_OK","partition":[3,1],"all_four_processes_alive":True,"quorum_height":int(side31[0]["sync_info"]["latest_block_height"]),"isolated_height":baseheight31,"isolated_state_unchanged":True},sort_keys=True),flush=True)
