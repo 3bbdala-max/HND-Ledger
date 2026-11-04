@@ -1,6 +1,7 @@
 """Synthetic offline anti-rollback reference-model tests only."""
 import threading
 import unittest
+from dataclasses import replace
 
 from hnd_v02.anti_rollback_reference import (
     AnchorUnavailable, AmbiguousCommit, OfflineAntiRollbackModel,
@@ -77,6 +78,14 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.model.identity = ("other-net", "b" * 64, "validator-fixture-1", "signer-fixture-1")
         with self.assertRaisesRegex(ReferenceModelError, "identity mismatch"):
             self.model.reconcile(record.operation_id)
+
+
+    def test_unsupported_anchor_schema_version_rejected(self):
+        record = self.prepare_commit()
+        unsupported = replace(record, schema_version=2, mac="")
+        unsupported = replace(unsupported, mac=_mac(unsupported.unsigned()))
+        with self.assertRaisesRegex(ReferenceModelError, "unsupported anchor schema version"):
+            self.model._validate_identity(unsupported)
 
     def test_old_host_is_fenced_after_takeover(self):
         self.prepare_commit()
