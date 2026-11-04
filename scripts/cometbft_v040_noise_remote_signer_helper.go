@@ -7,7 +7,9 @@ import (
  "encoding/base64"
  "fmt"
  "net"
- "os"\n "os/signal"\n "syscall"
+ "os"
+ "os/signal"
+ "syscall"
  "time"
 
  cmted "github.com/cometbft/cometbft/crypto/ed25519"
