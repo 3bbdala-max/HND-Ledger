@@ -2,7 +2,7 @@
 
 **Target branch:** `phase-0.2-planning`  
 **Baseline commit reviewed:** `18ba780686730a9a90ddb1ebe50b8af62438b0d5`  
-**Status (updated 2026-11-04):** NC-1 signer-state substitution and NC-2 validator-identity substitution are implemented and passed in CI run `41881433042` on commit `66dd05d86c3fc60c4869feb1e42a243da407d15c`. NC-3 bounded recovery-timeout injection remains open. NC-4 a dedicated post-recovery divergence injection remains open; deterministic same-height divergence detection exists in the four-replica unit test, but is not yet wired as a recovery-gate negative fixture.
+**Status (updated 2026-11-04):** NC-1 signer-state substitution and NC-2 validator-identity substitution are implemented and passed in CI run `41881433042` on commit `66dd05d86c3fc60c4869feb1e42a243da407d15c`. NC-3 bounded recovery-timeout injection and NC-4 post-recovery divergence rejection are now implemented in `hnd_v02/recovery_controls.py`; the controls are covered by `tests/test_v02_four_replica_state_convergence.py`, which is already part of the CI unittest command. The four-validator recovery harness now calls the convergence gate on all four recovered height, block-hash, and decoded app-hash fingerprints. CI evidence for these new changes is pending; WP4.13 remains open until the exact latest commit is tested.
 
 ## 1. Purpose
 
@@ -48,19 +48,13 @@ The check must compare semantic public identities (consensus public-key fingerpr
 
 ### NC-3 — Bounded recovery timeout
 
-1. Give the recovery supervisor an explicit timeout parameter.
-2. Use a deterministic test fixture that delays or withholds the required readiness signal beyond that timeout.
-3. Require a timeout failure marker, termination of the disposable recovery process, and no success marker.
-4. Verify the original durable state and signer state are not silently reinitialized or overwritten.
+Implemented in `hnd_v02/recovery_controls.py` as `wait_for_recovery_readiness` and exercised by a deterministic subprocess fixture. It enforces an explicit deadline, terminates the disposable process (kill fallback if needed), raises a timeout error instead of returning success, and does not touch the caller-owned durable state. CI evidence is pending.
 
 The test must not rely on an unbounded `wait()` or a timing race. The timeout should be short in the negative fixture and comfortably bounded in the ordinary CI happy path.
 
 ### NC-4 — Post-recovery divergence detection
 
-1. Complete the ordinary recovery and four-node convergence check.
-2. In a separate disposable negative fixture, make one replica expose a deliberately different application-state commitment (or provide a controlled mismatching commitment to the convergence assertion).
-3. Require the convergence gate to fail and identify the divergent validator.
-4. Verify the test harness does not emit the all-four-recovered success marker when any height, block hash, app hash, or required account state differs.
+Implemented as `assert_replica_convergence`: it compares every recovered validator's height, block hash, and decoded application hash and raises a fail-closed error naming divergent validators. The four-validator smoke harness invokes this gate before printing its all-four-recovered marker. The unit fixture injects a different app hash for validator 4 and asserts explicit rejection. CI evidence is pending.
 
 Do not corrupt a retained user database or any non-disposable environment. The fixture must be isolated and automatically cleaned up.
 
@@ -69,8 +63,8 @@ Do not corrupt a retained user database or any non-disposable environment. The f
 WP4.13 remains open until all of the following are present:
 
 - NC-1 and NC-2 run in CI and emit distinct machine-readable rejection markers (verified in run `41881433042`).
-- NC-3 runs in CI with an injected readiness delay, bounded termination, and no success marker.
-- NC-4 runs in CI with an injected divergent replica commitment and proves the recovery gate fails closed.
+- NC-3 implementation and deterministic timeout test are present; exact latest-commit CI pass is pending.
+- NC-4 implementation, deterministic divergence test, and smoke-harness gate are present; exact latest-commit CI pass is pending.
 - The normal recovery path passes for both supported signer transports (verified in run `41881433042`).
 - Failure cases are fail-closed and cannot be mistaken for successful recovery.
 - Logs identify the failed control without exposing private keys, signer-state contents, tokens, or secrets.
