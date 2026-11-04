@@ -72,3 +72,16 @@ The four-validator integration is a controlled CI test, not a public distributed
 
 ---
 This report records automated test evidence only. It is not a security certification, audit opinion, legal opinion, or production-readiness declaration.
+
+## 7. Follow-up CI confirmation — four-validator partition boundary stabilization
+
+**Follow-up tested commit:** `097646a1795d59abc6044bf8993ebcbd68d2c882`  
+**CI run:** [41897803356](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41897803356)  
+**Overall result:** SUCCESS — both jobs completed successfully.
+
+A prior run exposed a timing-sensitive assertion in the 2/2 partition test: the test captured its baseline immediately after relay isolation, while a block already in flight could still finalize at the partition boundary. The harness now requires all four validators' height/block-hash fingerprints to remain stable for five seconds before starting the no-quorum observation window. This preserves the subsequent assertion that no validator height, block hash, or HND application state advances during the observation interval.
+
+The follow-up run passed both `hnd-v02-tests` and `cometbft-single-node-smoke`, including the four-validator authenticated Noise remote-signer integration, the 3/1 partition and reconnection scenario, the 2/2 partition and reconnection scenario, and final replica convergence.
+
+This follow-up is evidence for the corrected test harness and its bounded CI scenario only. It is not a new production BFT or custody guarantee. Stage A remains open; Stages C/D remain unauthorized/not started; G2–G4 remain closed.
+
