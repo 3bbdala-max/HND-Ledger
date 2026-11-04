@@ -313,6 +313,8 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             time=Timestamp(seconds=1793786400, nanos=0),
             total_voting_power=40,
         )
+        self.servicer.FinalizeBlock(types_pb2.RequestFinalizeBlock(height=1), self.context)
+        self.servicer.Commit(types_pb2.RequestCommit(), self.context)
         response = self.servicer.FinalizeBlock(
             types_pb2.RequestFinalizeBlock(height=2, misbehavior=[item]),
             self.context,
