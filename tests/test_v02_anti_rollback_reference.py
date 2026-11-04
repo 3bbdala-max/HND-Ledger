@@ -261,6 +261,28 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
                         step=case["step"],
                     )
 
+    def test_hrs_zero_step_is_only_valid_as_initial_sentinel(self):
+        anchor = SyntheticAnchor()
+        model = OfflineAntiRollbackModel(
+            anchor, network_id="synthetic-net", genesis_hash="a" * 64,
+            validator_id="validator-fixture-1", signer_id="signer-fixture-1",
+        )
+        initial = model.prepare(
+            operation_id="initial-sentinel", host_id="synthetic-host-1",
+            state={"initial": True}, height=0, round=0, step=0,
+        )
+        self.assertEqual((initial.height, initial.round, initial.step), (0, 0, 0))
+
+        with self.assertRaisesRegex(ValueError, "step 0 is reserved"):
+            OfflineAntiRollbackModel(
+                SyntheticAnchor(), network_id="synthetic-net",
+                genesis_hash="a" * 64, validator_id="validator-fixture-1",
+                signer_id="signer-fixture-1",
+            ).prepare(
+                operation_id="noninitial-sentinel", host_id="synthetic-host-1",
+                state={"height": 0}, height=0, round=1, step=0,
+            )
+
     def test_hrs_allows_forward_step_round_and_height_transitions(self):
         transitions = (
             (7, 0, 1),
