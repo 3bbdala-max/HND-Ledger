@@ -187,12 +187,16 @@ class OfflineAntiRollbackModel:
             raise ValueError("operation_id and host_id are required")
         if not self.anchor.host_is_current(host_id, self._host_epoch):
             raise ReferenceModelError("fenced host cannot prepare state")
-        if not isinstance(height, int) or isinstance(height, bool) or height < 0:
-            raise ValueError("height must be a non-negative integer")
-        if not isinstance(round, int) or isinstance(round, bool) or round < 0:
-            raise ValueError("round must be a non-negative integer")
-        if not isinstance(step, int) or isinstance(step, bool) or step < 0:
-            raise ValueError("step must be a non-negative integer")
+        # Match the pinned CometBFT v0.40.0 FilePV HRS storage widths:
+        # height=int64, round=int32, step=int8. FilePV uses stepNone=0
+        # only as the initial sentinel, then propose=1, prevote=2,
+        # precommit=3 for actual signing operations.
+        if not isinstance(height, int) or isinstance(height, bool) or not 0 <= height <= (2**63 - 1):
+            raise ValueError("height must be an integer in the CometBFT int64 range")
+        if not isinstance(round, int) or isinstance(round, bool) or not 0 <= round <= (2**31 - 1):
+            raise ValueError("round must be an integer in the CometBFT int32 range")
+        if not isinstance(step, int) or isinstance(step, bool) or step not in (0, 1, 2, 3):
+            raise ValueError("step must be 0 (initial sentinel), 1 (propose), 2 (prevote), or 3 (precommit)")
         current = self.anchor.read()
         existing = self.anchor.operation(operation_id)
         if existing is not None:
