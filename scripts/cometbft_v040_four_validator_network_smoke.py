@@ -281,7 +281,11 @@ def main():
                     if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
                     return state
                 try:
-                    if not wait(lambda: ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in (root/"signer4.log").read_text(errors="replace"),"restarted remote signer connection marker",45):
+                    def fresh_outage_signer_marker():
+                        signer_log.flush()
+                        fresh=(root/"signer4.log").read_bytes()[outage_signer_log_offset:].decode("utf-8",errors="replace")
+                        return ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in fresh
+                    if not wait(fresh_outage_signer_marker,"restarted remote signer connection marker",45):
                         raise TimeoutError("remote signer connection marker missing")
                     recovered=wait(signer_recovered,"remote signer reconnect and four-node state convergence",150)
                 except Exception as exc:
@@ -374,6 +378,8 @@ def main():
                 wait(restarted_listener_ready,"restarted validator signer listener",30)
                 signer_log.flush()
                 signer_log_offset=(root/"signer4.log").stat().st_size
+                signer_log.flush()
+                outage_signer_log_offset=(root/"signer4.log").stat().st_size
                 signer_args=(["--serve-noise-recovery",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN,sha256_file(signer_state_path)] if noise_mode else ["--serve-recovery",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN,sha256_file(signer_state_path)])
                 signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def restarted_signer_connected():
