@@ -7,7 +7,7 @@ import (
  "encoding/base64"
  "fmt"
  "net"
- "os"
+ "os"\n "os/signal"\n "syscall"
  "time"
 
  cmted "github.com/cometbft/cometbft/crypto/ed25519"
@@ -64,7 +64,7 @@ func main(){
  for !dialer.IsConnected() && time.Now().Before(deadline){time.Sleep(50*time.Millisecond)}
  if !dialer.IsConnected(){die("Noise signer did not connect to pinned node identity %s",expectedNode)}
  fmt.Println("HND_NOISE_REMOTE_SIGNER_CONNECTED")
- signals:=make(chan os.Signal,1); signalNotify(signals)
+ signals:=make(chan os.Signal,1); signal.Notify(signals,os.Interrupt,syscall.SIGTERM); defer signal.Stop(signals)
  <-signals
  if err:=server.Stop(); err!=nil {die("stop Noise signer: %v",err)}
 }
