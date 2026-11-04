@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import timezone
+from datetime import datetime, timezone
 from concurrent import futures
 from pathlib import Path
 from typing import Any
@@ -173,9 +173,14 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
         normalized = []
         for item in items:
             stamp = item.time
-            if stamp.tzinfo is None or stamp.utcoffset() is None:
-                raise ABCIApplicationError("misbehavior timestamp must be timezone-aware")
-            stamp_text = stamp.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+            if hasattr(stamp, "seconds") and hasattr(stamp, "nanos"):
+                stamp_text = f"unix:{int(stamp.seconds)}:{int(stamp.nanos):09d}"
+            elif isinstance(stamp, datetime) and stamp.tzinfo is not None and stamp.utcoffset() is not None:
+                delta = stamp.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+                seconds = delta.days * 86400 + delta.seconds
+                stamp_text = f"unix:{seconds}:{delta.microseconds * 1000:09d}"
+            else:
+                raise ABCIApplicationError("misbehavior timestamp must be a protobuf Timestamp or timezone-aware datetime")
             normalized.append({
                 "type": int(item.type),
                 "validator_address": bytes(item.validator.address).hex(),
