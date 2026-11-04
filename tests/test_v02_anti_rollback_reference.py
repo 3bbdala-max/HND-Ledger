@@ -4,7 +4,7 @@ import unittest
 
 from hnd_v02.anti_rollback_reference import (
     AnchorUnavailable, AmbiguousCommit, OfflineAntiRollbackModel,
-    ReferenceModelError, StaleTransition, SyntheticAnchor,
+    AnchorRecord, ReferenceModelError, StaleTransition, SyntheticAnchor, _mac,
 )
 
 
@@ -116,9 +116,17 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
             ))
 
     def test_stale_predecessor_is_rejected(self):
-        self.prepare_commit()
+        committed = self.prepare_commit()
+        fields = committed.unsigned()
+        fields.update(
+            operation_id="stale-distinct-operation",
+            sequence=committed.sequence + 1,
+            predecessor_digest="0" * 64,
+            status="PREPARED",
+        )
+        stale = AnchorRecord(**fields, mac=_mac(fields))
         with self.assertRaises(StaleTransition):
-            self.anchor.compare_and_swap(0, self.anchor.read())
+            self.anchor.compare_and_swap(0, stale)
 
     def test_wrong_restore_generation_and_missing_generation_rejected(self):
         record = self.prepare_commit()
