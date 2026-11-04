@@ -180,6 +180,6 @@ python -m pip install -r requirements.txt
 python -m unittest -v tests.test_v02_anti_rollback_reference
 ```
 
-The module currently contains 27 test methods, including the C08 stale-local-backup scenario and the synthetic anchor-outage-after-commit scenario. Record the exact commit SHA, Python version, command, complete test output, and environment identity with any future execution evidence. A successful run of the repository's existing workflow is not a substitute for this command because the workflow's current explicit unittest list omits this module.
+The module currently contains 28 test methods, including the C08 stale-local-backup scenario, the synthetic anchor-outage-after-commit scenario, and a negative test that rejects unsupported anchor schema versions. These tests are committed but remain unverified by execution: the current workflow's explicit unittest list omits this module. Record the exact commit SHA, Python version, command, complete test output, and environment identity with any future execution evidence. A successful run of the repository's existing workflow is not a substitute for this command.
 
 This section is an execution instruction only. It is not evidence that the command has been run or passed.
