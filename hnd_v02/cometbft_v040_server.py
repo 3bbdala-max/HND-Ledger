@@ -266,6 +266,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--protocol-version", type=int, default=2)
     parser.add_argument("--max-amount", type=int, required=True)
     parser.add_argument("--state-path", required=True)
+    parser.add_argument(
+        "--recovery",
+        action="store_true",
+        help="require an existing durable HND state file; refuse fresh-state fallback",
+    )
     parser.add_argument("--listen", default="127.0.0.1:26658")
     args = parser.parse_args(argv)
 
@@ -287,6 +292,7 @@ def main(argv: list[str] | None = None) -> None:
         manifest=manifest,
         expected_genesis_hash=args.genesis_hash,
         state_path=args.state_path,
+        require_existing_state=args.recovery,
     )
     server, port = start_grpc_server(application, bind_address=args.listen)
     print(f"HND ABCI gRPC listening on {args.listen} (port {port})")
