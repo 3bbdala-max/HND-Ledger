@@ -521,3 +521,19 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Defines ten mandatory state-machine invariants and the independent-review questions and exit criteria required before Stage A can close.
 - Clarifies that an internal review register and green CI are not an independent security audit. The independent review has **not** been performed.
 - **Status: Stage A remains open; Stage B has not started.** Only offline synthetic preparation is permissible; no production key/custody operations or signing. G2–G4 remain closed.
+
+
+## 14. WP4.14 synthetic reference model and CI acceptance evidence — 2026-11-04
+
+This update records the completion of CI run [41890718611](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41890718611) for tested commit `1610824860081bd803a1b87fa3b89237b36f6ed1`.
+
+- Both jobs, `hnd-v02-tests` and `cometbft-single-node-smoke`, completed successfully.
+- The isolated v0.2 test suite, including the offline synthetic anti-rollback reference-model tests, passed.
+- The CometBFT job passed the pinned Byzantine equivocation/evidence checks, signer and remote-signer probes, unauthorized Noise peer rejection, vote-withholding probe, anti-double-sign persistence/recovery checks, single-node ABCI smoke, four-validator Genesis/identity preflight, private four-validator network integration, external remote-signer outage recovery, and authenticated Noise remote-signer integration/recovery.
+- Full step-by-step evidence and explicit scope limitations are recorded in `docs/WP4_14_CI_TECHNICAL_ACCEPTANCE_EVIDENCE_2026-11-04.md`.
+
+**Acceptance boundary:** This is a green automated CI result for the exact tested commit. It does not establish production BFT guarantees, production key custody, hardware monotonicity, an independent anti-rollback trust anchor, independent security-audit completion, or legal/operational release readiness.
+
+**WP4.14 disposition:** Stage B's synthetic offline reference-model test suite has passed CI. Stage A independent security review remains OPEN; the internal review register is not an independent audit. Stages C and D remain unauthorized/not started. No production keys, live HSM/KMS, provider credentials, or production signing endpoint may be introduced. G2–G4 remain closed.
+
+All work remains on `phase-0.2-planning`. The `main` branch remains unchanged.
