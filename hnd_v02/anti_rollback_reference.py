@@ -202,6 +202,8 @@ class OfflineAntiRollbackModel:
             raise ValueError("round must be an integer in the CometBFT int32 range")
         if not isinstance(step, int) or isinstance(step, bool) or step not in (0, 1, 2, 3):
             raise ValueError("step must be 0 (initial sentinel), 1 (propose), 2 (prevote), or 3 (precommit)")
+        if step == 0 and (height, round) != (0, 0):
+            raise ValueError("step 0 is reserved for the initial (height=0, round=0) sentinel")
         current = self.anchor.read()
         existing = self.anchor.operation(operation_id)
         if existing is not None:
