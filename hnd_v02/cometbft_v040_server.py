@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import timezone
 from concurrent import futures
 from pathlib import Path
 from typing import Any
@@ -109,10 +110,12 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
                 account_id = request.data.decode("utf-8")
                 value = self.application.account_view(account_id)
                 value = {"account_id": account_id, **value}
+            elif request.path == "/evidence":
+                value = {"evidence": self.application.evidence_journal}
             else:
                 return types_pb2.ResponseQuery(
                     code=1,
-                    log="supported query paths: /height, /account",
+                    log="supported query paths: /height, /account, /evidence",
                     codespace=CODESPACE,
                 )
             return types_pb2.ResponseQuery(
@@ -165,11 +168,30 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
         )
         return types_pb2.ResponseVerifyVoteExtension(status=status)
 
+    @staticmethod
+    def _normalize_misbehavior(items):
+        normalized = []
+        for item in items:
+            stamp = item.time
+            if stamp.tzinfo is None or stamp.utcoffset() is None:
+                raise ABCIApplicationError("misbehavior timestamp must be timezone-aware")
+            stamp_text = stamp.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+            normalized.append({
+                "type": int(item.type),
+                "validator_address": bytes(item.validator.address).hex(),
+                "validator_power": int(item.validator.power),
+                "height": int(item.height),
+                "time": stamp_text,
+                "total_voting_power": int(item.total_voting_power),
+            })
+        return normalized
+
     def FinalizeBlock(self, request, context):
         try:
             result = self.application.finalize_block(
                 height=request.height,
                 transactions=list(request.txs),
+                misbehavior=self._normalize_misbehavior(request.misbehavior),
             )
         except (ABCIApplicationError, ValueError, TypeError) as exc:
             self._abort(context, exc, grpc.StatusCode.FAILED_PRECONDITION)
