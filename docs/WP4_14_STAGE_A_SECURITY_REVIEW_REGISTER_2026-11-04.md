@@ -3,7 +3,7 @@
 **Date:** 2026-11-04  
 **Status:** Internal design review checklist; NOT an independent security audit or approval  
 **Branch:** `phase-0.2-planning`  
-**Scope:** Threat-model completeness and decision closure before a synthetic anti-rollback reference model
+**Scope:** Threat-model completeness and decision closure for WP4.14; the bounded synthetic reference model is tracked separately from Stage A approval
 
 ## 1. Review disposition
 
@@ -71,7 +71,7 @@ Stage A is not complete until all of the following are present:
 - signed decision records for custody model, anchor model, transaction protocol, bootstrap ceremony, quorum, backup and recovery;
 - formal transition table covering normal commit, retry, crash, partition, restore, anchor loss, migration, and key rotation;
 - approved operational roles, dual-control matrix, incident runbooks, RTO/RPO and retention policy;
-- explicit approval to proceed to a synthetic-only reference model.
+- explicit approval before proceeding beyond the offline synthetic reference model into any live adapter, provider integration, or operational custody activity.
 
 An internal document update or green CI run does not substitute for independent security review.
 
@@ -90,6 +90,6 @@ The reference model must not be described as proof of hardware monotonicity or p
 ## 7. Current status
 
 **Stage A: open — internal review register prepared; independent review not performed.**  
-**Stage B: not started.** It may begin only as a synthetic offline reference model under the constraints above and after the project explicitly records the review disposition required by the plan.
+**Stage B: bounded synthetic offline reference model implemented; its model test suite passed in CI.** This is limited engineering evidence only and does not close Stage A, satisfy the independent-review requirement, establish all C01–C18 acceptance cases, or authorize Stage C/D.
 
 No production key generation, custody provisioning, real signing, public network deployment, token issuance, sale, or exchange activity is authorized. G2–G4 remain closed.
