@@ -263,6 +263,10 @@ def main():
             pre_alice=account(urls[3],aid)["balance"]
             pre_bob=account(urls[3],bid)["balance"]
             pre_state_digest=sha256_file(state4)
+            validator_key_path=homes[3]/"config"/"priv_validator_key.json"
+            node_key_path=homes[3]/"config"/"node_key.json"
+            pre_validator_key_digest=sha256_file(validator_key_path)
+            pre_node_key_digest=sha256_file(node_key_path)
             pre_height=int(pre_node["sync_info"]["latest_block_height"])
             pre_block_hash=pre_node["sync_info"]["latest_block_hash"]
             pre_node_app_hash=pre_node["sync_info"]["latest_app_hash"]
@@ -297,6 +301,10 @@ def main():
             restored_digest=sha256_file(state4)
             if restored_digest != pre_state_digest:
                 raise AssertionError("HND durable state file digest changed during clean ABCI app restart")
+            if sha256_file(validator_key_path) != pre_validator_key_digest:
+                raise AssertionError("validator consensus identity key changed during recovery")
+            if sha256_file(node_key_path) != pre_node_key_digest:
+                raise AssertionError("CometBFT P2P node identity key changed during recovery")
             if signer_binary:
                 # A stopped Unix listener can leave its pathname behind.
                 # Remove only this disposable test socket before rebinding.
@@ -343,7 +351,7 @@ def main():
             if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or any(x!=expected_bob_prepartition for x in final_bob) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
             if int(final_info["last_block_height"]) != int(sfinal[3]["sync_info"]["latest_block_height"]):
                 raise AssertionError("post-catch-up CometBFT and HND heights differ")
-            print(json.dumps({"result":"HND_WP4_13_COMETBFT_NODE_RESTART_CATCHUP_OK","pre_stop_height":pre_height,"quorum_height_while_stopped":qheight,"recovered_height":int(sfinal[3]["sync_info"]["latest_block_height"]),"recovered_block_hash":sfinal[3]["sync_info"]["latest_block_hash"],"recovered_app_hash":final_info["last_block_app_hash"],"all_four_app_hashes_equal":len(set(final_apphash))==1,"all_four_balances_and_supply_equal":True,"original_node_home_and_identity_reused":True},sort_keys=True),flush=True)
+            print(json.dumps({"result":"HND_WP4_13_COMETBFT_NODE_RESTART_CATCHUP_OK","pre_stop_height":pre_height,"quorum_height_while_stopped":qheight,"recovered_height":int(sfinal[3]["sync_info"]["latest_block_height"]),"recovered_block_hash":sfinal[3]["sync_info"]["latest_block_hash"],"recovered_app_hash":final_info["last_block_app_hash"],"all_four_app_hashes_equal":len(set(final_apphash))==1,"all_four_balances_and_supply_equal":True,"original_node_home_and_identity_reused":True,"validator_key_digest_unchanged":True,"node_key_digest_unchanged":True},sort_keys=True),flush=True)
             # WP4.7-A: isolate validator 4 while all four node/app processes remain alive.
             partition_groups_31=[[0,1,2],[3]]
             set_partition(relays,partition_groups_31)
