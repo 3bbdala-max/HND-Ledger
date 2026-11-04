@@ -122,8 +122,16 @@ def main():
         signer_state_path = root/"signer4"/"priv_validator_state.json"
         if signer_binary:
             (root/"signer4").mkdir(mode=0o700)
+            # Move both halves of CometBFT's FilePV into signer ownership.
+            # LoadFilePV is deliberately fail-closed: it must never silently
+            # create a fresh anti-double-sign state during signer startup.
+            signer_state_source = homes[3]/"data"/"priv_validator_state.json"
+            if not signer_state_source.is_file():
+                raise RuntimeError(f"validator 4 initial FilePV state missing: {signer_state_source}")
             shutil.move(str(homes[3]/"config/priv_validator_key.json"), str(signer_key_path))
+            shutil.move(str(signer_state_source), str(signer_state_path))
             os.chmod(signer_key_path, 0o600)
+            os.chmod(signer_state_path, 0o600)
         eps=[{"p2p":f"127.0.0.1:{BASE+3*i}","rpc":f"http://127.0.0.1:{BASE+3*i+1}","abci":f"127.0.0.1:{BASE+3*i+2}"} for i in range(N)]
         relays={}
         try:
