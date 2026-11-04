@@ -1,6 +1,7 @@
 """Wire-level tests for the CometBFT v0.40.0 ABCI gRPC adapter."""
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -303,6 +304,26 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
                 self.context,
             )
         self.assertFalse(app.state_path.exists())
+
+    def test_finalize_block_passes_misbehavior_into_persisted_hnd_evidence_journal(self):
+        item = types_pb2.Misbehavior(
+            type=types_pb2.DUPLICATE_VOTE,
+            validator=types_pb2.Validator(address=b"\\xab" * 20, power=10),
+            height=1,
+            time=datetime(2026, 11, 4, 10, 0, tzinfo=timezone.utc),
+            total_voting_power=40,
+        )
+        response = self.servicer.FinalizeBlock(
+            types_pb2.RequestFinalizeBlock(height=2, misbehavior=[item]),
+            self.context,
+        )
+        self.assertEqual(len(response.app_hash), 32)
+        self.servicer.Commit(types_pb2.RequestCommit(), self.context)
+        self.assertEqual(len(self.app.evidence_journal), 1)
+        self.assertEqual(self.app.evidence_journal[0]["type"], types_pb2.DUPLICATE_VOTE)
+        query = self.servicer.Query(types_pb2.RequestQuery(path="/evidence"), self.context)
+        self.assertEqual(query.code, 0)
+        self.assertIn(b"evidence", query.value)
 
 
 if __name__ == "__main__":
