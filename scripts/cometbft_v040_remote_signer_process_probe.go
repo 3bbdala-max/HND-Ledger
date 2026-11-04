@@ -355,7 +355,7 @@ func runMissingSignerRecoveryStateProbe() {
 	if err := os.Remove(filepath.Join(root, "initial_state.json")); err != nil { fail("remove disposable signer state: %v", err) }
 	executable, err := os.Executable()
 	if err != nil { fail("resolve signer probe executable: %v", err) }
-	child := exec.Command(executable, "--serve-recovery", filepath.Join(root, "unused.sock"), keyPath, statePath, "hnd-missing-state-probe")
+	child := exec.Command(executable, "--serve-recovery", filepath.Join(root, "unused.sock"), keyPath, statePath, "hnd-missing-state-probe", "expected-digest-placeholder")
 	output, runErr := child.CombinedOutput()
 	if runErr == nil { fail("recovery signer unexpectedly initialized a missing anti-double-sign state file") }
 	if !bytes.Contains(output, []byte("recovery mode requires existing anti-double-sign state file")) {
