@@ -115,17 +115,28 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.assertTrue(all(not thread.is_alive() for thread in threads))
         self.assertCountEqual(outcomes, ["ok", "stale"])
 
-    def test_duplicate_operation_is_idempotent_and_conflict_rejected(self):
+    def test_prepare_retry_is_idempotent_before_and_after_commit(self):
         first = self.model.prepare(operation_id="same", host_id="synthetic-host-1",
                                    state=self.state, height=7)
-        again = self.anchor.compare_and_swap(0, first)
-        self.assertEqual(first, again)
-        conflicting = self.model.prepare
-        with self.assertRaises(ReferenceModelError):
-            self.anchor.compare_and_swap(0, type(first)(
-                **{**first.unsigned(), "state_digest": "f" * 64},
-                mac=first.mac,
-            ))
+        retried = self.model.prepare(operation_id="same", host_id="synthetic-host-1",
+                                     state=self.state, height=7)
+        self.assertEqual(first, retried)
+        committed = self.model.commit("same")
+        retried_after_commit = self.model.prepare(
+            operation_id="same", host_id="synthetic-host-1",
+            state=self.state, height=7,
+        )
+        self.assertEqual(committed, retried_after_commit)
+        self.assertEqual(retried_after_commit.status, "COMMITTED")
+
+    def test_prepare_rejects_operation_id_reuse_with_conflicting_payload(self):
+        self.model.prepare(operation_id="same", host_id="synthetic-host-1",
+                           state=self.state, height=7)
+        with self.assertRaisesRegex(ReferenceModelError, "conflicting prepare payload"):
+            self.model.prepare(
+                operation_id="same", host_id="synthetic-host-1",
+                state={"height": 7, "app_hash": "different"}, height=7,
+            )
 
     def test_stale_predecessor_is_rejected(self):
         committed = self.prepare_commit()
