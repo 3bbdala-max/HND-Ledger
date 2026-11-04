@@ -322,12 +322,36 @@ func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string, r
 	}
 }
 
+func runMissingSignerRecoveryStateProbe() {
+	root, err := os.MkdirTemp("", "hnd-missing-signer-recovery-state-")
+	if err != nil { fail("create missing-state probe directory: %v", err) }
+	defer os.RemoveAll(root)
+	keyPath := filepath.Join(root, "validator_key.json")
+	statePath := filepath.Join(root, "missing_state.json")
+	pv := privval.GenFilePV(keyPath, filepath.Join(root, "initial_state.json"))
+	pv.Save()
+	if err := os.Remove(filepath.Join(root, "initial_state.json")); err != nil { fail("remove disposable signer state: %v", err) }
+	executable, err := os.Executable()
+	if err != nil { fail("resolve signer probe executable: %v", err) }
+	child := exec.Command(executable, "--serve-recovery", filepath.Join(root, "unused.sock"), keyPath, statePath, "hnd-missing-state-probe")
+	output, runErr := child.CombinedOutput()
+	if runErr == nil { fail("recovery signer unexpectedly initialized a missing anti-double-sign state file") }
+	if !bytes.Contains(output, []byte("recovery mode requires existing anti-double-sign state file")) {
+		fail("missing-state recovery rejected for an unexpected reason: %s", output)
+	}
+	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_MISSING_STATE_REJECTED")
+}
+
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "--serve" || os.Args[1] == "--serve-recovery") {
 		if len(os.Args) != 6 {
 			fail("usage: --serve|--serve-recovery <socket> <key-file> <state-file> <chain-id>")
 		}
 		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[1] == "--serve-recovery")
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--missing-state-recovery-probe" {
+		runMissingSignerRecoveryStateProbe()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--remote-anti-double-sign-probe" {
