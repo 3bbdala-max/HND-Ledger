@@ -435,5 +435,24 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         )
 
 
+    def test_c10_previous_committed_record_is_not_a_restore_authorization_during_pending_prepare(self):
+        previous = self.prepare_commit()
+        pending = self.model.prepare(
+            operation_id="pending-after-committed",
+            host_id="synthetic-host-1",
+            state={"height": 8, "app_hash": "pending-state"},
+            height=8,
+        )
+
+        self.assertEqual(self.anchor.read(), pending)
+        self.assertEqual(self.anchor.read_last_committed(), previous)
+        self.assertFalse(self.model.signing_allowed("synthetic-host-1"))
+        with self.assertRaisesRegex(
+            ReferenceModelError, "restore target is not the anchored committed generation"
+        ):
+            self.model.restore(previous.generation_id, dual_control=True)
+        self.assertEqual(self.anchor.read_last_committed(), previous)
+
+
 if __name__ == "__main__":
     unittest.main()
