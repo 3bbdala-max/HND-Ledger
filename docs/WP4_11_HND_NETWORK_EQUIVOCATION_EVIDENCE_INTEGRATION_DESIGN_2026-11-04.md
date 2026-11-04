@@ -3,7 +3,7 @@
 **Date:** 2026-11-04  
 **Workstream:** WP4.11 — actual P2P equivocation injection and HND evidence convergence  
 **Pinned upstream:** CometBFT v0.40.0  
-**Status:** Design gate; HND-specific P2P-to-ABCI evidence injection is not yet implemented or passed  
+**Status:** Implemented and passed in disposable CI integration; see Section 10  
 **Branch:** `phase-0.2-planning`
 
 ## 1. Verified baseline
@@ -121,3 +121,15 @@ The repository inspection confirms the HND server exposes the exact lifecycle ne
 The integration job must verify the CometBFT source tag is exactly `v0.40.0` before adding the temporary same-package test file. It must fail closed if the expected upstream test function or source anchors are absent. The temporary test source must be removed by a shell trap even on failure. The four HND servers, validator keys, node homes, and state files remain under a temporary directory; only loopback listeners are permitted.
 
 **Current status:** the HND server bootstrap and query surfaces are confirmed in repository source. This section specifies the implementation contract; it is not evidence that the integration test has been implemented or passed.
+
+
+## 10. HND P2P-to-ABCI integration implemented and passed
+
+- Full GitHub Actions workflow [41840460178](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41840460178) completed with **success** on commit `7864986c27f1b6bf0daaa2d13d03365988e9e52d`; both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs passed.
+- The dedicated step, `Run HND four-replica P2P equivocation evidence integration`, completed successfully against the pinned CometBFT v0.40.0 source.
+- The job log records the faulty validator's two conflicting signed prevotes being sent through the real P2P VoteChannel; CometBFT reports the conflict, verifies duplicate-vote evidence, and commits the evidence-bearing block.
+- The HND integration emitted the required marker `HND_WP4_11_P2P_EVIDENCE_REPLICAS_OK` with: `replicas=4`, `evidence_count=1`, `evidence_height=2`, `commit_height=3`, `balances_unchanged=true`, and `restart_verified=true`.
+- The result reported the shared 32-byte application hash `bafc894edeb3fd89fb2bf79b7953368787504d39add4e3e6fa3e7abe5e5cf661`. The script's acceptance checks also require identical canonical evidence journal bytes, evidence IDs, heights, and app hashes across all four replicas, followed by durable restart verification of replica 0.
+- This closes the WP4.11 **test gate for the implemented disposable integration**: actual P2P equivocation traverses CometBFT's evidence path and its ABCI misbehavior summary reaches the four live HND applications.
+- **Scope limitations remain:** the test uses disposable local identities and loopback services; it is not a proof of arbitrary Byzantine fault tolerance, production key custody, production network security, or independent cryptographic verification by HND of the original signed vote pair. HND records the CometBFT-supplied ABCI misbehavior summary. The evidence journal is audit-only; no slashing or balance changes occur.
+- All changes remain on `phase-0.2-planning`; `main` is unchanged. Independent security review, production key custody/operations, governance, and jurisdiction-specific legal review remain open. Public release and real-value activity remain blocked by G2–G4.
