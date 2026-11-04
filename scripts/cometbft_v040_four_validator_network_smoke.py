@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_v02.genesis import genesis_manifest_hash
-from hnd_v02.recovery_controls import assert_replica_convergence
+from hnd_v02.recovery_controls import assert_replica_convergence, wait_for_recovery_readiness
 from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, canonical_json, create_signed_transaction, public_key_b64
 from scripts.hnd_peer_relay import DirectedTCPRelay
 
@@ -367,7 +367,12 @@ def main():
                 raise AssertionError("validator 4 HND state file changed or disappeared while stopped")
             al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(state4),"--recovery","--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
             host,port=eps[3]["abci"].split(":")
-            wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[3].poll() is None else False,"restarted ABCI app",30)
+            wait_for_recovery_readiness(
+                apps[3],
+                lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None,
+                timeout_seconds=30,
+                poll_interval=.3,
+            )
             # The restarted ABCI app exposes gRPC, not CometBFT's HTTP RPC.
             # Confirm the durable file survived app startup, then restart the
             # node so /abci_info and /abci_query become available again.
