@@ -3,7 +3,7 @@
 **Date:** 2026-11-04  
 **Workstream:** WP4.12 — application-state convergence and divergence detection  
 **Branch:** `phase-0.2-planning`  
-**Status:** Initial deterministic application-layer regression added; CI validation pending
+**Status:** Four-replica state/hash consistency regression and full CI workflow passed — 2026-11-04
 
 ## 1. Objective
 
@@ -37,3 +37,13 @@ The new `tests/test_v02_four_replica_state_convergence.py` test:
 - The test runs in the isolated HND v0.2 CI test job.
 
 No production release, real-value activity, or automatic economic penalty is authorized by this workstream.
+
+
+## 5. CI result — passed 2026-11-04
+
+- Full GitHub Actions workflow [41843665525](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41843665525) completed with **success** on commit `4c551b26886e967200c6a21669d3b00c72e398e9` on `phase-0.2-planning`.
+- Both jobs passed: `hnd-v02-tests` and `cometbft-single-node-smoke`.
+- The isolated HND test job passed, including the four-replica convergence/divergence regression; the recorded test suite reported 139 isolated Python tests with no failures.
+- The CometBFT integration job also completed all steps successfully, including the four-validator network, external signer outage/recovery, authenticated Noise-backed four-validator signer integration, and the WP4.11 P2P evidence integration.
+- **WP4.12 acceptance gate: passed for the implemented application-layer regression and this CI run.** This does not make the negative-control fork a network consensus test, nor does it prove arbitrary Byzantine safety/liveness, full CometBFT process restart/catch-up, production persistence, or production readiness.
+- Next gate: explicitly test full CometBFT node-process restart and catch-up from durable HND ABCI state, then broaden fault injection. Production key custody, independent security review, governance, and jurisdiction-specific legal review remain open. No public release or real-value activity is authorized.
