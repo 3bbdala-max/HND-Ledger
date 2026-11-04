@@ -46,11 +46,13 @@ No vendor or algorithm is selected by this plan. Selection requires independent 
 4. Approve role separation, dual control, recovery quorum, backup retention, RTO/RPO and incident authority.
 5. Record explicit approval before any production adapter or key-generation procedure is implemented.
 
-**Exit condition:** signed architecture decision record and threat-model review. Until then, no production custody implementation.
+**Exit condition:** signed architecture decision record and threat-model review. Until then, no production custody implementation. The offline synthetic model described in Stage B may be used as a bounded planning/test artifact while this review is pending; it does not constitute Stage A approval.
 
 ### Stage B — deterministic local reference model
 
-Implement only a software reference model using synthetic keys and disposable state. It must have no network signing endpoint, cloud integration, HSM credentials, production key import/export, or access to real chain funds.
+A bounded offline synthetic reference model has been implemented on `phase-0.2-planning`, and its dedicated model test suite passed in CI. This records completion of that limited model activity only; it does not mean the full C01–C18 matrix has passed or that Stage A has exited.
+
+The model remains software-only: use synthetic keys and disposable state. It must have no network signing endpoint, cloud integration, HSM credentials, production key import/export, or access to real chain funds.
 
 Required properties:
 
@@ -126,4 +128,4 @@ This work item does not generate or store production keys, configure a live HSM/
 
 ## 9. Current disposition
 
-**WP4.14 remains design/review only.** The next legitimate action is independent review and approval of Stage A decisions. The project must not skip directly to production key creation or signer deployment. G2–G4 remain closed.
+**WP4.14 remains design/review only. Stage B's bounded synthetic reference model and its dedicated CI tests are complete; Stage A remains open pending independent security review.** The next legitimate action is independent review and approval of Stage A decisions. No Stage C adapter/provider integration, production key creation, or signer deployment may begin before the required approvals. G2–G4 remain closed.
