@@ -280,14 +280,19 @@ func runNodeParent() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_PROCESS_PROBE_OK")
 }
 
-func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string) {
+func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string, requireExistingState bool) {
 	if _, err := os.Stat(keyPath); err != nil {
 		fail("signer key file unavailable: %v", err)
 	}
 	if _, err := os.Stat(statePath); os.IsNotExist(err) {
-		// Initialize a signer-owned last-sign state exactly once before service startup.
+		if requireExistingState {
+			fail("recovery mode requires existing anti-double-sign state file")
+		}
+		// First boot only: initialize signer-owned last-sign state.
 		pv := privval.LoadFilePVEmptyState(keyPath, statePath)
 		pv.Save()
+	} else if err != nil {
+		fail("inspect anti-double-sign state file: %v", err)
 	}
 	pv := privval.LoadFilePV(keyPath, statePath)
 	logger := log.NewNopLogger()
@@ -318,11 +323,11 @@ func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string) {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--serve" {
+	if len(os.Args) > 1 && (os.Args[1] == "--serve" || os.Args[1] == "--serve-recovery") {
 		if len(os.Args) != 6 {
-			fail("usage: --serve <socket> <key-file> <state-file> <chain-id>")
+			fail("usage: --serve|--serve-recovery <socket> <key-file> <state-file> <chain-id>")
 		}
-		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
+		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[1] == "--serve-recovery")
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--remote-anti-double-sign-probe" {
