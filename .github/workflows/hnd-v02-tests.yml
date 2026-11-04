@@ -108,6 +108,7 @@ jobs:
           cd "$RUNNER_TEMP/cometbft-src"
           go build -o "$RUNNER_TEMP/hnd-noise-remote-signer" "$GITHUB_WORKSPACE/scripts/cometbft_v040_noise_remote_signer_helper.go"
       - name: Reject missing Noise anti-double-sign state in recovery mode
-        run: "$RUNNER_TEMP/hnd-noise-remote-signer" --missing-state-recovery-probe
+        run: |
+          "$RUNNER_TEMP/hnd-noise-remote-signer" --missing-state-recovery-probe
       - name: Run four-validator authenticated Noise remote-signer integration and recovery
         run: python scripts/cometbft_v040_four_validator_network_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src" --noise-remote-signer-binary "$RUNNER_TEMP/hnd-noise-remote-signer"
