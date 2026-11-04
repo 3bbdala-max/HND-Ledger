@@ -4,7 +4,7 @@
 **Workstream:** WP4.13 — crash/restart durability and replay verification  
 **Branch:** `phase-0.2-planning`  
 **Pinned consensus engine:** CometBFT v0.40.0  
-**Status:** Design gate; implementation and CI validation pending  
+**Status:** Core restart/recovery integration and CI passed; complete negative-control matrix remains open  
 **Safety boundary:** Disposable loopback-only four-validator testnet; temporary keys and state only
 
 ## 1. Objective
@@ -77,3 +77,21 @@ Record the workflow URL, tested commit SHA, observed heights/hashes, and result 
 
 ---
 This document defines the WP4.13 test gate only. Passing it will not certify production readiness.
+
+
+## 7. Implementation and CI results — 2026-11-04
+
+The core restart/recovery implementation is now exercised by the pinned CometBFT v0.40.0 workflow.
+
+- Full workflow [41858224733](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41858224733) completed successfully on commit `efa81f43238cc060542c1fd1375f707adee6fc06`. Both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs completed with success.
+- The HND isolated test suite reported **143 tests, all passing**.
+- The four-validator harness recorded pre-stop CometBFT/HND state, the durable state-file SHA-256, confirmed actual ABCI and CometBFT process exit, restarted the HND app from the same state file, restarted CometBFT with the original node home and identities, and verified normal catch-up and four-replica convergence. Explicit markers were observed in the earlier complete recovery run [41852320612](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41852320612): `HND_WP4_13_PRE_RESTART_EVIDENCE`, `HND_WP4_13_PROCESSES_STOPPED`, `HND_WP4_13_DURABLE_ABCI_RECOVERY_OK`, and `HND_WP4_13_COMETBFT_NODE_RESTART_CATCHUP_OK`.
+- The latest full workflow additionally passed the four-validator private network regression, external Unix remote-signer outage/recovery, authenticated Noise remote-signer outage/recovery, and the two missing anti-double-sign-state negative probes. The Unix probe emitted `COMETBFT_V040_REMOTE_SIGNER_MISSING_STATE_REJECTED`; the Noise missing-state probe step completed successfully.
+- The HND persistence tests include rejection of truncated persisted state and state files whose network ID or Genesis hash does not match, alongside the existing store-integrity and restart checks.
+- The 3/1 and 2/2 partition/reconnection tests completed successfully in the latest run.
+
+### Acceptance boundary
+
+**Core WP4.13 restart/recovery integration: passed for the scenarios exercised above.** Do not interpret this as closure of every negative control in Section 4. Additional explicit coverage remains required for alternate/replaced signer-state files, validator-identity mismatch on restart, bounded recovery-timeout behavior, and deliberately induced post-recovery application divergence as distinct WP4.13 negative cases. Existing unauthorized Noise peer rejection, vote-withholding, and WP4.12 state-divergence tests are related evidence, but are not substitutes for all of those exact recovery-specific cases.
+
+The result remains a loopback-only, disposable CI test. It does not prove power-loss durability, production backup/restore, snapshot state sync, production key custody, or general Byzantine safety/liveness. No production transport or public release is approved.
