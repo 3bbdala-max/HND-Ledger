@@ -79,15 +79,22 @@ func probeUnauthorized(addr,nodeKeyPath string) {
  raw,err:=net.DialTimeout("tcp",addr,2*time.Second); if err!=nil {die("dial validator Noise listener: %v",err)}
  ctx,cancel:=context.WithTimeout(context.Background(),4*time.Second)
  secured,handshakeErr:=transport.SecureOutbound(ctx,raw,expected); cancel()
- // On an authentication failure Noise may return a partially initialized
- // session together with an error. Closing that session can panic; close the
- // raw socket instead and treat the handshake error as the expected rejection.
- if handshakeErr==nil {
-  if secured!=nil { _=secured.Close() }
+ // The outbound handshake may complete before the listener applies its
+ // peer allowlist. Verify the server closes the connection after rejection.
+ if handshakeErr!=nil {
   _=raw.Close()
-  die("unauthorized peer was not rejected")
+  fmt.Println("HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED")
+  return
  }
- _=raw.Close()
+ if secured==nil { _=raw.Close(); die("Noise handshake returned no secured connection and no error") }
+ _=secured.SetReadDeadline(time.Now().Add(750*time.Millisecond))
+ buf:=make([]byte,1)
+ _,readErr:=secured.Read(buf)
+ _=secured.Close()
+ if readErr==nil { die("unauthorized peer received data from signer listener") }
+ if netErr,ok:=readErr.(net.Error); ok && netErr.Timeout() {
+  die("unauthorized peer connection remained open after allowlist handshake")
+ }
  fmt.Println("HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED")
 }
 
