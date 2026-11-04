@@ -412,3 +412,14 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - No slashing, burning, freezing, confiscation, or balance changes are implemented. Test keys and state are disposable and loopback-only.
 - Next engineering gate: multi-node deterministic state-hash consistency and broader fault-injection coverage, followed by production key-custody/operations design and independent security review. Governance and jurisdiction-specific legal review remain mandatory before any public release or real-value activity.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged. G2–G4 release gates remain closed.
+
+
+### WP4.12 — four-replica deterministic state/hash consistency passed — 2026-11-04
+
+- Added `tests/test_v02_four_replica_state_convergence.py` and wired it into the HND v0.2 CI job. Four independent HND application instances start from the same Genesis/manifest and independent durable state files; identical ordered transactions are applied and committed; FinalizeBlock hashes, Commit hashes, heights, account balances, total supply, and 32-byte Info app hashes are compared.
+- The test restarts one HND application process from its durable state and verifies restoration of the committed height and app hash.
+- A negative control commits different but individually valid same-height transactions on one replica versus the other three. The comparator must report `app_hash_mismatch`, despite equal heights; it must not label the replicas converged.
+- Full workflow [41843665525](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41843665525) completed with **success** on commit `4c551b26886e967200c6a21669d3b00c72e398e9`. Both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs passed. The isolated Python suite reported 139 tests without failures, and all CometBFT integration steps in the same workflow completed successfully.
+- **WP4.12 acceptance gate: passed for the specified application-layer consistency/divergence regression and this CI run.** The test does not itself run four CometBFT consensus processes or prove network consensus, Byzantine fault tolerance, automatic repair, or production durability.
+- Next gate: implement and verify full CometBFT node-process restart and catch-up from durable HND ABCI state, then broaden multi-node fault injection. Production key custody/operations, independent security review, governance, and jurisdiction-specific legal review remain open. G2–G4 release gates remain closed.
+- All changes remain on `phase-0.2-planning`; `main` remains unchanged.
