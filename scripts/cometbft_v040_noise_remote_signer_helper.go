@@ -4,7 +4,9 @@ package main
 
 import (
  "context"
+ "crypto/sha256"
  "encoding/base64"
+ "encoding/hex"
  "fmt"
  "net"
  "os"
@@ -25,6 +27,30 @@ import (
 )
 
 func die(f string, a ...any) { fmt.Fprintf(os.Stderr,"HND_NOISE_SIGNER_FAILED: "+f+"\n",a...); os.Exit(1) }
+
+func checkStateDigest(path, expected string) error {
+ if expected == "" { return fmt.Errorf("recovery mode requires expected anti-double-sign state SHA-256") }
+ data,err:=os.ReadFile(path); if err!=nil { return err }
+ sum:=sha256.Sum256(data)
+ if hex.EncodeToString(sum[:])!=expected { return fmt.Errorf("anti-double-sign state digest mismatch; refusing recovery") }
+ return nil
+}
+
+func probeStateDigestMismatch() {
+ root,err:=os.MkdirTemp("","hnd-noise-state-digest-mismatch-")
+ if err!=nil { die("create state digest probe directory: %v",err) }
+ defer os.RemoveAll(root)
+ expectedPath:=root+"/expected-state.json"
+ substitutePath:=root+"/substitute-state.json"
+ if err:=os.WriteFile(expectedPath,[]byte("{\\"height\\":\\"1\\",\\"round\\":\\"0\\",\\"step\\":1}"),0600); err!=nil { die("write expected state fixture: %v",err) }
+ if err:=os.WriteFile(substitutePath,[]byte("{\\"height\\":\\"0\\",\\"round\\":\\"0\\",\\"step\\":0}"),0600); err!=nil { die("write substitute state fixture: %v",err) }
+ expectedData,err:=os.ReadFile(expectedPath); if err!=nil { die("read expected state fixture: %v",err) }
+ sum:=sha256.Sum256(expectedData)
+ if err:=checkStateDigest(substitutePath,hex.EncodeToString(sum[:])); err==nil || !strings.Contains(err.Error(),"digest mismatch") {
+  die("substituted Noise signer state was not rejected by digest preflight: %v",err)
+ }
+ fmt.Println("COMETBFT_V040_NOISE_REMOTE_SIGNER_STATE_DIGEST_MISMATCH_REJECTED")
+}
 
 func loadSignerIdentity(path string) cmted.PrivKey {
  b,err:=os.ReadFile(path); if err!=nil { die("read signer transport identity: %v",err) }
@@ -82,6 +108,7 @@ func probeMissingRecoveryState() {
 
 func main(){
  if len(os.Args)==2 && os.Args[1]=="--missing-state-recovery-probe" { probeMissingRecoveryState(); return }
+ if len(os.Args)==2 && os.Args[1]=="--state-digest-mismatch-probe" { probeStateDigestMismatch(); return }
  if len(os.Args)==4 && os.Args[1]=="--probe-unauthorized" { probeUnauthorized(os.Args[2],os.Args[3]); return }
  if len(os.Args)==3 && os.Args[1]=="--generate-noise-identity" {
   key:=cmted.GenPrivKey()
@@ -89,7 +116,7 @@ func main(){
   id,err:=lp2p.IDFromPrivateKey(key); if err!=nil {die("derive peer ID: %v",err)}
   fmt.Println(id.String()); return
  }
- if len(os.Args)!=8 || (os.Args[1]!="--serve-noise" && os.Args[1]!="--serve-noise-recovery") {
+ if (os.Args[1]=="--serve-noise" && len(os.Args)!=8) || (os.Args[1]=="--serve-noise-recovery" && len(os.Args)!=9) || (os.Args[1]!="--serve-noise" && os.Args[1]!="--serve-noise-recovery") {
   die("usage: --generate-noise-identity <identity-file> | --serve-noise|--serve-noise-recovery <listen-addr> <node-key-file> <signer-identity-file> <validator-key-file> <validator-state-file> <chain-id>")
  }
  requireExistingState:=os.Args[1]=="--serve-noise-recovery"
@@ -98,6 +125,7 @@ func main(){
   info,statErr:=os.Stat(pvStatePath)
   if statErr!=nil { die("recovery mode requires existing anti-double-sign state file: %v",statErr) }
   if !info.Mode().IsRegular() { die("recovery mode requires a regular anti-double-sign state file") }
+  if err:=checkStateDigest(pvStatePath,os.Args[8]); err!=nil { die("%v",err) }
  }
  nodeKey,err:=p2p.LoadNodeKey(nodeKeyPath); if err!=nil {die("load node P2P identity: %v",err)}
  expectedNode,err:=lp2p.IDFromPrivateKey(nodeKey.PrivKey); if err!=nil {die("derive expected node peer ID: %v",err)}
