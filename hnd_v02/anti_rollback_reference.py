@@ -152,6 +152,23 @@ class OfflineAntiRollbackModel:
         if not isinstance(height, int) or isinstance(height, bool) or height < 0:
             raise ValueError("height must be a non-negative integer")
         current = self.anchor.read()
+        existing = self.anchor.operation(operation_id)
+        if existing is not None:
+            self._validate_identity(existing)
+            if (
+                existing.state_digest != _digest(state)
+                or existing.height != height
+                or existing.round != round
+                or existing.step != step
+            ):
+                raise ReferenceModelError("operation ID reused with conflicting prepare payload")
+            existing_state = self.generations.get(existing.generation_id)
+            if existing_state is None or _digest(existing_state) != existing.state_digest:
+                raise ReferenceModelError("existing operation generation missing or corrupted")
+            if existing.status not in ("PREPARED", "COMMITTED"):
+                raise ReferenceModelError("existing operation has invalid status")
+            self._prepared[operation_id] = existing
+            return existing
         expected = current.sequence if current else 0
         predecessor = _digest(current.unsigned()) if current else "0" * 64
         generation_id = "gen-" + _digest({"operation": operation_id, "state": state})[:24]
