@@ -260,6 +260,54 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
                         step=case["step"],
                     )
 
+    def test_hrs_allows_forward_step_round_and_height_transitions(self):
+        transitions = (
+            (7, 0, 1),
+            (7, 0, 2),
+            (7, 0, 3),
+            (7, 1, 1),
+            (8, 0, 1),
+        )
+        for index, (height, round_number, step) in enumerate(transitions):
+            record = self.model.prepare(
+                operation_id=f"hrs-forward-{index}",
+                host_id="synthetic-host-1",
+                state={"height": height, "transition": index},
+                height=height, round=round_number, step=step,
+            )
+            self.model.commit(record.operation_id)
+        final = self.anchor.read()
+        self.assertEqual((final.height, final.round, final.step), (8, 0, 1))
+
+    def test_hrs_rejects_height_round_step_regressions_and_duplicates(self):
+        invalid_transitions = (
+            (7, 99, 3),  # height regression
+            (8, 0, 3),   # round regression
+            (8, 1, 2),   # step regression
+            (8, 1, 3),   # duplicate HRS
+        )
+        for index, candidate in enumerate(invalid_transitions):
+            with self.subTest(candidate=candidate):
+                anchor = SyntheticAnchor()
+                model = OfflineAntiRollbackModel(
+                    anchor, network_id="synthetic-net",
+                    genesis_hash="a" * 64, validator_id="validator-fixture-1",
+                    signer_id="signer-fixture-1",
+                )
+                first = model.prepare(
+                    operation_id="hrs-base", host_id="synthetic-host-1",
+                    state={"height": 8}, height=8, round=1, step=3,
+                )
+                model.commit(first.operation_id)
+                height, round_number, step = candidate
+                with self.assertRaisesRegex(StaleTransition, "HRS must strictly advance"):
+                    model.prepare(
+                        operation_id=f"hrs-regression-{index}",
+                        host_id="synthetic-host-1",
+                        state={"height": height, "candidate": candidate},
+                        height=height, round=round_number, step=step,
+                    )
+
     def test_stale_model_cannot_commit_after_shared_fencing(self):
         second = OfflineAntiRollbackModel(
             self.anchor, network_id="synthetic-net", genesis_hash="a" * 64,
