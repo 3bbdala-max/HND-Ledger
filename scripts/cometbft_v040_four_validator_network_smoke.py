@@ -463,21 +463,46 @@ def main():
             expected_bob_partition=expected_bob_prepartition+77
             part_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(part_tx).decode()})["result"]
             if int(part_broadcast.get("code",0)): raise RuntimeError(f"3/1 partition CheckTx rejected: {part_broadcast}")
+            partition_probe={}
             def three_commit_isolated():
                 side=converged(urls[:3],baseheight31+1)
+                partition_probe["quorum"] = None if not side else [
+                    {"height":x["sync_info"]["latest_block_height"],"block_hash":x["sync_info"]["latest_block_hash"]}
+                    for x in side
+                ]
                 if not side: return None
                 isolated=rpc_status(urls[3])
-                if int(isolated["sync_info"]["latest_block_height"]) != baseheight31: return None
-                if isolated["sync_info"]["latest_block_hash"] != baseblock31: return None
-                if account(urls[3],aid)["balance"] != basealice31: return None
-                if app_hash(urls[3]) != baseapp31[3]: return None
-                if any(account(u,aid)["balance"] != expected_alice_partition for u in urls[:3]): return None
-                if any(account(u,bid)["balance"] != expected_bob_partition for u in urls[:3]): return None
+                isolated_height=int(isolated["sync_info"]["latest_block_height"])
+                isolated_hash=isolated["sync_info"]["latest_block_hash"]
+                isolated_alice=account(urls[3],aid)["balance"]
+                isolated_app_hash=app_hash(urls[3])
+                quorum_alice=[account(u,aid)["balance"] for u in urls[:3]]
+                quorum_bob=[account(u,bid)["balance"] for u in urls[:3]]
+                partition_probe.update({
+                    "baseline_height":baseheight31,
+                    "baseline_isolated_block_hash":baseblock31,
+                    "baseline_isolated_app_hash":baseapp31[3],
+                    "baseline_isolated_alice":basealice31,
+                    "isolated_height":isolated_height,
+                    "isolated_block_hash":isolated_hash,
+                    "isolated_app_hash":isolated_app_hash,
+                    "isolated_alice":isolated_alice,
+                    "quorum_alice":quorum_alice,
+                    "quorum_bob":quorum_bob,
+                    "expected_quorum_alice":expected_alice_partition,
+                    "expected_quorum_bob":expected_bob_partition,
+                })
+                if isolated_height != baseheight31: return None
+                if isolated_hash != baseblock31: return None
+                if isolated_alice != basealice31: return None
+                if isolated_app_hash != baseapp31[3]: return None
+                if any(x != expected_alice_partition for x in quorum_alice): return None
+                if any(x != expected_bob_partition for x in quorum_bob): return None
                 return side
             try:
                 side31=wait(three_commit_isolated,"3/1 quorum commit with isolated validator stalled",150)
             except Exception as exc:
-                diagnostics={"error":repr(exc),"validators":[],"processes":[]}
+                diagnostics={"error":repr(exc),"partition_probe":partition_probe,"validators":[],"processes":[]}
                 for index,url in enumerate(urls):
                     item={"validator":index+1}
                     try:
