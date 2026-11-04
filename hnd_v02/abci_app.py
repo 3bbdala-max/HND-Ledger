@@ -92,11 +92,16 @@ class HNDABCIApplication:
         manifest: dict[str, Any],
         expected_genesis_hash: str,
         state_path: str | os.PathLike[str],
+        require_existing_state: bool = False,
     ) -> None:
         self.config = config
         self.manifest = _json_copy(manifest)
         self.expected_genesis_hash = expected_genesis_hash
         self.state_path = Path(state_path)
+        if type(require_existing_state) is not bool:
+            raise TypeError("require_existing_state must be a bool")
+        if require_existing_state and not self.state_path.is_file():
+            raise ABCIApplicationError("recovery mode requires an existing application state file")
         if not self.state_path.parent.exists() or not self.state_path.parent.is_dir():
             raise FileNotFoundError("application state directory must already exist")
 
