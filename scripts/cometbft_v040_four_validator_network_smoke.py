@@ -1,6 +1,6 @@
 """Disposable four-validator CometBFT v0.40.0 integration smoke test."""
 from __future__ import annotations
-import argparse, base64, json, os, re, shutil, socket, subprocess, sys, tempfile, time
+import argparse, base64, hashlib, json, os, re, shutil, socket, subprocess, sys, tempfile, time
 import urllib.parse, urllib.request
 from pathlib import Path
 
@@ -42,7 +42,20 @@ def stop(p):
     if p and p.poll() is None:
         p.terminate()
         try: p.wait(timeout=10)
-        except subprocess.TimeoutExpired: p.kill(); p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill(); p.wait(timeout=5)
+    if p and p.poll() is None:
+        raise RuntimeError("process did not exit after terminate/kill sequence")
+
+def sha256_file(path):
+    digest=hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024*1024),b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def abci_info(url):
+    return http(url,"/abci_info")["result"]["response"]
 
 def wait(predicate, label, timeout=120):
     end, last = time.monotonic()+timeout, None
@@ -238,19 +251,60 @@ def main():
                 print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","transport":"noise" if noise_mode else "unix","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
             expected_alice_prepartition = ALICE-TRANSFER-(77 if signer_binary else 0)
             expected_bob_prepartition = SUPPLY-ALICE+TRANSFER+(77 if signer_binary else 0)
+            # WP4.13: capture validator-4 state before any process is stopped.
+            state4=root/"state4.json"
+            state_paths=[root/f"state{i+1}.json" for i in range(N)]
+            if len({str(p.resolve()) for p in state_paths}) != N:
+                raise AssertionError("replicas do not have unique durable HND state paths")
+            if not state4.is_file():
+                raise AssertionError("validator 4 durable HND state file is missing before restart")
+            pre_node=rpc_status(urls[3])
+            pre_info=abci_info(urls[3])
+            pre_alice=account(urls[3],aid)["balance"]
+            pre_bob=account(urls[3],bid)["balance"]
+            pre_state_digest=sha256_file(state4)
+            pre_height=int(pre_node["sync_info"]["latest_block_height"])
+            pre_block_hash=pre_node["sync_info"]["latest_block_hash"]
+            pre_node_app_hash=pre_node["sync_info"]["latest_app_hash"]
+            pre_hnd_height=int(pre_info["last_block_height"])
+            pre_hnd_app_hash=pre_info["last_block_app_hash"]
+            if pre_alice+pre_bob != SUPPLY:
+                raise AssertionError("pre-restart account balances do not equal total supply")
+            if int(pre_info["last_block_height"]) != pre_height:
+                raise AssertionError("CometBFT and HND committed heights differ before restart")
+            print(json.dumps({"result":"HND_WP4_13_PRE_RESTART_EVIDENCE","validator":4,"height":pre_height,"block_hash":pre_block_hash,"node_app_hash":pre_node_app_hash,"hnd_height":pre_hnd_height,"hnd_app_hash":pre_hnd_app_hash,"alice_balance":pre_alice,"bob_balance":pre_bob,"total_supply":pre_alice+pre_bob,"state_file_sha256":pre_state_digest,"state_file_unique":True},sort_keys=True),flush=True)
             # Stop the external signer before restarting its node-side listener.
             # The pinned SignerDialerEndpoint is a startup connection, not a
             # reconnecting supervisor; restart it after the validator listener returns.
             if signer_binary:
                 stop(signer); signer=None
-            # Stop one node and its app; 3/4 voting power remains.
-            stop(nodes[3]); nodes[3]=None; stop(apps[3]); apps[3]=None
+            # Stop one node and its app; 3/4 voting power remains. stop() waits
+            # for confirmed process exit and fails closed if the process survives.
+            stop(nodes[3]); nodes[3]=None
+            stop(apps[3]); apps[3]=None
+            print(json.dumps({"result":"HND_WP4_13_PROCESSES_STOPPED","node_exit_confirmed":True,"abci_exit_confirmed":True},sort_keys=True),flush=True)
             s3=wait(lambda:converged(urls[:3],txheight+1),"three validators commit after one stops")
             qheight=int(s3[0]["sync_info"]["latest_block_height"])
-            # Restart the lagging app from its own state, then the CometBFT node.
-            al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(root/"state4.json"),"--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
+            # Restart the lagging app from its exact original durable state path.
+            if not state4.is_file() or sha256_file(state4) != pre_state_digest:
+                raise AssertionError("validator 4 HND state file changed or disappeared while stopped")
+            al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(state4),"--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
             host,port=eps[3]["abci"].split(":")
             wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[3].poll() is None else False,"restarted ABCI app",30)
+            # Verify durable HND recovery before CometBFT itself is restarted.
+            restored_info=abci_info(urls[3])
+            restored_alice=account(urls[3],aid)["balance"]
+            restored_bob=account(urls[3],bid)["balance"]
+            restored_digest=sha256_file(state4)
+            if int(restored_info["last_block_height"]) != pre_hnd_height:
+                raise AssertionError("restarted HND app did not restore its pre-stop committed height")
+            if restored_info["last_block_app_hash"] != pre_hnd_app_hash:
+                raise AssertionError("restarted HND app hash differs from pre-stop committed app hash")
+            if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
+                raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
+            if restored_digest != pre_state_digest:
+                raise AssertionError("HND durable state file digest changed across clean app restart")
+            print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged":True,"balances_unchanged":True,"verified_before_cometbft_restart":True},sort_keys=True),flush=True)
             if signer_binary:
                 # A stopped Unix listener can leave its pathname behind.
                 # Remove only this disposable test socket before rebinding.
@@ -279,7 +333,12 @@ def main():
                 wait(restarted_signer_connected,"new remote signer process connected to restarted validator",30)
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
-            if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
+            final_bob=[account(u,bid)["balance"] for u in urls]
+            final_info=abci_info(urls[3])
+            if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or any(x!=expected_bob_prepartition for x in final_bob) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
+            if int(final_info["last_block_height"]) != int(sfinal[3]["sync_info"]["latest_block_height"]):
+                raise AssertionError("post-catch-up CometBFT and HND heights differ")
+            print(json.dumps({"result":"HND_WP4_13_COMETBFT_NODE_RESTART_CATCHUP_OK","pre_stop_height":pre_height,"quorum_height_while_stopped":qheight,"recovered_height":int(sfinal[3]["sync_info"]["latest_block_height"]),"recovered_block_hash":sfinal[3]["sync_info"]["latest_block_hash"],"recovered_app_hash":final_info["last_block_app_hash"],"all_four_app_hashes_equal":len(set(final_apphash))==1,"all_four_balances_and_supply_equal":True,"original_node_home_and_identity_reused":True},sort_keys=True),flush=True)
             # WP4.7-A: isolate validator 4 while all four node/app processes remain alive.
             partition_groups_31=[[0,1,2],[3]]
             set_partition(relays,partition_groups_31)
