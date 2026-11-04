@@ -310,3 +310,12 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Scope distinction:** this is a pinned upstream CometBFT regression demonstrating that CometBFT's own consensus/evidence test detects the deliberately equivocal validator and validates duplicate-vote evidence in its test network. It is not yet an HND-specific malicious-peer injection test or an end-to-end HND application evidence/penalty policy test. Those remain separate work.
 - The workflow repair itself was necessary after a malformed YAML edit caused earlier runs to start zero jobs; the repaired workflow is now confirmed green.
 - All work remains on `phase-0.2-planning`; `main` is unchanged. No production keys, public network, or real-value activity were used. Authenticated/encrypted remote transport, production key custody, independent security review, governance, and jurisdiction-specific legal review remain open. Public release remains blocked by G2–G4.
+
+### WP4.9 — remote-signer transport security source review recorded — 2026-11-04
+
+- Added `docs/WP4_9_COMETBFT_V040_REMOTE_SIGNER_TRANSPORT_SECURITY_REVIEW_2026-11-04.md` after reviewing the pinned CometBFT v0.40.0 Unix, TCP secret-connection, and Noise listener implementations.
+- Unix sockets are explicitly unencrypted in the pinned source; the listener contains a TODO for MAC authentication. Retain them for tightly isolated same-host tests, not as a general remote-host production transport.
+- TCP uses CometBFT SecretConnection for authenticated encryption, but secure deployment still depends on durable identity provisioning, pinning, rotation, and negative tests. Encryption alone does not establish that the peer is the intended signer.
+- The Noise listener performs an authenticated Noise handshake and enforces a signer peer-ID allowlist when configured. The source explicitly warns that an empty allowlist accepts any authenticated peer and must not be used in production.
+- **No production transport is approved.** Noise is the leading candidate for an HND-specific integration spike, conditional on a verified signer dialer lifecycle, stable peer identity, non-empty allowlist, unauthorized-peer rejection, restart/reconnect tests, and independent review.
+- Production key custody, HSM/KMS integration, durable backup/rollback protection, operational procedures, independent security review, governance, and legal review remain open. All work remains on `phase-0.2-planning`; `main` is unchanged.
