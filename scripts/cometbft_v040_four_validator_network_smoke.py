@@ -90,7 +90,7 @@ def set_partition(relays, groups):
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary")
-    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or signer_binary; noise_mode=bool(a.noise_remote_signer_binary)
+    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or a.remote_signer_binary; noise_mode=bool(a.noise_remote_signer_binary)
     if not Path(binary).is_file() or not (source/"go.mod").is_file(): ap.error("missing pinned CometBFT binary/source")
     cfg=ProtocolConfig(network_id=CHAIN,protocol_version=2,max_amount=SUPPLY)
     ak,bk=Ed25519PrivateKey.generate(),Ed25519PrivateKey.generate()
@@ -148,13 +148,13 @@ def main():
             t=set_toml(t,"p2p","allow_duplicate_ip","true")
             if i==3 and signer_binary:
                 if noise_mode:
-                identity_path=root/"signer4"/"noise_identity.key"
-                noise_addr=f"127.0.0.1:{BASE+12}"
-                signer_peer_id=cmd([str(Path(signer_binary).resolve()),"--generate-noise-identity",str(identity_path)])
-                signer_addr=f"noise://{signer_peer_id}@{noise_addr}"
-                t=set_toml(t,None,"priv_validator_laddr",json.dumps(signer_addr))
-            else:
-                t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_socket)))
+                    identity_path=root/"signer4"/"noise_identity.key"
+                    noise_addr=f"127.0.0.1:{BASE+12}"
+                    signer_peer_id=cmd([str(Path(signer_binary).resolve()),"--generate-noise-identity",str(identity_path)])
+                    signer_addr=f"noise://{signer_peer_id}@{noise_addr}"
+                    t=set_toml(t,None,"priv_validator_laddr",json.dumps(signer_addr))
+                else:
+                    t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_socket)))
             p.write_text(t)
         apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]; signer=None; signer_log=None
         try:
