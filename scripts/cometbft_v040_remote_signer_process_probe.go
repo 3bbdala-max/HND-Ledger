@@ -8,6 +8,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -280,7 +282,14 @@ func runNodeParent() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_PROCESS_PROBE_OK")
 }
 
-func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string, requireExistingState bool) {
+func fileSHA256(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil { return "", err }
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func runPersistentSigner(socketPath, keyPath, statePath, signerChainID, expectedStateDigest string, requireExistingState bool) {
 	if _, err := os.Stat(keyPath); err != nil {
 		fail("signer key file unavailable: %v", err)
 	}
@@ -296,6 +305,16 @@ func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string, r
 		fail("inspect anti-double-sign state file: %v", stateErr)
 	} else if !stateInfo.Mode().IsRegular() {
 		fail("anti-double-sign state path is not a regular file")
+	}
+	if requireExistingState {
+		if expectedStateDigest == "" {
+			fail("recovery mode requires expected anti-double-sign state SHA-256")
+		}
+		actualDigest, err := fileSHA256(statePath)
+		if err != nil { fail("hash anti-double-sign state file: %v", err) }
+		if actualDigest != expectedStateDigest {
+			fail("anti-double-sign state digest mismatch; refusing recovery")
+		}
 	}
 	pv := privval.LoadFilePV(keyPath, statePath)
 	logger := log.NewNopLogger()
@@ -345,12 +364,42 @@ func runMissingSignerRecoveryStateProbe() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_MISSING_STATE_REJECTED")
 }
 
+func runStateDigestMismatchProbe() {
+	root, err := os.MkdirTemp("", "hnd-signer-state-digest-mismatch-")
+	if err != nil { fail("create digest-mismatch probe directory: %v", err) }
+	defer os.RemoveAll(root)
+	keyA, stateA := filepath.Join(root, "key-a.json"), filepath.Join(root, "state-a.json")
+	keyB, stateB := filepath.Join(root, "key-b.json"), filepath.Join(root, "state-b.json")
+	privval.GenFilePV(keyA, stateA).Save()
+	privval.GenFilePV(keyB, stateB).Save()
+	expected, err := fileSHA256(stateA)
+	if err != nil { fail("hash expected signer state: %v", err) }
+	executable, err := os.Executable()
+	if err != nil { fail("resolve signer helper executable: %v", err) }
+	child := exec.Command(executable, "--serve-recovery", filepath.Join(root, "unused.sock"), keyB, stateB, chainID, expected)
+	output, runErr := child.CombinedOutput()
+	if runErr == nil { fail("recovery accepted substituted but parseable signer state") }
+	if !bytes.Contains(output, []byte("anti-double-sign state digest mismatch; refusing recovery")) {
+		fail("substituted signer state rejected for unexpected reason: %s", output)
+	}
+	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_STATE_DIGEST_MISMATCH_REJECTED")
+}
+
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "--serve" || os.Args[1] == "--serve-recovery") {
-		if len(os.Args) != 6 {
-			fail("usage: --serve|--serve-recovery <socket> <key-file> <state-file> <chain-id>")
+		expectedDigest := ""
+		if os.Args[1] == "--serve" && len(os.Args) != 6 {
+			fail("usage: --serve <socket> <key-file> <state-file> <chain-id>")
 		}
-		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[1] == "--serve-recovery")
+		if os.Args[1] == "--serve-recovery" && len(os.Args) != 7 {
+			fail("usage: --serve-recovery <socket> <key-file> <state-file> <chain-id> <expected-state-sha256>")
+		}
+		if os.Args[1] == "--serve-recovery" { expectedDigest = os.Args[6] }
+		runPersistentSigner(os.Args[2], os.Args[3], os.Args[4], os.Args[5], expectedDigest, os.Args[1] == "--serve-recovery")
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--state-digest-mismatch-probe" {
+		runStateDigestMismatchProbe()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--missing-state-recovery-probe" {
