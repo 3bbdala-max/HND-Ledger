@@ -194,3 +194,14 @@ Two dedicated tests were added:
 - test_c11_ambiguous_commit_retains_new_committed_record: confirms that a simulated lost reply after the in-memory commit can be reconciled by operation ID and that the committed pointer advances to the new record.
 
 These are in-memory state-machine tests only. They do not simulate filesystem write ordering, fsync, atomic rename, power loss, durable transaction logs, or a separately administered trust anchor. They do not establish C10/C11 production acceptance. The dedicated test module still requires explicit execution using the command in Section 13; the existing workflow does not run it.
+
+
+## 15. C10 restore-boundary clarification — 2026-11-05
+
+A further synthetic test, `test_c10_previous_committed_record_is_not_a_restore_authorization_during_pending_prepare`, records an important boundary in the current model. While a newer operation is PREPARED, `read_last_committed()` still exposes the preceding COMMITTED record for inspection, but `restore()` continues to consult the current anchor record and rejects restoring that earlier generation. Signing also remains disabled while the pending operation is unresolved.
+
+This is intentional fail-closed behavior for the present reference model. Retaining the prior record is **not** an abort, rollback, or recovery protocol. No operation currently resolves or safely abandons a PREPARED transaction after a crash or ambiguous outcome. Designing such a protocol requires explicit state-transition rules, durable atomicity, restart/reconciliation semantics, and independent review; it must not be inferred from the retained pointer.
+
+The dedicated anti-rollback test module now contains 31 test methods. All 31 remain committed but unverified by execution until the exact module is run using the command in Section 13 in an authorized Python 3.12 environment. The existing workflow's explicit test list still omits this module. No workflow file was changed.
+
+**Disposition:** C10/C11 remain synthetic-model work, not production acceptance. Stage A remains OPEN; Stage C/D and G2–G4 remain closed.
