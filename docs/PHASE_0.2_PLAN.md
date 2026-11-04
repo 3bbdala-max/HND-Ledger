@@ -423,3 +423,13 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **WP4.12 acceptance gate: passed for the specified application-layer consistency/divergence regression and this CI run.** The test does not itself run four CometBFT consensus processes or prove network consensus, Byzantine fault tolerance, automatic repair, or production durability.
 - Next gate: implement and verify full CometBFT node-process restart and catch-up from durable HND ABCI state, then broaden multi-node fault injection. Production key custody/operations, independent security review, governance, and jurisdiction-specific legal review remain open. G2–G4 release gates remain closed.
 - All changes remain on `phase-0.2-planning`; `main` remains unchanged.
+
+
+### WP4.13 — durable ABCI state and CometBFT node restart recovery design — 2026-11-04
+
+- Added `docs/WP4_13_DURABLE_ABCI_NODE_RESTART_RECOVERY_DESIGN_2026-11-04.md`.
+- This strengthens, rather than replaces, the existing passing four-validator restart/catch-up scenario. The new gate requires explicit pre-stop height/block/app-hash and account-state capture, durable HND state-file identity/digest, proof of actual process exit, exact HND state restoration before CometBFT restart, then normal CometBFT node restart using the original home/validator identity and block replay catch-up.
+- It also defines fail-closed negative controls for missing/truncated/alternate state files, mismatched Genesis/network identity, replaced signer state, timeout, and post-recovery divergence.
+- **Status: design only; implementation and CI validation pending.** Existing WP4.5/WP4.9 restart tests remain valid for their previously documented scope; WP4.13 adds stronger durability evidence and negative controls.
+- No production durability, power-loss recovery, snapshot state sync, production key custody, or Byzantine fault-tolerance claim is made. Public release and real-value activity remain blocked by G2–G4.
+- All work remains on `phase-0.2-planning`; `main` remains unchanged.
