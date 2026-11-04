@@ -9,6 +9,8 @@ import (
  "net"
  "os"
  "os/signal"
+  "os/exec"
+  "strings"
  "syscall"
  "time"
 
@@ -63,7 +65,23 @@ func probeUnauthorized(addr,nodeKeyPath string) {
  fmt.Println("HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED")
 }
 
+func probeMissingRecoveryState() {
+ root,err:=os.MkdirTemp("","hnd-noise-missing-state-")
+ if err!=nil { die("create missing-state probe directory: %v",err) }
+ defer os.RemoveAll(root)
+ executable,err:=os.Executable()
+ if err!=nil { die("resolve Noise helper executable: %v",err) }
+ child:=exec.Command(executable,"--serve-noise-recovery","127.0.0.1:1",root+"/missing-node-key.json",root+"/missing-identity.txt",root+"/missing-validator-key.json",root+"/missing-validator-state.json","hnd-noise-missing-state-probe")
+ output,runErr:=child.CombinedOutput()
+ if runErr==nil { die("Noise recovery unexpectedly accepted missing anti-double-sign state") }
+ if !strings.Contains(string(output),"recovery mode requires existing anti-double-sign state file") {
+  die("Noise recovery rejected missing state for an unexpected reason: %s",output)
+ }
+ fmt.Println("COMETBFT_V040_NOISE_REMOTE_SIGNER_MISSING_STATE_REJECTED")
+}
+
 func main(){
+ if len(os.Args)==2 && os.Args[1]=="--missing-state-recovery-probe" { probeMissingRecoveryState(); return }
  if len(os.Args)==4 && os.Args[1]=="--probe-unauthorized" { probeUnauthorized(os.Args[2],os.Args[3]); return }
  if len(os.Args)==3 && os.Args[1]=="--generate-noise-identity" {
   key:=cmted.GenPrivKey()
@@ -76,16 +94,16 @@ func main(){
  }
  requireExistingState:=os.Args[1]=="--serve-noise-recovery"
  listenAddr,nodeKeyPath,identityPath,pvKeyPath,pvStatePath,chainID:=os.Args[2],os.Args[3],os.Args[4],os.Args[5],os.Args[6],os.Args[7]
- nodeKey,err:=p2p.LoadNodeKey(nodeKeyPath); if err!=nil {die("load node P2P identity: %v",err)}
- expectedNode,err:=lp2p.IDFromPrivateKey(nodeKey.PrivKey); if err!=nil {die("derive expected node peer ID: %v",err)}
- signerKey:=loadSignerIdentity(identityPath)
- signerID,err:=lp2p.IDFromPrivateKey(signerKey); if err!=nil {die("derive signer peer ID: %v",err)}
- _ = signerID
  if requireExistingState {
   info,statErr:=os.Stat(pvStatePath)
   if statErr!=nil { die("recovery mode requires existing anti-double-sign state file: %v",statErr) }
   if !info.Mode().IsRegular() { die("recovery mode requires a regular anti-double-sign state file") }
  }
+ nodeKey,err:=p2p.LoadNodeKey(nodeKeyPath); if err!=nil {die("load node P2P identity: %v",err)}
+ expectedNode,err:=lp2p.IDFromPrivateKey(nodeKey.PrivKey); if err!=nil {die("derive expected node peer ID: %v",err)}
+ signerKey:=loadSignerIdentity(identityPath)
+ signerID,err:=lp2p.IDFromPrivateKey(signerKey); if err!=nil {die("derive signer peer ID: %v",err)}
+ _ = signerID
  pv:=privval.LoadFilePV(pvKeyPath,pvStatePath)
  dialer:=privval.NewSignerDialerEndpoint(log.NewNopLogger(),makeDialer(listenAddr,signerKey,expectedNode),privval.SignerDialerEndpointConnRetries(100),privval.SignerDialerEndpointRetryWaitInterval(50*time.Millisecond))
  server:=privval.NewSignerServer(dialer,chainID,types.PrivValidator(pv))
