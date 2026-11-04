@@ -374,7 +374,7 @@ func runStateDigestMismatchProbe() {
 	pvB := privval.GenFilePV(keyB, stateB)
 	pvB.Save()
 	substituteVote := (&cmttypes.Vote{
-		ValidatorAddress: cmttypes.Address(pvB.Key.PubKey().Address()),
+		ValidatorAddress: cmttypes.Address(pvB.Key.PubKey.Address()),
 		Height: 1, Round: 0, Type: cmtproto.PrevoteType,
 		Timestamp: cmttime.Now(), BlockID: blockID("substituted-state"),
 	}).ToProto()
