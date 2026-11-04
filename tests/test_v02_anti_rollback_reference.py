@@ -206,12 +206,13 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         fields = first.unsigned()
         fields.update(
             operation_id="wrong-first-sentinel",
+            sequence=first.sequence + 1,
             predecessor_digest="1" * 64,
         )
         bad = AnchorRecord(**fields, mac=_mac(fields))
         with self.assertRaisesRegex(StaleTransition, "predecessor digest"):
             empty_anchor.compare_and_swap(
-                0, bad, host_id="synthetic-host-1", host_epoch=1
+                first.sequence, bad, host_id="synthetic-host-1", host_epoch=1
             )
 
     def test_round_and_step_reject_negative_values_and_booleans(self):
