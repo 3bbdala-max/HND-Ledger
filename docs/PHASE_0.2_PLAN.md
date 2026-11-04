@@ -503,3 +503,12 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Adds architecture decisions and a verification matrix covering missing/corrupt state, manifest tampering, chain/validator mismatch, rollback, atomic-write crash points, dual control, provider outage, rotation, and split-brain restore.
 - Highlights the key limitation in the current test harness: a digest supplied by the same orchestrator is not an independent anti-rollback trust anchor.
 - **Status: planning artifact only. WP4.14 is not implementation-approved.** Independent security review and explicit architecture decisions are prerequisites. No production keys, credentials, HSM/KMS resources, or production signing are created. G2–G4 remain closed.
+
+### WP4.14 — independent anti-rollback trust-anchor ADR recorded — 2026-11-04
+
+- Added `docs/WP4_14_ADR_ANTI_ROLLBACK_TRUST_ANCHOR_2026-11-04.md`.
+- Establishes that a caller-supplied digest or same-host hash/manifest cannot serve as the production anti-rollback authority when the ordinary signer host is in the attacker model.
+- Defines the required independent monotonic anchor contract: authenticated canonical record binding chain/network/genesis, validator and signer identities, state schema, height/round/step, sequence, full-state digest, predecessor, and idempotent transaction ID.
+- Compares HSM monotonic counter, TPM NV counter, remote append-only witness, and multi-witness quorum without selecting a vendor. Explicitly notes that a counter alone does not prove atomic binding to the full state commitment.
+- Specifies PREPARED/COMMITTED transaction semantics, crash reconciliation, fail-closed restore, dual control, and synthetic verification vectors TA01–TA14.
+- **Status: proposed design requirement only. Independent security review and a synthetic reference model are still required.** No hardware, production keys, credentials, or production signing are used. G2–G4 remain closed.
