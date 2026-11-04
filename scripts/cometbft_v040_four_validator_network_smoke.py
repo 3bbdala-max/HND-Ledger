@@ -426,7 +426,13 @@ def main():
             if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
                 raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
             print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"pre_stop_height":pre_hnd_height,"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged_at_app_start":True,"balances_unchanged":True,"verified_after_rpc_restart":True},sort_keys=True),flush=True)
-            sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
+            def recovered_application_caught_up():
+                statuses=converged(urls,qheight)
+                if not statuses: return None
+                info=abci_info(urls[3])
+                if int(info["last_block_height"]) != int(statuses[3]["sync_info"]["latest_block_height"]): return None
+                return statuses
+            sfinal=wait(recovered_application_caught_up,"restarted validator consensus and HND application catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
             final_bob=[account(u,bid)["balance"] for u in urls]
             final_info=abci_info(urls[3])
