@@ -170,7 +170,7 @@ def main():
                 if i==3 and signer_binary:
                     signer_log=(root/"signer4.log").open("w")
                     signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
-                signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                    signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
             def converged(urls, minheight=1):
                 s=[rpc_status(u) for u in urls]; heights=[int(x["sync_info"]["latest_block_height"]) for x in s]; hashes=[x["sync_info"]["latest_block_hash"] for x in s]
                 return s if min(heights)>=minheight and len(set(heights))==1 and len(set(hashes))==1 else None
