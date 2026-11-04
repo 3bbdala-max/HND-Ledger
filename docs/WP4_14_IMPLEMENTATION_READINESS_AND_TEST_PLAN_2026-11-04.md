@@ -129,3 +129,16 @@ This work item does not generate or store production keys, configure a live HSM/
 ## 9. Current disposition
 
 **WP4.14 remains design/review only. Stage B's bounded synthetic reference model and its dedicated CI tests are complete; Stage A remains open pending independent security review.** The next legitimate action is independent review and approval of Stage A decisions. No Stage C adapter/provider integration, production key creation, or signer deployment may begin before the required approvals. G2–G4 remain closed.
+
+## 10. CI evidence update — 2026-11-05
+
+The GitHub Actions run [41918181895](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41918181895) completed with **success** for both jobs on the exact branch head `afd6d17fac73a266a0e7ade2521363efb9615dca`:
+
+- `hnd-v02-tests`: success.
+- `cometbft-single-node-smoke`: success, including the private four-validator network, external remote-signer outage/recovery, authenticated Noise remote-signer integration/recovery, and rejection of missing or substituted anti-double-sign state in the exercised recovery paths.
+
+This is evidence for the named CI scenarios on this commit only. The recovery helper's expected state digest is supplied by the test orchestrator; it is not an independent monotonic trust anchor. The test therefore does not satisfy C08/C09 as production-grade rollback protection, and does not establish crash-consistent storage, HSM guarantees, or independent custody assurance.
+
+Repository boundary check at this update: `phase-0.2-planning` points to `afd6d17fac73a266a0e7ade2521363efb9615dca`; `main` remains at `3f0a71e27924954f27813ec68e483ecf159461e5`. No merge or production action was performed.
+
+**Disposition unchanged:** Stage A remains OPEN pending a qualified independent review and signed decisions. Stage C/D and G2–G4 remain closed.
