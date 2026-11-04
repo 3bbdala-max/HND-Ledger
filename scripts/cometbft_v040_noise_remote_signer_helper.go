@@ -71,15 +71,21 @@ func main(){
   id,err:=lp2p.IDFromPrivateKey(key); if err!=nil {die("derive peer ID: %v",err)}
   fmt.Println(id.String()); return
  }
- if len(os.Args)!=8 || os.Args[1]!="--serve-noise" {
-  die("usage: --generate-noise-identity <identity-file> | --serve-noise <listen-addr> <node-key-file> <signer-identity-file> <validator-key-file> <validator-state-file> <chain-id>")
+ if len(os.Args)!=8 || (os.Args[1]!="--serve-noise" && os.Args[1]!="--serve-noise-recovery") {
+  die("usage: --generate-noise-identity <identity-file> | --serve-noise|--serve-noise-recovery <listen-addr> <node-key-file> <signer-identity-file> <validator-key-file> <validator-state-file> <chain-id>")
  }
+ requireExistingState:=os.Args[1]=="--serve-noise-recovery"
  listenAddr,nodeKeyPath,identityPath,pvKeyPath,pvStatePath,chainID:=os.Args[2],os.Args[3],os.Args[4],os.Args[5],os.Args[6],os.Args[7]
  nodeKey,err:=p2p.LoadNodeKey(nodeKeyPath); if err!=nil {die("load node P2P identity: %v",err)}
  expectedNode,err:=lp2p.IDFromPrivateKey(nodeKey.PrivKey); if err!=nil {die("derive expected node peer ID: %v",err)}
  signerKey:=loadSignerIdentity(identityPath)
  signerID,err:=lp2p.IDFromPrivateKey(signerKey); if err!=nil {die("derive signer peer ID: %v",err)}
- _=signerID
+ _ = signerID
+ if requireExistingState {
+  info,statErr:=os.Stat(pvStatePath)
+  if statErr!=nil { die("recovery mode requires existing anti-double-sign state file: %v",statErr) }
+  if !info.Mode().IsRegular() { die("recovery mode requires a regular anti-double-sign state file") }
+ }
  pv:=privval.LoadFilePV(pvKeyPath,pvStatePath)
  dialer:=privval.NewSignerDialerEndpoint(log.NewNopLogger(),makeDialer(listenAddr,signerKey,expectedNode),privval.SignerDialerEndpointConnRetries(100),privval.SignerDialerEndpointRetryWaitInterval(50*time.Millisecond))
  server:=privval.NewSignerServer(dialer,chainID,types.PrivValidator(pv))
