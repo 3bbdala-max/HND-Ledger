@@ -339,3 +339,13 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Next gate: integrate the Noise transport into a disposable validator signer in the four-validator harness, then test signer restart/reconnect, unauthorized identity rejection at the integrated boundary, validator catch-up, and failure behavior. Preserve explicit peer-ID allowlisting and disposable keys.
 - Production identity provisioning/rotation, HSM/KMS custody, rollback protection, operational controls, independent security review, governance, and jurisdiction-specific legal review remain open. Public release and real-value activity remain blocked by G2–G4.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged.
+
+
+### WP4.9 — Noise-backed four-validator integration design added — 2026-11-04
+
+- Added `docs/WP4_9_FOUR_VALIDATOR_NOISE_REMOTE_SIGNER_DESIGN_2026-11-04.md` after the standalone authenticated Noise probe passed in workflow [41791350660](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41791350660).
+- The design is grounded in the pinned v0.40.0 `privval/utils.go` and `privval/noise_listener.go`: the node-side Noise listener uses the CometBFT P2P `node_key.json` identity and allowlists the signer peer ID encoded in `noise://<signer-peer-id>@IP:port`; the remote signer separately pins the expected node peer ID for its outbound Noise handshake.
+- The validator consensus FilePV key/state remains signer-owned and distinct from both the node P2P identity and the signer's transport identity. The signer transport identity must remain stable across process restart.
+- The design specifies authorized and unauthorized signer tests, signer outage/restart, validator restart/catch-up, 3/1 and 2/2 partition/reconnection, fresh connection markers, and fail-closed checks.
+- **Status: design only. Noise has not yet been integrated into the four-validator harness.** Implementation and full CI evidence are the next gate; no production transport is approved.
+- All work remains on `phase-0.2-planning`; `main` is unchanged. Production identity provisioning/rotation, HSM/KMS custody, rollback protection, independent security review, governance, and jurisdiction-specific legal review remain open. Public release remains blocked by G2–G4.
