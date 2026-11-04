@@ -1,7 +1,7 @@
 """Four independent HND ABCI replicas: deterministic evidence handoff contract.
 
-This is an ABCI fan-out test only. It deliberately does NOT claim to inject
-equivocating votes through CometBFT P2P; that remains WP4.11's separate gate.
+This test covers direct ABCI fan-out and durable application restart. The
+separate WP4.11 integration covers real CometBFT P2P equivocation delivery.
 """
 import json
 import tempfile
