@@ -42,8 +42,8 @@ func probeStateDigestMismatch() {
  defer os.RemoveAll(root)
  expectedPath:=root+"/expected-state.json"
  substitutePath:=root+"/substitute-state.json"
- if err:=os.WriteFile(expectedPath,[]byte("{\\"height\\":\\"1\\",\\"round\\":\\"0\\",\\"step\\":1}"),0600); err!=nil { die("write expected state fixture: %v",err) }
- if err:=os.WriteFile(substitutePath,[]byte("{\\"height\\":\\"0\\",\\"round\\":\\"0\\",\\"step\\":0}"),0600); err!=nil { die("write substitute state fixture: %v",err) }
+ if err:=os.WriteFile(expectedPath,[]byte(`{"height":"1","round":"0","step":1}`),0600); err!=nil { die("write expected state fixture: %v",err) }
+ if err:=os.WriteFile(substitutePath,[]byte(`{"height":"0","round":"0","step":0}`),0600); err!=nil { die("write substitute state fixture: %v",err) }
  expectedData,err:=os.ReadFile(expectedPath); if err!=nil { die("read expected state fixture: %v",err) }
  sum:=sha256.Sum256(expectedData)
  if err:=checkStateDigest(substitutePath,hex.EncodeToString(sum[:])); err==nil || !strings.Contains(err.Error(),"digest mismatch") {
@@ -116,7 +116,7 @@ func main(){
   id,err:=lp2p.IDFromPrivateKey(key); if err!=nil {die("derive peer ID: %v",err)}
   fmt.Println(id.String()); return
  }
- if (os.Args[1]=="--serve-noise" && len(os.Args)!=8) || (os.Args[1]=="--serve-noise-recovery" && len(os.Args)!=9) || (os.Args[1]!="--serve-noise" && os.Args[1]!="--serve-noise-recovery") {
+ if len(os.Args)<2 || (os.Args[1]=="--serve-noise" && len(os.Args)!=8) || (os.Args[1]=="--serve-noise-recovery" && len(os.Args)!=9) || (os.Args[1]!="--serve-noise" && os.Args[1]!="--serve-noise-recovery") {
   die("usage: --generate-noise-identity <identity-file> | --serve-noise|--serve-noise-recovery <listen-addr> <node-key-file> <signer-identity-file> <validator-key-file> <validator-state-file> <chain-id>")
  }
  requireExistingState:=os.Args[1]=="--serve-noise-recovery"
