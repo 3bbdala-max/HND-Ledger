@@ -433,3 +433,20 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Status: design only; implementation and CI validation pending.** Existing WP4.5/WP4.9 restart tests remain valid for their previously documented scope; WP4.13 adds stronger durability evidence and negative controls.
 - No production durability, power-loss recovery, snapshot state sync, production key custody, or Byzantine fault-tolerance claim is made. Public release and real-value activity remain blocked by G2–G4.
 - All work remains on `phase-0.2-planning`; `main` remains unchanged.
+
+
+### WP4.13 — core durable restart/recovery integration passed; remaining negative controls tracked — 2026-11-04
+
+- Full CI workflow [41858224733](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41858224733) passed on commit `efa81f43238cc060542c1fd1375f707adee6fc06`; both workflow jobs succeeded and the isolated HND suite reported 143 passing tests.
+- The four-validator CometBFT v0.40.0 harness verified pre-stop evidence, actual HND ABCI and CometBFT process exit, durable HND state-file recovery, node restart with the original home and identities, normal block-replay catch-up, and four-replica convergence. Explicit WP4.13 recovery markers were recorded in [run 41852320612](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41852320612).
+- The latest full workflow passed both external signer recovery paths (Unix and authenticated Noise), including fail-closed negative probes for missing anti-double-sign state. HND state-load tests also reject truncated state and mismatched network/Genesis state.
+- **Status:** Core WP4.13 restart/recovery integration passed for the tested scenarios. The full recovery-specific negative-control matrix is not yet closed: explicit tests for alternate/replaced signer state, validator identity mismatch on restart, bounded recovery timeout, and deliberately induced post-recovery application divergence remain to be added. Existing related Noise authorization, vote-withholding, and WP4.12 divergence tests are not counted as substitutes for those exact cases.
+- Detailed evidence and scope boundaries: `docs/WP4_13_DURABLE_ABCI_NODE_RESTART_RECOVERY_DESIGN_2026-11-04.md`.
+- All work remains on `phase-0.2-planning`; `main` is unchanged. No production keys, public network, or real-value activity were used. Production key custody, independent security review, governance, and jurisdiction-specific legal review remain open.
+
+### WP4.14 — production key custody, backup, and recovery architecture — design gate opened — 2026-11-04
+
+- Next workstream is design-only. It will specify production-grade validator and remote-signer key lifecycle, HSM/KMS or offline custody options, peer/validator identity pinning, backup encryption and access separation, recovery drills, rotation, revocation, incident response, and auditability.
+- No production private keys, seed phrases, cloud credentials, HSM credentials, or real signer material are to be generated, uploaded, or stored in this repository.
+- No key export, production signing, or custody integration will be implemented before the architecture, threat model, and independent security review are complete.
+- **Status:** design gate only; no production custody implementation or approval. Public release and real-value activity remain blocked by G2–G4.
