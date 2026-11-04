@@ -149,7 +149,9 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         )
         stale = AnchorRecord(**fields, mac=_mac(fields))
         with self.assertRaises(StaleTransition):
-            self.anchor.compare_and_swap(0, stale)
+            self.anchor.compare_and_swap(
+                0, stale, host_id="synthetic-host-1", host_epoch=1
+            )
 
     def test_wrong_restore_generation_and_missing_generation_rejected(self):
         record = self.prepare_commit()
@@ -184,7 +186,9 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         )
         bad = AnchorRecord(**fields, mac=_mac(fields))
         with self.assertRaisesRegex(StaleTransition, "predecessor digest"):
-            self.anchor.compare_and_swap(committed.sequence, bad)
+            self.anchor.compare_and_swap(
+                committed.sequence, bad, host_id="synthetic-host-1", host_epoch=1
+            )
 
     def test_round_and_step_reject_negative_values_and_booleans(self):
         for field in ("round", "step"):
@@ -215,6 +219,19 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.model.fence_and_takeover("synthetic-host-2")
         with self.assertRaisesRegex(ReferenceModelError, "fenced host cannot commit"):
             second.commit("pending-before-takeover")
+
+    def test_anchor_atomically_rejects_stale_epoch_at_transition_boundary(self):
+        prepared = self.model.prepare(
+            operation_id="fence-at-cas", host_id="synthetic-host-1",
+            state=self.state, height=7,
+        )
+        self.model.fence_and_takeover("synthetic-host-2")
+        with self.assertRaisesRegex(StaleTransition, "fenced host cannot change"):
+            self.anchor.compare_and_swap(
+                prepared.sequence - 1, prepared,
+                host_id="synthetic-host-1", host_epoch=1,
+            )
+        self.assertEqual(self.anchor.operation("fence-at-cas").status, "PREPARED")
 
 
 if __name__ == "__main__":
