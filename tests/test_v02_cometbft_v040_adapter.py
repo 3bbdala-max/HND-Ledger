@@ -1,7 +1,7 @@
 """Wire-level tests for the CometBFT v0.40.0 ABCI gRPC adapter."""
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from google.protobuf.timestamp_pb2 import Timestamp
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -310,7 +310,7 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             type=types_pb2.DUPLICATE_VOTE,
             validator=types_pb2.Validator(address=b"\\xab" * 20, power=10),
             height=1,
-            time=datetime(2026, 11, 4, 10, 0, tzinfo=timezone.utc),
+            time=Timestamp(seconds=1793786400, nanos=0),
             total_voting_power=40,
         )
         response = self.servicer.FinalizeBlock(
