@@ -382,3 +382,21 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Status: source review/design only; no application evidence journal or HND-specific end-to-end evidence test has been implemented or passed.** Next gate is implementing the neutral audit journal and proving ABCI misbehavior reaches and persists in HND application state.
 - This is separate from the successful Noise four-validator integration in run [41795296240](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41795296240), which remains a bounded local transport/recovery test, not a Byzantine proof.
 - All work remains on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.10 — evidence journal implementation and CI passed — 2026-11-04
+
+- Implemented deterministic CometBFT misbehavior normalization at the pinned v0.40.0 ABCI adapter boundary and an append-only, audit-only HND evidence journal.
+- The journal is included in the application state commitment and durable store, validated on load, deduplicated deterministically, and exposed through read-only `/evidence` query.
+- Adapter and application tests verify protobuf misbehavior handoff, persistence/reload, duplicate idempotence, and unchanged account balances.
+- Full workflow [41836087031](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41836087031) passed on commit `2c35ee51e3384de154772c9a25031c27e6a1c908`. Both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs succeeded; the latter also reran the upstream CometBFT Byzantine regression and existing four-validator, partition, and signer integrations.
+- **Scope limitation:** the upstream Byzantine regression and HND adapter test are separate test layers. The run does not yet prove an actual P2P equivocation event flowing through CometBFT into live HND ABCI applications or evidence-hash convergence across HND replicas.
+
+### WP4.11 — HND P2P equivocation/evidence convergence design — 2026-11-04
+
+- Added `docs/WP4_11_HND_NETWORK_EQUIVOCATION_EVIDENCE_INTEGRATION_DESIGN_2026-11-04.md`.
+- The next gate requires a disposable four-validator scenario using the actual CometBFT P2P VoteChannel, a test-only faulty validator, live HND ABCI app processes, evidence queries on all replicas, identical application hashes, and restart/catch-up verification.
+- Direct VoteSet insertion or direct fabrication of ABCI misbehavior records is explicitly disallowed as a substitute for the real network path.
+- **Status: design only; HND-specific P2P-to-ABCI evidence injection has not yet been implemented or passed.**
+- No slashing or balance changes are authorized by this workstream. The evidence journal remains audit-only.
+- All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release and real-value activity remain blocked by G2–G4.
