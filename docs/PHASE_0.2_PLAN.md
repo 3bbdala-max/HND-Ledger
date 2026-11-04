@@ -520,7 +520,7 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Records 14 open review topics, including anchor compromise and disaster recovery, first-time enrollment, commit atomicity, concurrent restore/fencing, schema migration, cryptographic agility, CometBFT state semantics, backup authenticity, audit independence, and provider assumptions.
 - Defines ten mandatory state-machine invariants and the independent-review questions and exit criteria required before Stage A can close.
 - Clarifies that an internal review register and green CI are not an independent security audit. The independent review has **not** been performed.
-- **Status: Stage A remains open; Stage B has not started.** Only offline synthetic preparation is permissible; no production key/custody operations or signing. G2–G4 remain closed.
+- **Status: Stage A remains open; Stage B's bounded offline synthetic reference model has been implemented and its dedicated tests passed in CI.** This does not constitute Stage A approval, does not establish completion of all C01–C18 cases, and does not authorize Stage C/D. Only offline synthetic preparation is permissible; no production key/custody operations or signing. G2–G4 remain closed.
 
 
 ## 14. WP4.14 synthetic reference model and CI acceptance evidence — 2026-11-04
