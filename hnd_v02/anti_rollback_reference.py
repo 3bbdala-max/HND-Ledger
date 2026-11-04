@@ -129,6 +129,12 @@ class SyntheticAnchor:
                 raise AnchorUnavailable("synthetic anchor unavailable")
             return self._host_epoch
 
+    def active_host(self) -> str:
+        with self._lock:
+            if not self.available:
+                raise AnchorUnavailable("synthetic anchor unavailable")
+            return self._active_host
+
     def host_is_current(self, host_id: str, epoch: int) -> bool:
         with self._lock:
             if not self.available:
@@ -163,7 +169,7 @@ class OfflineAntiRollbackModel:
         self.generations: dict[str, dict] = {}
         self._prepared: dict[str, AnchorRecord] = {}
         self._host_epoch = anchor.host_epoch()
-        self._active_host = "synthetic-host-1"
+        self._active_host = anchor.active_host()
 
     def _validate_identity(self, record: AnchorRecord) -> None:
         if (record.network_id, record.genesis_hash, record.validator_id, record.signer_id) != self.identity:
@@ -221,6 +227,8 @@ class OfflineAntiRollbackModel:
         return stored
 
     def commit(self, operation_id: str, *, simulate_lost_reply: bool = False) -> AnchorRecord:
+        if not self.anchor.host_is_current(self._active_host, self._host_epoch):
+            raise ReferenceModelError("fenced host cannot commit state")
         prepared = self._prepared.get(operation_id) or self.anchor.operation(operation_id)
         if prepared is None:
             raise ReferenceModelError("unknown prepared operation")
