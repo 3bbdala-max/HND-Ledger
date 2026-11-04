@@ -422,7 +422,7 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.assertEqual(self.app.evidence_journal, [])
 
     def test_evidence_record_is_committed_and_survives_restart(self):
-        record = {"type": 1, "validator_address": "ab" * 20, "validator_power": 10, "height": 1, "time": "2026-11-04T10:00:00.000000Z", "total_voting_power": 40}
+        record = {"type": 1, "validator_address": "ab" * 20, "validator_power": 10, "height": 1, "time": "unix:1793786400:000000000", "total_voting_power": 40}
         before = self.app.account_view(self.alice_id)
         result = self.app.finalize_block(height=2, transactions=[], misbehavior=[record])
         self.assertNotEqual(result["app_hash"].hex(), self.app.committed_state_hash)
@@ -434,7 +434,7 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.assertEqual(restored.committed_state_hash, self.app.committed_state_hash)
 
     def test_duplicate_evidence_is_idempotent(self):
-        record = {"type": 1, "validator_address": "cd" * 20, "validator_power": 5, "height": 1, "time": "2026-11-04T10:00:00.000000Z", "total_voting_power": 20}
+        record = {"type": 1, "validator_address": "cd" * 20, "validator_power": 5, "height": 1, "time": "unix:1793786400:000000000", "total_voting_power": 20}
         self.app.finalize_block(height=2, transactions=[], misbehavior=[record, record])
         self.app.commit()
         self.assertEqual(len(self.app.evidence_journal), 1)
