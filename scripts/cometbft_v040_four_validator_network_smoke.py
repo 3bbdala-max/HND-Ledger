@@ -89,8 +89,8 @@ def set_partition(relays, groups):
 
 def main():
     ap=argparse.ArgumentParser()
-    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary")
-    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve()
+    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary")
+    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or signer_binary; noise_mode=bool(a.noise_remote_signer_binary)
     if not Path(binary).is_file() or not (source/"go.mod").is_file(): ap.error("missing pinned CometBFT binary/source")
     cfg=ProtocolConfig(network_id=CHAIN,protocol_version=2,max_amount=SUPPLY)
     ak,bk=Ed25519PrivateKey.generate(),Ed25519PrivateKey.generate()
@@ -120,7 +120,7 @@ def main():
         signer_socket = root/"validator4-privval.sock"
         signer_key_path = root/"signer4"/"priv_validator_key.json"
         signer_state_path = root/"signer4"/"priv_validator_state.json"
-        if a.remote_signer_binary:
+        if signer_binary:
             (root/"signer4").mkdir(mode=0o700)
             shutil.move(str(homes[3]/"config/priv_validator_key.json"), str(signer_key_path))
             os.chmod(signer_key_path, 0o600)
@@ -146,7 +146,14 @@ def main():
             t=set_toml(t,"p2p","pex","false")
             t=set_toml(t,"p2p","addr_book_strict","false")
             t=set_toml(t,"p2p","allow_duplicate_ip","true")
-            if i==3 and a.remote_signer_binary:
+            if i==3 and signer_binary:
+                if noise_mode:
+                identity_path=root/"signer4"/"noise_identity.key"
+                noise_addr=f"127.0.0.1:{BASE+12}"
+                signer_peer_id=cmd([str(Path(signer_binary).resolve()),"--generate-noise-identity",str(identity_path)])
+                signer_addr=f"noise://{signer_peer_id}@{noise_addr}"
+                t=set_toml(t,None,"priv_validator_laddr",json.dumps(signer_addr))
+            else:
                 t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_socket)))
             p.write_text(t)
         apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]; signer=None; signer_log=None
@@ -160,9 +167,10 @@ def main():
             for i,h in enumerate(homes):
                 env=os.environ.copy(); env["CMTHOME"]=str(h)
                 nodes[i]=subprocess.Popen([binary,"node","--home",str(h)],cwd=root,env=env,stdout=nh[i],stderr=subprocess.STDOUT)
-                if i==3 and a.remote_signer_binary:
+                if i==3 and signer_binary:
                     signer_log=(root/"signer4.log").open("w")
-                    signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                    signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
+                    signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
             def converged(urls, minheight=1):
                 s=[rpc_status(u) for u in urls]; heights=[int(x["sync_info"]["latest_block_height"]) for x in s]; hashes=[x["sync_info"]["latest_block_hash"] for x in s]
                 return s if min(heights)>=minheight and len(set(heights))==1 and len(set(hashes))==1 else None
@@ -181,7 +189,7 @@ def main():
             txheight=int(s1[0]["sync_info"]["latest_block_height"]); txblock=s1[0]["sync_info"]["latest_block_hash"]
             if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER for u in urls): raise AssertionError("recipient balances differ")
 
-            if a.remote_signer_binary:
+            if signer_binary:
                 if not signer or signer.poll() is not None: raise AssertionError("remote signer process exited before outage test")
                 stop(signer); signer=None
                 outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
@@ -195,7 +203,8 @@ def main():
                     return side
                 outage_state=wait(three_commit_without_signer,"three validators commit while validator-4 signer is stopped",150)
                 if not all(p and p.poll() is None for p in nodes+apps): raise AssertionError("node or ABCI app exited during signer outage")
-                signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
+                    signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def signer_recovered():
                     if signer.poll() is not None: return None
                     state=converged(urls,int(outage_state[0]["sync_info"]["latest_block_height"]))
@@ -204,13 +213,13 @@ def main():
                     if any(account(u,bid)["balance"]!=SUPPLY-ALICE+TRANSFER+77 for u in urls): return None
                     return state
                 recovered=wait(signer_recovered,"remote signer reconnect and four-node state convergence",150)
-                print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
-            expected_alice_prepartition = ALICE-TRANSFER-(77 if a.remote_signer_binary else 0)
-            expected_bob_prepartition = SUPPLY-ALICE+TRANSFER+(77 if a.remote_signer_binary else 0)
+                print(json.dumps({"result":"COMETBFT_V040_REMOTE_SIGNER_OUTAGE_RECOVERY_OK","transport":"noise" if noise_mode else "unix","three_validator_quorum_committed":True,"signer_restarted":True,"all_four_state_converged":True,"height":int(recovered[0]["sync_info"]["latest_block_height"])},sort_keys=True),flush=True)
+            expected_alice_prepartition = ALICE-TRANSFER-(77 if signer_binary else 0)
+            expected_bob_prepartition = SUPPLY-ALICE+TRANSFER+(77 if signer_binary else 0)
             # Stop the external signer before restarting its node-side listener.
             # The pinned SignerDialerEndpoint is a startup connection, not a
             # reconnecting supervisor; restart it after the validator listener returns.
-            if a.remote_signer_binary:
+            if signer_binary:
                 stop(signer); signer=None
             # Stop one node and its app; 3/4 voting power remains.
             stop(nodes[3]); nodes[3]=None; stop(apps[3]); apps[3]=None
@@ -220,30 +229,31 @@ def main():
             al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(root/"state4.json"),"--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
             host,port=eps[3]["abci"].split(":")
             wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[3].poll() is None else False,"restarted ABCI app",30)
-            if a.remote_signer_binary:
+            if signer_binary:
                 # A stopped Unix listener can leave its pathname behind.
                 # Remove only this disposable test socket before rebinding.
-                if signer_socket.exists():
+                if not noise_mode and signer_socket.exists():
                     signer_socket.unlink()
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
-            if a.remote_signer_binary:
+            if signer_binary:
                 def restarted_listener_ready():
                     if nodes[3].poll() is not None:
                         raise RuntimeError(f"validator 4 exited during listener restart: {nodes[3].returncode}")
-                    return signer_socket.exists()
+                    return True if noise_mode else signer_socket.exists()
                 wait(restarted_listener_ready,"restarted validator Unix signer socket",30)
                 # Require a connection marker written by this signer process,
                 # not a stale marker from the earlier signer lifecycle.
                 signer_log.flush()
                 signer_log_offset=(root/"signer4.log").stat().st_size
-                signer=subprocess.Popen([str(Path(a.remote_signer_binary).resolve()),"--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
+                    signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def restarted_signer_connected():
                     if signer.poll() is not None: return None
                     signer_log.flush()
                     current_log=(root/"signer4.log").read_bytes()
                     fresh_log=current_log[signer_log_offset:].decode("utf-8",errors="replace")
-                    return True if "HND_REMOTE_SIGNER_CONNECTED" in fresh_log else None
+                    return True if ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in fresh_log else None
                 wait(restarted_signer_connected,"new remote signer process connected to restarted validator",30)
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
@@ -257,7 +267,7 @@ def main():
             baseblock31=baseline31[0]["sync_info"]["latest_block_hash"]
             baseapp31=[app_hash(u) for u in urls]
             basealice31=account(urls[3],aid)["balance"]
-            part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=(2 if a.remote_signer_binary else 1)))
+            part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=(2 if signer_binary else 1)))
             expected_alice_partition=expected_alice_prepartition-77
             expected_bob_partition=expected_bob_prepartition+77
             part_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(part_tx).decode()})["result"]
