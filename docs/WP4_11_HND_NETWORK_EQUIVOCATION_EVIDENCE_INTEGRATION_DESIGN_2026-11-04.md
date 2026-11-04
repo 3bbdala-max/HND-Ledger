@@ -38,7 +38,7 @@ Build a disposable, CI-only test in which a deliberately faulty validator sends 
 4. A later committed block carries the corresponding `RequestFinalizeBlock.misbehavior` summary to each HND ABCI adapter.
 5. Each HND application validates and commits the normalized evidence journal record.
 6. Query `/evidence` on all four replicas; compare canonical journal bytes, evidence IDs, committed heights, and 32-byte application hashes.
-7. Restart at least one HND application and its CometBFT process from durable state; confirm the journal and app hash are unchanged and the node catches up to the same committed state.
+7. Restart at least one HND ABCI application process from its durable state file; confirm the journal, committed height, and app hash are unchanged. (The current WP4.11 harness does not restart a CometBFT node process or test node catch-up.)
 
 ## 5. Timing and protocol constraints
 
@@ -55,7 +55,7 @@ WP4.11 passes only if CI proves all of the following in one HND-specific integra
 - CometBFT creates and commits duplicate-vote evidence;
 - HND receives the corresponding ABCI misbehavior summary through its live adapter;
 - all four HND replicas expose the same evidence record and compute the same application hash;
-- evidence survives restart and catch-up;
+- evidence survives restart of one HND application process from its durable state file;
 - ordinary account balances and total supply remain unchanged;
 - test keys/state are disposable and cleaned up; no private material appears in logs.
 
@@ -133,3 +133,8 @@ The integration job must verify the CometBFT source tag is exactly `v0.40.0` bef
 - This closes the WP4.11 **test gate for the implemented disposable integration**: actual P2P equivocation traverses CometBFT's evidence path and its ABCI misbehavior summary reaches the four live HND applications.
 - **Scope limitations remain:** the test uses disposable local identities and loopback services; it is not a proof of arbitrary Byzantine fault tolerance, production key custody, production network security, or independent cryptographic verification by HND of the original signed vote pair. HND records the CometBFT-supplied ABCI misbehavior summary. The evidence journal is audit-only; no slashing or balance changes occur.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged. Independent security review, production key custody/operations, governance, and jurisdiction-specific legal review remain open. Public release and real-value activity remain blocked by G2–G4.
+
+
+### WP4.11 restart-scope clarification
+
+The passing integration restarts the first **HND ABCI application process** and verifies restoration of its durable evidence journal, committed height, and application hash. It does not restart the corresponding CometBFT consensus process and does not claim a CometBFT node catch-up test. A node-process restart/catch-up scenario remains a separate future integration test.
