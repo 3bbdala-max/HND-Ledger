@@ -349,3 +349,13 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - The design specifies authorized and unauthorized signer tests, signer outage/restart, validator restart/catch-up, 3/1 and 2/2 partition/reconnection, fresh connection markers, and fail-closed checks.
 - **Status: design only. Noise has not yet been integrated into the four-validator harness.** Implementation and full CI evidence are the next gate; no production transport is approved.
 - All work remains on `phase-0.2-planning`; `main` is unchanged. Production identity provisioning/rotation, HSM/KMS custody, rollback protection, independent security review, governance, and jurisdiction-specific legal review remain open. Public release remains blocked by G2–G4.
+
+
+### WP4.9 — Noise transport wired into four-validator harness; CI pending — 2026-11-04
+
+- Added `scripts/cometbft_v040_noise_remote_signer_helper.go`, a disposable persistent signer helper with a separate Noise transport identity, a pinned expected validator-node peer ID, and the existing validator FilePV key/state.
+- Extended `scripts/cometbft_v040_four_validator_network_smoke.py` with `--noise-remote-signer-binary`. In this mode validator 4's `priv_validator_laddr` is configured as `noise://<signer-peer-id>@127.0.0.1:<port>`; the signer transport identity is generated once and retained across restarts.
+- Added an integrated negative probe that dials validator 4 using a fresh unauthorized Noise identity and requires the handshake to fail at the node's configured signer-peer allowlist.
+- The harness now runs the existing signer outage/quorum/recovery and validator-4 restart/catch-up sequence through the Noise transport when the new flag is selected. It also retains the existing Unix-socket integration as a separate regression.
+- CI workflow now builds the Noise helper and invokes the four-validator harness in Noise mode. The first complete workflow for this integration is pending; no pass is claimed until the new helper build, unauthorized-peer check, and full Noise-backed four-validator run all succeed.
+- Current code remains test-only, loopback-bound, with disposable identities. Production transport approval remains blocked pending full CI, durable identity lifecycle design, HSM/KMS custody, independent security review, and release gates G2–G4.
