@@ -164,7 +164,7 @@ class HNDABCIApplication:
         with self._lock:
             return {
                 "last_block_height": self._last_committed_height,
-                "last_block_app_hash": bytes.fromhex(self._committed_ledger.state_hash),
+                "last_block_app_hash": bytes.fromhex(self._committed_app_hash),
             }
 
     def init_chain(self, *, chain_id: str, app_state_bytes: bytes) -> None:
@@ -371,7 +371,7 @@ class HNDABCIApplication:
         with self._lock:
             return self._committed_ledger.account_view(account_id)
 
-    def _store_payload(self, ledger: HNDLedger, height: int) -> dict[str, Any]:
+    def _store_payload(self, ledger: HNDLedger, height: int, evidence_journal: list[dict[str, Any]]) -> dict[str, Any]:
         snapshot = ledger.snapshot()
         payload = {
             "schema_version": APP_STORE_VERSION,
@@ -380,7 +380,8 @@ class HNDABCIApplication:
             "genesis_hash": self.expected_genesis_hash,
             "last_committed_height": height,
             "ledger_snapshot": snapshot,
-            "app_hash": snapshot["state_hash"],
+            "evidence_journal": _json_copy(evidence_journal),
+            "app_hash": self._calculate_app_hash(ledger, evidence_journal),
         }
         # Bind recovery metadata (especially height) to the persisted snapshot.
         # This is an integrity checksum, not an authentication secret or MAC.
@@ -390,7 +391,8 @@ class HNDABCIApplication:
         return payload
 
     def _write_store(self, ledger: HNDLedger, height: int) -> None:
-        payload = self._store_payload(ledger, height)
+        evidence = self._pending["evidence_journal"] if self._pending is not None and self._pending["ledger"] is ledger else self._evidence_journal
+        payload = self._store_payload(ledger, height, evidence)
         encoded = json.dumps(
             payload,
             sort_keys=True,
@@ -483,10 +485,22 @@ class HNDABCIApplication:
             )
         except (LedgerError, TypeError, ValueError) as exc:
             raise ABCIApplicationError("application ledger snapshot failed verification") from exc
-        if payload["app_hash"] != ledger.state_hash:
+        journal = payload["evidence_journal"]
+        if type(journal) is not list:
+            raise ABCIApplicationError("application evidence journal schema")
+        try:
+            verified_journal = self._merge_evidence([], journal, height + 1)
+        except ABCIApplicationError as exc:
+            raise ABCIApplicationError("application evidence journal failed verification") from exc
+        if canonical_json(verified_journal) != canonical_json(journal):
+            raise ABCIApplicationError("application evidence journal is not canonical")
+        expected_app_hash = self._calculate_app_hash(ledger, journal)
+        if payload["app_hash"] != expected_app_hash:
             raise ABCIApplicationError("application state app hash mismatch")
 
         self._committed_ledger = ledger
+        self._evidence_journal = journal
+        self._committed_app_hash = expected_app_hash
         self._last_committed_height = height
         self._mempool_ledger = self._clone_committed()
         self._initialized = True
