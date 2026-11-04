@@ -191,7 +191,13 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
             )
 
     def test_first_anchor_record_uses_zero_predecessor_sentinel(self):
-        first = self.model.prepare(
+        empty_anchor = SyntheticAnchor()
+        empty_model = OfflineAntiRollbackModel(
+            empty_anchor, network_id="synthetic-net",
+            genesis_hash="a" * 64, validator_id="validator-fixture-1",
+            signer_id="signer-fixture-1",
+        )
+        first = empty_model.prepare(
             operation_id="first-record", host_id="synthetic-host-1",
             state=self.state, height=7,
         )
@@ -204,7 +210,7 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         )
         bad = AnchorRecord(**fields, mac=_mac(fields))
         with self.assertRaisesRegex(StaleTransition, "predecessor digest"):
-            self.anchor.compare_and_swap(
+            empty_anchor.compare_and_swap(
                 0, bad, host_id="synthetic-host-1", host_epoch=1
             )
 
