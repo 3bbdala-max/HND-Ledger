@@ -171,6 +171,7 @@ def main():
     )
     with tempfile.TemporaryDirectory(prefix="hnd-wp4-11-") as temp:
         root = Path(temp)
+        (root / "manifest.json").write_text(json.dumps(manifest, sort_keys=True))
         ports = [reserve_port() for _ in range(4)]
         apps = []
         logs = []
@@ -194,7 +195,6 @@ def main():
                 )
                 apps.append((process, port, state_path, log))
                 wait_port(port, process, f"HND ABCI replica {i}")
-            (root / "manifest.json").write_text(json.dumps(manifest, sort_keys=True))
             env = os.environ.copy()
             env["HND_CHAIN_ID"] = cfg.network_id
             env["HND_APP_STATE_JSON"] = app_state_json
