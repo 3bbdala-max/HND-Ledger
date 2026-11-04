@@ -323,7 +323,7 @@ def main():
             pre_info=abci_info(urls[3])
             pre_alice=account(urls[3],aid)["balance"]
             pre_bob=account(urls[3],bid)["balance"]
-            pre_state_digest=sha256_file(state4)
+            pre_shutdown_state_digest=sha256_file(state4)
             validator_key_path=homes[3]/"config"/"priv_validator_key.json"
             node_key_path=homes[3]/"config"/"node_key.json"
             pre_validator_key_digest=sha256_file(validator_key_path)
@@ -338,7 +338,7 @@ def main():
                 raise AssertionError("pre-restart account balances do not equal total supply")
             if int(pre_info["last_block_height"]) != pre_height:
                 raise AssertionError("CometBFT and HND committed heights differ before restart")
-            print(json.dumps({"result":"HND_WP4_13_PRE_RESTART_EVIDENCE","validator":4,"height":pre_height,"block_hash":pre_block_hash,"node_app_hash":pre_node_app_hash,"hnd_height":pre_hnd_height,"hnd_app_hash":pre_hnd_app_hash,"alice_balance":pre_alice,"bob_balance":pre_bob,"total_supply":pre_alice+pre_bob,"state_file_sha256":pre_state_digest,"state_file_unique":True},sort_keys=True),flush=True)
+            print(json.dumps({"result":"HND_WP4_13_PRE_RESTART_EVIDENCE","validator":4,"height":pre_height,"block_hash":pre_block_hash,"node_app_hash":pre_node_app_hash,"hnd_height":pre_hnd_height,"hnd_app_hash":pre_hnd_app_hash,"alice_balance":pre_alice,"bob_balance":pre_bob,"total_supply":pre_alice+pre_bob,"state_file_sha256_before_shutdown":pre_shutdown_state_digest,"state_file_unique":True},sort_keys=True),flush=True)
             # Stop the external signer before restarting its node-side listener.
             # The pinned SignerDialerEndpoint is a startup connection, not a
             # reconnecting supervisor; restart it after the validator listener returns.
@@ -348,10 +348,21 @@ def main():
             # for confirmed process exit and fails closed if the process survives.
             stop(nodes[3]); nodes[3]=None
             stop(apps[3]); apps[3]=None
-            print(json.dumps({"result":"HND_WP4_13_PROCESSES_STOPPED","node_exit_confirmed":True,"abci_exit_confirmed":True},sort_keys=True),flush=True)
+            if not state4.is_file():
+                raise AssertionError("validator 4 HND state file disappeared after clean shutdown")
+            # CometBFT may finish a final committed block while the node is
+            # shutting down. Pin the durable recovery baseline only after both
+            # processes have exited, then require it to remain stable offline.
+            stopped_state_payload=json.loads(state4.read_text(encoding="utf-8"))
+            if stopped_state_payload.get("network_id") != CHAIN or stopped_state_payload.get("genesis_hash") != gh:
+                raise AssertionError("validator 4 stopped HND state belongs to another network or Genesis")
+            pre_hnd_height=int(stopped_state_payload["last_committed_height"])
+            pre_hnd_app_hash=base64.b64encode(bytes.fromhex(stopped_state_payload["app_hash"])).decode("ascii")
+            pre_state_digest=sha256_file(state4)
+            print(json.dumps({"result":"HND_WP4_13_PROCESSES_STOPPED","node_exit_confirmed":True,"abci_exit_confirmed":True,"stopped_hnd_height":pre_hnd_height,"stopped_hnd_app_hash":pre_hnd_app_hash,"stopped_state_sha256":pre_state_digest},sort_keys=True),flush=True)
             s3=wait(lambda:converged(urls[:3],txheight+1),"three validators commit after one stops")
             qheight=int(s3[0]["sync_info"]["latest_block_height"])
-            # Restart the lagging app from its exact original durable state path.
+            # Restart the lagging app from its exact post-shutdown durable state.
             if not state4.is_file() or sha256_file(state4) != pre_state_digest:
                 raise AssertionError("validator 4 HND state file changed or disappeared while stopped")
             al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(state4),"--recovery","--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
