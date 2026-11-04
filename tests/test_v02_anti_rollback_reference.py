@@ -88,19 +88,31 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
                                state={"height": 8}, height=8)
 
     def test_concurrent_prepare_only_one_compare_and_swap_wins(self):
-        barrier = threading.Barrier(2)
+        read_barrier = threading.Barrier(2)
+
+        class SimultaneousReadAnchor(SyntheticAnchor):
+            def read(inner_self):
+                snapshot = super(SimultaneousReadAnchor, inner_self).read()
+                read_barrier.wait(timeout=2)
+                return snapshot
+
+        anchor = SimultaneousReadAnchor()
+        model = OfflineAntiRollbackModel(
+            anchor, network_id="synthetic-net", genesis_hash="a" * 64,
+            validator_id="validator-fixture-1", signer_id="signer-fixture-1",
+        )
         outcomes = []
         def attempt(op):
-            barrier.wait()
             try:
-                self.model.prepare(operation_id=op, host_id="synthetic-host-1",
-                                   state={"height": 7, "op": op}, height=7)
+                model.prepare(operation_id=op, host_id="synthetic-host-1",
+                              state={"height": 7, "op": op}, height=7)
                 outcomes.append("ok")
             except StaleTransition:
                 outcomes.append("stale")
         threads = [threading.Thread(target=attempt, args=(f"race-{i}",)) for i in range(2)]
         for thread in threads: thread.start()
-        for thread in threads: thread.join()
+        for thread in threads: thread.join(timeout=3)
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
         self.assertCountEqual(outcomes, ["ok", "stale"])
 
     def test_duplicate_operation_is_idempotent_and_conflict_rejected(self):
