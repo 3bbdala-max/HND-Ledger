@@ -54,3 +54,20 @@ The existing CI run [41908521855](https://github.com/3bbdala-max/HND-Ledger/acti
 
 ---
 **Boundary statement:** These are internal code-review observations by the project team. They are not an independent security opinion, proof of production security, or authorization to proceed beyond the approved offline test scope.
+
+
+## 5. Follow-up disposition — 2026-11-05
+
+The following bounded changes have since been implemented on `phase-0.2-planning`:
+
+- **IMR-01:** the synthetic anchor now owns a shared in-memory host epoch and active-host identity. Prepare, commit, compare-and-swap, and signing-eligibility checks consult that shared state. Tests cover stale model instances, stale commits, and fencing at the compare-and-swap boundary.
+- **IMR-02:** the synthetic anchor validates the predecessor digest against its current record; tests cover a wrong digest at the correct sequence and the all-zero first-record sentinel.
+- **IMR-03:** HRS input validation now follows the pinned CometBFT v0.40.0 storage widths (`height=int64`, `round=int32`, `step=int8`) and step labels (`0=initial sentinel`, `1=propose`, `2=prevote`, `3=precommit`). Step zero is accepted only for the initial `(height=0, round=0)` sentinel. The default synthetic signing step is propose (1).
+
+The latest CI run for the code and tests before this note, run [41915491110](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41915491110), completed successfully on commit `b76d9258b93eab552d17bdbb9bd2debc83a414c0`. A further explicit initial-sentinel test has been added after that run and must pass in a subsequent CI run before its result is recorded.
+
+### HRS semantic boundary
+
+This model uses a **strictly increasing HRS tuple** for distinct committed anchor transitions. That is a deliberate anti-rollback model rule; it is not a complete reimplementation of CometBFT `FilePV` signing semantics. In particular, the model's operation-ID idempotency covers retries of the same synthetic operation, but does not prove CometBFT's same-HRS/same-sign-bytes signature-reuse behavior or its handling of same-HRS/different-sign-bytes requests. Those cases require dedicated tests against the pinned CometBFT `FilePV` implementation before claiming behavioral equivalence.
+
+These follow-ups close the three listed **internal simulator observations only** to the extent described above. They do not close Stage A, constitute an independent review, prove production fencing/durability, or authorize Stage C/D or production signing.
