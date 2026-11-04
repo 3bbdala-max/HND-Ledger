@@ -2,21 +2,21 @@
 
 **Target branch:** `phase-0.2-planning`  
 **Baseline commit reviewed:** `18ba780686730a9a90ddb1ebe50b8af62438b0d5`  
-**Status:** Test design only. No negative-control implementation or new CI pass is claimed by this document.
+**Status (updated 2026-11-04):** NC-1 signer-state substitution and NC-2 validator-identity substitution are implemented and passed in CI run `41881433042` on commit `66dd05d86c3fc60c4869feb1e42a243da407d15c`. NC-3 bounded recovery-timeout injection remains open. NC-4 a dedicated post-recovery divergence injection remains open; deterministic same-height divergence detection exists in the four-replica unit test, but is not yet wired as a recovery-gate negative fixture.
 
 ## 1. Purpose
 
 The existing WP4.13 happy-path test proves that one stopped validator and its HND ABCI application can restart from the same local files, recover, and converge with the other three validators. It does not yet prove that recovery rejects substituted signer state, substituted validator identity, timeout, or post-recovery divergence.
 
-These controls are required before WP4.13 can be closed. They are disposable CI tests using temporary keys and state only.
+These controls are required before WP4.13 can be closed. Implemented controls use disposable CI keys and state only; the remaining controls must preserve that isolation.
 
 ## 2. Findings from the current harness
 
 The current four-validator harness captures SHA-256 digests for validator 4's HND state file, CometBFT consensus key file, and P2P node key file before stopping the processes. It checks that the HND state and identity files remain unchanged on the normal restart path.
 
-The external signer helper's recovery path checks that the anti-double-sign state file exists and is a regular file, then loads it with CometBFT `privval.LoadFilePV`. It does not receive an independently captured expected digest. Consequently, a different but parseable signer-state file is not proven to be rejected.
+The external signer recovery helpers now accept an expected SHA-256 digest and verify it before loading `privval.LoadFilePV` or opening the listener. The orchestrator captures the signer-state digest after clean signer shutdown, after FilePV has finished advancing its state. CI run `41881433042` passed both missing-state and substituted/digest-mismatch rejection probes for Unix and Noise transports, and both four-validator outage/recovery paths.
 
-The normal restart path also does not deliberately replace the consensus or P2P identity with another valid key. A digest check on the untouched original files is not a negative identity test.
+The harness now deliberately substitutes a valid alternate consensus key and a valid alternate P2P node key in isolated disposable homes, and confirms semantic identity preflight rejects each substitution. CI run `41881433042` emitted `HND_WP4_13_ALTERNATE_CONSENSUS_IDENTITY_REJECTED` and `HND_WP4_13_ALTERNATE_P2P_IDENTITY_REJECTED`.
 
 ## 3. Required negative controls
 
@@ -68,8 +68,10 @@ Do not corrupt a retained user database or any non-disposable environment. The f
 
 WP4.13 remains open until all of the following are present:
 
-- Each negative control runs in CI and emits a distinct, machine-readable rejection marker.
-- The normal recovery path still passes for both supported signer transports.
+- NC-1 and NC-2 run in CI and emit distinct machine-readable rejection markers (verified in run `41881433042`).
+- NC-3 runs in CI with an injected readiness delay, bounded termination, and no success marker.
+- NC-4 runs in CI with an injected divergent replica commitment and proves the recovery gate fails closed.
+- The normal recovery path passes for both supported signer transports (verified in run `41881433042`).
 - Failure cases are fail-closed and cannot be mistaken for successful recovery.
 - Logs identify the failed control without exposing private keys, signer-state contents, tokens, or secrets.
 - The phase plan links the exact workflow run and tested commit.
