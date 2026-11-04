@@ -319,3 +319,11 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - The Noise listener performs an authenticated Noise handshake and enforces a signer peer-ID allowlist when configured. The source explicitly warns that an empty allowlist accepts any authenticated peer and must not be used in production.
 - **No production transport is approved.** Noise is the leading candidate for an HND-specific integration spike, conditional on a verified signer dialer lifecycle, stable peer identity, non-empty allowlist, unauthorized-peer rejection, restart/reconnect tests, and independent review.
 - Production key custody, HSM/KMS integration, durable backup/rollback protection, operational procedures, independent security review, governance, and legal review remain open. All work remains on `phase-0.2-planning`; `main` is unchanged.
+
+### WP4.9 — authenticated Noise remote-signer probe added; CI pending — 2026-11-04
+
+- Added `scripts/cometbft_v040_noise_remote_signer_probe.go` using the pinned v0.40.0 public `privval.NewSignerListenerFromAddr`, `NewSignerDialerEndpoint`, and `NewSignerServer` APIs.
+- The probe uses disposable Ed25519 identities and loopback only. It exercises an authorized signer through a Noise handshake, Ping, public-key retrieval, vote signing, and signature verification; a separate negative case requires the Noise listener to reject a peer identity absent from its explicit allowlist.
+- Added the probe to `.github/workflows/hnd-v02-tests.yml` after the existing separate-process Unix-socket probe.
+- Triggered CI run [41790821353](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41790821353) on commit `eec2c78f84c58e5238b67f51baef56f22759344e`. At the time this note was written, the first HND unit-test job was still running; the Noise probe has **not yet been confirmed as compiled or passed**.
+- This is an isolated transport integration probe, not yet a Noise-backed four-validator network test, production transport approval, or security certification. Keep the result pending until the complete CI job finishes green and the Noise-specific step is confirmed successful.
