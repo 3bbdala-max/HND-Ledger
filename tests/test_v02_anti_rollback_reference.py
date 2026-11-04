@@ -39,6 +39,37 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         with self.assertRaisesRegex(ReferenceModelError, "uncommitted"):
             self.model.reconcile("pending")
 
+
+    def test_c10_pending_prepare_preserves_last_committed_record(self):
+        previous = self.prepare_commit()
+        next_state = {"height": 8, "app_hash": "pending-next-state"}
+        pending = self.model.prepare(
+            operation_id="c10-pending", host_id="synthetic-host-1",
+            state=next_state, height=8,
+        )
+
+        self.assertEqual(self.anchor.read(), pending)
+        self.assertEqual(self.anchor.read_last_committed(), previous)
+        self.assertFalse(self.model.signing_allowed("synthetic-host-1"))
+        self.assertEqual(
+            self.anchor.operation(previous.operation_id), previous
+        )
+
+    def test_c11_ambiguous_commit_retains_new_committed_record(self):
+        previous = self.prepare_commit()
+        next_state = {"height": 8, "app_hash": "committed-next-state"}
+        self.model.prepare(
+            operation_id="c11-ambiguous", host_id="synthetic-host-1",
+            state=next_state, height=8,
+        )
+        with self.assertRaises(AmbiguousCommit):
+            self.model.commit("c11-ambiguous", simulate_lost_reply=True)
+
+        committed = self.model.reconcile("c11-ambiguous")
+        self.assertEqual(committed.status, "COMMITTED")
+        self.assertEqual(self.anchor.read_last_committed(), committed)
+        self.assertNotEqual(self.anchor.read_last_committed(), previous)
+
     def test_ambiguous_commit_reconciles_by_operation_id(self):
         self.model.prepare(operation_id="lost-reply", host_id="synthetic-host-1",
                            state=self.state, height=7)
