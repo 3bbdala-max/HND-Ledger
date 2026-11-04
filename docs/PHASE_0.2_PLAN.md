@@ -484,3 +484,13 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - The four-validator restart harness now snapshots validator 4's semantic consensus public-key identity and CometBFT P2P node ID before shutdown.
 - Before restarting the node, it deliberately substitutes validator 1's valid consensus key and separately its valid P2P node key into validator 4's disposable home. The identity preflight must reject each mismatch; the original files are restored in a `finally` block and checked again before node restart.
 - **Status: implementation committed; CI pending.** These are test-harness preflight negative controls, not a production key-custody or filesystem tamper-proofing system. The current checks establish that unexpected identities are detected before restart.
+
+
+### WP4.13 — integrated recovery and negative-control gate passed — 2026-11-04
+
+- The final bounded-readiness implementation and the recovery negative-control matrix passed workflow [41883929479](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41883929479) on commit `f723cf981841a9c228bf1944a078a13b151de605`.
+- Both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs succeeded; the isolated Python suite reported **146 tests, all passing**.
+- CI logs confirmed durable ABCI recovery, CometBFT restart/catch-up, alternate consensus/P2P identity rejection, Unix and authenticated Noise remote-signer outage/recovery, 3/1 and 2/2 partition/reconnection, and four-validator convergence.
+- Integrated negative controls cover bounded readiness timeout without modifying durable state, height/block-hash mismatch, post-recovery application-hash divergence, truncated/mismatched persisted state, and missing/substituted remote-signer anti-double-sign state.
+- **Status: WP4.13 CI acceptance gate passed for the enumerated disposable local test scenarios.** This supersedes the earlier WP4.13 entries above that state validation is pending or the controls are design-only; those entries remain as chronological implementation history.
+- Scope remains local crash-stop integration, not proof of arbitrary Byzantine fault tolerance, power-loss durability, production backup/restore, or production key anti-rollback. WP4.14 custody/backup/recovery remains a separate design and implementation gate. G2–G4 remain closed; no public release or real-value activity is approved.
