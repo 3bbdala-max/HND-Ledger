@@ -298,3 +298,6 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+# Keep the offline anti-rollback protocol model in the existing CI test invocation.
+from tests.test_v02_anti_rollback_reference import TestOfflineAntiRollbackReference  # noqa: F401
