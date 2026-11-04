@@ -54,6 +54,37 @@ def sha256_file(path):
             digest.update(chunk)
     return digest.hexdigest()
 
+def validator_identity(home, binary):
+    consensus = json.loads((Path(home)/"config"/"priv_validator_key.json").read_text())
+    return {
+        "consensus_pub_key": json.dumps(consensus["pub_key"], sort_keys=True, separators=(",",":")),
+        "node_id": cmd([binary,"show-node-id","--home",str(home)]),
+    }
+
+def assert_validator_identity(home, binary, expected):
+    actual = validator_identity(home, binary)
+    if actual["consensus_pub_key"] != expected["consensus_pub_key"]:
+        raise AssertionError("validator consensus public-key identity mismatch")
+    if actual["node_id"] != expected["node_id"]:
+        raise AssertionError("CometBFT P2P node identity mismatch")
+    return actual
+
+def expect_identity_substitution_rejected(home, binary, target_path, replacement_path, expected, field, marker):
+    original = target_path.read_bytes()
+    try:
+        target_path.write_bytes(replacement_path.read_bytes())
+        actual = validator_identity(home, binary)
+        if actual[field] == expected[field]:
+            raise AssertionError(f"{marker}: replacement fixture did not change {field}")
+        try:
+            assert_validator_identity(home, binary, expected)
+        except AssertionError:
+            print(json.dumps({"result":marker,"rejected":True,"identity_field":field},sort_keys=True),flush=True)
+        else:
+            raise AssertionError(f"{marker}: substituted identity was accepted")
+    finally:
+        target_path.write_bytes(original)
+
 def abci_info(url):
     return http(url,"/abci_info")["result"]["response"]
 
@@ -268,6 +299,7 @@ def main():
             node_key_path=homes[3]/"config"/"node_key.json"
             pre_validator_key_digest=sha256_file(validator_key_path)
             pre_node_key_digest=sha256_file(node_key_path)
+            pre_validator_identity=validator_identity(homes[3],binary)
             pre_height=int(pre_node["sync_info"]["latest_block_height"])
             pre_block_hash=pre_node["sync_info"]["latest_block_hash"]
             pre_node_app_hash=pre_node["sync_info"]["latest_app_hash"]
@@ -306,6 +338,10 @@ def main():
                 raise AssertionError("validator consensus identity key changed during recovery")
             if sha256_file(node_key_path) != pre_node_key_digest:
                 raise AssertionError("CometBFT P2P node identity key changed during recovery")
+            assert_validator_identity(homes[3],binary,pre_validator_identity)
+            expect_identity_substitution_rejected(homes[3],binary,validator_key_path,homes[0]/"config"/"priv_validator_key.json",pre_validator_identity,"consensus_pub_key","HND_WP4_13_ALTERNATE_CONSENSUS_IDENTITY_REJECTED")
+            expect_identity_substitution_rejected(homes[3],binary,node_key_path,homes[0]/"config"/"node_key.json",pre_validator_identity,"node_id","HND_WP4_13_ALTERNATE_P2P_IDENTITY_REJECTED")
+            assert_validator_identity(homes[3],binary,pre_validator_identity)
             if signer_binary:
                 # A stopped Unix listener can leave its pathname behind.
                 # Remove only this disposable test socket before rebinding.
