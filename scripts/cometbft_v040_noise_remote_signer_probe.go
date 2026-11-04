@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/lp2p"
 	"github.com/cometbft/cometbft/privval"
@@ -48,8 +49,8 @@ func makeNoiseDialer(addr string, signerKey ed25519.PrivKey, expectedNode peer.I
 
 func blockID() cmttypes.BlockID {
 	return cmttypes.BlockID{
-		Hash: []byte("hnd-noise-probe-block-hash-000000"),
-		PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: []byte("hnd-noise-probe-parts-hash-00000")},
+		Hash: tmhash.Sum([]byte("hnd-noise-probe-block-hash")),
+		PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: tmhash.Sum([]byte("hnd-noise-probe-parts-hash"))},
 	}
 }
 
