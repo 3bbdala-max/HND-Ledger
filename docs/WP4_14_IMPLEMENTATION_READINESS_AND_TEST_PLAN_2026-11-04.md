@@ -202,6 +202,24 @@ A further synthetic test, `test_c10_previous_committed_record_is_not_a_restore_a
 
 This is intentional fail-closed behavior for the present reference model. Retaining the prior record is **not** an abort, rollback, or recovery protocol. No operation currently resolves or safely abandons a PREPARED transaction after a crash or ambiguous outcome. Designing such a protocol requires explicit state-transition rules, durable atomicity, restart/reconciliation semantics, and independent review; it must not be inferred from the retained pointer.
 
-The dedicated anti-rollback test module now contains 31 test methods. All 31 remain committed but unverified by execution until the exact module is run using the command in Section 13 in an authorized Python 3.12 environment. The existing workflow's explicit test list still omits this module. No workflow file was changed.
+The dedicated anti-rollback test module now contains 32 test methods. All 31 remain committed but unverified by execution until the exact module is run using the command in Section 13 in an authorized Python 3.12 environment. The existing workflow's explicit test list still omits this module. No workflow file was changed.
 
 **Disposition:** C10/C11 remain synthetic-model work, not production acceptance. Stage A remains OPEN; Stage C/D and G2–G4 remain closed.
+
+
+## 16. Pending-prepare restart behavior — 2026-11-05
+
+The synthetic test module adds `test_pending_prepare_after_model_restart_fails_closed_without_generation_data`. It creates a committed predecessor, starts a newer PREPARED operation, and constructs a fresh model instance against the same synthetic anchor to represent loss of process-local generation data.
+
+The test asserts that the fresh instance:
+- does not enable signing while the anchor remains PREPARED;
+- cannot reconcile the operation as committed;
+- cannot commit it because the prepared generation payload is unavailable in the restarted model;
+- cannot treat the retained predecessor as an authorized restore target while the current anchor record is PREPARED; and
+- leaves the anchor record unchanged.
+
+This test defines the current fail-closed boundary, not a complete crash-recovery solution. It demonstrates that the in-memory model intentionally cannot complete recovery after losing the generation payload. A production design would need durable generation storage, authenticated operation recovery, crash-consistent transitions, and independently governed recovery/abort procedures. No automatic abort, rollback, or signer reactivation is authorized by this test.
+
+The dedicated module now contains 32 test methods. The existing CI workflow still omits this module, so none of these 32 methods should be described as CI-verified until explicitly executed. The workflow file remains unchanged.
+
+**Disposition:** recovery after restart remains unsupported by this synthetic model. Stage A remains OPEN; Stage C/D and G2–G4 remain closed.
