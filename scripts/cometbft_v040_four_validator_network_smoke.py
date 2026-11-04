@@ -238,7 +238,7 @@ def main():
                     return side
                 outage_state=wait(three_commit_without_signer,"three validators commit while validator-4 signer is stopped",150)
                 if not all(p and p.poll() is None for p in nodes+apps): raise AssertionError("node or ABCI app exited during signer outage")
-                signer_args=(["--serve-noise-recovery",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve-recovery",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN,pre_signer_state_digest])
+                signer_args=(["--serve-noise-recovery",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN,pre_signer_state_digest] if noise_mode else ["--serve-recovery",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN,pre_signer_state_digest])
                 signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def signer_recovered():
                     if signer.poll() is not None: return None
