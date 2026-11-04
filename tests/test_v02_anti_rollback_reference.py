@@ -356,5 +356,24 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.assertEqual(self.anchor.operation("fence-at-cas").status, "PREPARED")
 
 
+    def test_anchor_outage_after_commit_disables_signing_and_restore(self):
+        committed = self.prepare_commit()
+        self.assertTrue(self.model.signing_allowed("synthetic-host-1"))
+
+        self.anchor.available = False
+        self.assertFalse(self.model.signing_allowed("synthetic-host-1"))
+        with self.assertRaises(AnchorUnavailable):
+            self.model.restore(committed.generation_id, dual_control=True)
+
+        # Recovery of anchor availability does not create or advance state.
+        self.anchor.available = True
+        self.assertEqual(self.anchor.read(), committed)
+        self.assertTrue(self.model.signing_allowed("synthetic-host-1"))
+        self.assertEqual(
+            self.model.restore(committed.generation_id, dual_control=True),
+            self.state,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
