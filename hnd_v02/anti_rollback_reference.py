@@ -121,6 +121,11 @@ class SyntheticAnchor:
             expected_predecessor = _digest(self._record.unsigned()) if self._record else "0" * 64
             if not hmac.compare_digest(record.predecessor_digest, expected_predecessor):
                 raise StaleTransition("anchor predecessor digest does not match current record")
+            if self._record is not None:
+                previous_hrs = (self._record.height, self._record.round, self._record.step)
+                proposed_hrs = (record.height, record.round, record.step)
+                if proposed_hrs <= previous_hrs:
+                    raise StaleTransition("HRS must strictly advance beyond the anchored state")
             if record.status != "PREPARED":
                 raise ReferenceModelError("new anchor operation must begin PREPARED")
             self._record = record
