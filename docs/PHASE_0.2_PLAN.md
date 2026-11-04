@@ -449,4 +449,5 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Next workstream is design-only. It will specify production-grade validator and remote-signer key lifecycle, HSM/KMS or offline custody options, peer/validator identity pinning, backup encryption and access separation, recovery drills, rotation, revocation, incident response, and auditability.
 - No production private keys, seed phrases, cloud credentials, HSM credentials, or real signer material are to be generated, uploaded, or stored in this repository.
 - No key export, production signing, or custody integration will be implemented before the architecture, threat model, and independent security review are complete.
+- Added `docs/WP4_14_KEY_CUSTODY_BACKUP_RECOVERY_DESIGN_2026-11-04.md` with the key inventory, threat model, signer isolation, HSM/KMS/offline custody options, backup/restore ceremony, rotation/revocation, incident response, and verification gates.
 - **Status:** design gate only; no production custody implementation or approval. Public release and real-value activity remain blocked by G2–G4.
