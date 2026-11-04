@@ -27,7 +27,7 @@ func die(f string, a ...any) { fmt.Fprintf(os.Stderr,"HND_NOISE_SIGNER_FAILED: "
 func loadSignerIdentity(path string) cmted.PrivKey {
  b,err:=os.ReadFile(path); if err!=nil { die("read signer transport identity: %v",err) }
  raw,err:=base64.StdEncoding.DecodeString(string(b)); if err!=nil { die("decode signer transport identity: %v",err) }
- if len(raw)!=cmted.PrivKeySize { die("invalid signer transport identity length %d",len(raw)) }
+ if len(raw)!=64 { die("invalid signer transport identity length %d",len(raw)) }
  return cmted.PrivKey(raw)
 }
 
