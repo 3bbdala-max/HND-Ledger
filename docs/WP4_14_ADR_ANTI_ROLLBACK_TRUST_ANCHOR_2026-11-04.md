@@ -75,6 +75,14 @@ A candidate abstract protocol is:
 
 The final implementation must prove that no ordering permits a crash to leave a signer able to sign from state older than the anchor. If the chosen anchor cannot support the required transaction semantics, select a different design rather than weakening the guarantee.
 
+Additional mandatory invariants for the reference protocol:
+
+- Use immutable, generation-addressed state objects or an equivalent copy-on-write scheme. Do not overwrite or delete the last known committed generation while a newer generation is PREPARED.
+- Keep the prior committed generation available until the new COMMITTED record has been read back and authenticated from the independent anchor and the new state has been re-read and digest-verified.
+- The anchor must provide an atomic compare-and-swap or equivalent serialized transition against the expected predecessor. Concurrent PREPARE/COMMIT attempts for the same validator generation must not fork the authoritative history.
+- The signer remains disabled throughout PREPARED, ambiguous-acknowledgement, and reconciliation states. A timeout after a COMMIT request is an unknown outcome, not evidence of failure or success; query the anchor by idempotent operation ID and reconcile before proceeding.
+- Garbage collection of older generations is a separate privileged operation and may occur only after a verified committed successor and the approved retention/recovery policy permit it.
+
 ## 6. Restore and recovery protocol
 
 - Start in an isolated recovery mode with signing and public signer endpoints disabled.
