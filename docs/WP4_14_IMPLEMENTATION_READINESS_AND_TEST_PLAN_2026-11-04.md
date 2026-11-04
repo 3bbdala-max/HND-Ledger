@@ -169,3 +169,17 @@ A local execution attempt was also unavailable because the environment could not
 The workflow file was not modified. Before relying on these tests, they must be run in an authorized test environment or included in a separately reviewed CI change. This correction supersedes any implication in the preceding CI evidence entry that the new anti-rollback unit test itself was covered by that run.
 
 **Disposition:** C08 remains unverified; the additional C14 synthetic-anchor outage test remains unverified. The successful CI run remains valid only for the commands and scenarios actually listed in the workflow. Stage A remains OPEN; no production or release gate changes.
+
+
+## 13. Required execution command for the synthetic anti-rollback test module
+
+Until the workflow is changed through a separately reviewed and authorized CI change, execute the module explicitly from the repository root in a Python 3.12 environment after installing the pinned project requirements:
+
+```bash
+python -m pip install -r requirements.txt
+python -m unittest -v tests.test_v02_anti_rollback_reference
+```
+
+The module currently contains 27 test methods, including the C08 stale-local-backup scenario and the synthetic anchor-outage-after-commit scenario. Record the exact commit SHA, Python version, command, complete test output, and environment identity with any future execution evidence. A successful run of the repository's existing workflow is not a substitute for this command because the workflow's current explicit unittest list omits this module.
+
+This section is an execution instruction only. It is not evidence that the command has been run or passed.
