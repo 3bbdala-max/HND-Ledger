@@ -460,3 +460,12 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - **Status: design only. No new negative-control implementation or CI pass is claimed.** The existing WP4.13 happy-path integration remains passed for its documented scope; WP4.13 remains open until the exact controls are implemented and CI-tested.
 - The design explicitly distinguishes a CI-run expected digest from production anti-rollback protection. Production rollback resistance still requires an independently trusted anchor, such as an HSM/KMS monotonic counter or separately protected signing-state service.
 - All changes remain on `phase-0.2-planning`; `main` is unchanged. G2–G4 remain closed.
+
+
+### WP4.13 — signer-state substitution guard implemented; CI pending — 2026-11-04
+
+- The Unix remote-signer recovery helper now requires an expected SHA-256 digest in recovery mode and checks the actual anti-double-sign state file before calling `privval.LoadFilePV` or opening its signer endpoint.
+- The four-validator restart harness captures the signer-state digest before shutdown and supplies it during the normal recovery path.
+- CI now includes a negative probe that creates a distinct, parseable signer state by signing a disposable vote, then verifies that recovery rejects that substituted state before starting the signer.
+- **Status: implementation committed; validation pending.** This is a same-run test-harness integrity check, not production anti-rollback protection. It does not protect against an attacker who can also replace the expected digest, and it currently covers the Unix helper path; Noise signer recovery and the other three negative controls remain outstanding.
+- WP4.13 remains open until the new CI run passes and the remaining negative controls are implemented and verified. `main` remains unchanged.
