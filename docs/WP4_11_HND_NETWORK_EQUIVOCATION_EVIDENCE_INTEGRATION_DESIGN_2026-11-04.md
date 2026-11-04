@@ -90,3 +90,34 @@ A second inspection of the exact CometBFT v0.40.0 source confirms that the upstr
 - After the evidence-bearing block commits, the integration test must query `/evidence` and `Info` from all four HND ABCI endpoints and compare canonical journal contents and `last_block_app_hash`.
 
 **Implementation constraint:** do not simply swap the local KV store for a gRPC client and assume the test is complete. The test must also provide valid HND Genesis bytes, initialize each application independently, close all ABCI clients and processes deterministically, and verify that the four application hashes agree after the same evidence-bearing block.
+
+
+## 9. HND application bootstrap and integration-test construction decision
+
+The repository inspection confirms the HND server exposes the exact lifecycle needed by a live integration test:
+
+- Each application instance is constructed from the same canonical manifest and genesis hash, but with a distinct disposable state file.
+- `HNDABCIApplication.application_genesis_bytes()` produces canonical `{genesis_hash, manifest}` bytes.
+- `HNDCometBFTv040Servicer.InitChain` verifies the configured chain ID and those exact bytes before initializing the durable application store.
+- `Info` reports `last_block_height` and the committed 32-byte `last_block_app_hash`.
+- `Query("/evidence")` returns the committed evidence journal; it is not a direct mutable-state hook.
+
+### Test shape to implement
+
+1. The Python orchestration layer creates a temporary manifest/genesis and starts four HND ABCI gRPC servers on loopback, each with a separate state path.
+2. A pinned-source Go test is placed in the CometBFT `consensus` package for the duration of the CI job. It reuses the upstream four-state / four-reactor setup and the exact `VoteChannel` equivocation injection, but replaces each `newKVStore` local ABCI application with `abcicli.NewGRPCClient` connected to one of the four HND servers.
+3. Each client is started before use and receives `RequestInitChain{ChainId: HND chain ID, AppStateBytes: canonical HND Genesis bytes, Validators: validator updates}`. The test must stop every client during cleanup.
+4. The existing upstream block-event subscription is retained to wait for an evidence-bearing committed block on each validator. No direct evidence insertion or direct VoteSet mutation is allowed.
+5. After the committed evidence block, query each ABCI server's `/evidence` endpoint and `Info`. Assert:
+   - exactly one canonical evidence journal record per equivocation;
+   - identical canonical journal bytes across all four applications;
+   - identical committed heights and 32-byte application hashes;
+   - the journal record's validator address, evidence type, and infraction height match the faulty validator and injected prevote pair;
+   - all ordinary account balances remain unchanged.
+6. Restart one HND application process from its existing state file, query it again, and verify that its journal and app hash are unchanged. Then verify that it has caught up to the same committed height/hash before declaring the restart leg successful.
+
+### CI isolation and source pinning
+
+The integration job must verify the CometBFT source tag is exactly `v0.40.0` before adding the temporary same-package test file. It must fail closed if the expected upstream test function or source anchors are absent. The temporary test source must be removed by a shell trap even on failure. The four HND servers, validator keys, node homes, and state files remain under a temporary directory; only loopback listeners are permitted.
+
+**Current status:** the HND server bootstrap and query surfaces are confirmed in repository source. This section specifies the implementation contract; it is not evidence that the integration test has been implemented or passed.
