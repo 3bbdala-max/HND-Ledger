@@ -180,6 +180,17 @@ python -m pip install -r requirements.txt
 python -m unittest -v tests.test_v02_anti_rollback_reference
 ```
 
-The module currently contains 28 test methods, including the C08 stale-local-backup scenario, the synthetic anchor-outage-after-commit scenario, and a negative test that rejects unsupported anchor schema versions. These tests are committed but remain unverified by execution: the current workflow's explicit unittest list omits this module. Record the exact commit SHA, Python version, command, complete test output, and environment identity with any future execution evidence. A successful run of the repository's existing workflow is not a substitute for this command.
+The module currently contains 30 test methods, including the C08 stale-local-backup scenario, the synthetic anchor-outage-after-commit scenario, rejection of unsupported anchor schema versions, and C10/C11 model checks for retaining the last committed record during PREPARED and reconciling an ambiguous commit. These tests are committed but remain unverified by execution: the current workflow's explicit unittest list omits this module. Record the exact commit SHA, Python version, command, complete test output, and environment identity with any future execution evidence. A successful run of the repository's existing workflow is not a substitute for this command.
 
 This section is an execution instruction only. It is not evidence that the command has been run or passed.
+
+
+## 14. Synthetic PREPARED/COMMITTED retention update — 2026-11-05
+
+The offline model now keeps a separate in-memory pointer to its last COMMITTED anchor record while a newer operation is PREPARED. The current operation remains PREPARED, so signing_allowed continues to fail closed; the previous committed record is retained for model inspection rather than being overwritten as the only committed reference.
+
+Two dedicated tests were added:
+- test_c10_pending_prepare_preserves_last_committed_record: confirms that a pending prepare does not erase the previous committed record and does not enable signing.
+- test_c11_ambiguous_commit_retains_new_committed_record: confirms that a simulated lost reply after the in-memory commit can be reconciled by operation ID and that the committed pointer advances to the new record.
+
+These are in-memory state-machine tests only. They do not simulate filesystem write ordering, fsync, atomic rename, power loss, durable transaction logs, or a separately administered trust anchor. They do not establish C10/C11 production acceptance. The dedicated test module still requires explicit execution using the command in Section 13; the existing workflow does not run it.
