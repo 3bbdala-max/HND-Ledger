@@ -545,7 +545,26 @@ def main():
             partition_groups_22=[[0,1],[2,3]]
             set_partition(relays,partition_groups_22)
             wait(lambda:partition_ready(urls,nodeids,partition_groups_22),"2/2 peer isolation")
-            baseline22=[rpc_status(u) for u in urls]
+            # A block whose commit was already in flight when the relays closed
+            # may finalize immediately after isolation. Do not mistake that
+            # boundary effect for progress by a 2/2 partition: first require
+            # every replica's height and block hash to remain stable for 5s.
+            stable22={"fingerprint":None,"since":None}
+            def stable_partition_snapshot():
+                current=[rpc_status(u) for u in urls]
+                fingerprint=[
+                    (int(x["sync_info"]["latest_block_height"]),x["sync_info"]["latest_block_hash"])
+                    for x in current
+                ]
+                now=time.monotonic()
+                if fingerprint != stable22["fingerprint"]:
+                    stable22["fingerprint"]=fingerprint
+                    stable22["since"]=now
+                    return None
+                if now-stable22["since"] < 5:
+                    return None
+                return current
+            baseline22=wait(stable_partition_snapshot,"2/2 partition reaches a stable no-quorum baseline",45)
             heights22=[int(x["sync_info"]["latest_block_height"]) for x in baseline22]
             blocks22=[x["sync_info"]["latest_block_hash"] for x in baseline22]
             apps22=[app_hash(u) for u in urls]
