@@ -183,6 +183,8 @@ class OfflineAntiRollbackModel:
     def _validate_identity(self, record: AnchorRecord) -> None:
         if (record.network_id, record.genesis_hash, record.validator_id, record.signer_id) != self.identity:
             raise ReferenceModelError("chain/genesis/validator/signer identity mismatch")
+        if record.schema_version != 1:
+            raise ReferenceModelError("unsupported anchor schema version")
         if not hmac.compare_digest(record.mac, _mac(record.unsigned())):
             raise ReferenceModelError("synthetic anchor record authentication failed")
 
