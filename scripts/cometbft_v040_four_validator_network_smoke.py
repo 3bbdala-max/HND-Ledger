@@ -304,25 +304,15 @@ def main():
                     signer_socket.unlink()
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
-            # Wait for CometBFT's RPC to return before querying /abci_info.
-            # The HTTP endpoint was intentionally offline while the node was stopped.
-            wait(lambda: rpc_status(urls[3]),"restarted CometBFT RPC readiness",45)
-            restored_info=abci_info(urls[3])
-            restored_alice=account(urls[3],aid)["balance"]
-            restored_bob=account(urls[3],bid)["balance"]
-            if int(restored_info["last_block_height"]) < pre_hnd_height:
-                raise AssertionError("restarted HND app rolled back below its pre-stop committed height")
-            if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
-                raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
-            print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"pre_stop_height":pre_hnd_height,"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged_at_app_start":True,"balances_unchanged":True,"verified_after_rpc_restart":True},sort_keys=True),flush=True)
+            # Re-establish the external signer immediately after node launch.
+            # A remote-signer validator may not finish startup/RPC readiness
+            # until its configured signer endpoint has connected.
             if signer_binary:
                 def restarted_listener_ready():
                     if nodes[3].poll() is not None:
                         raise RuntimeError(f"validator 4 exited during listener restart: {nodes[3].returncode}")
                     return True if noise_mode else signer_socket.exists()
-                wait(restarted_listener_ready,"restarted validator Unix signer socket",30)
-                # Require a connection marker written by this signer process,
-                # not a stale marker from the earlier signer lifecycle.
+                wait(restarted_listener_ready,"restarted validator signer listener",30)
                 signer_log.flush()
                 signer_log_offset=(root/"signer4.log").stat().st_size
                 signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
@@ -333,7 +323,17 @@ def main():
                     current_log=(root/"signer4.log").read_bytes()
                     fresh_log=current_log[signer_log_offset:].decode("utf-8",errors="replace")
                     return True if ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in fresh_log else None
-                wait(restarted_signer_connected,"new remote signer process connected to restarted validator",30)
+                wait(restarted_signer_connected,"new remote signer process connected to restarted validator",45)
+            # The HTTP endpoint was intentionally offline while the node was stopped.
+            wait(lambda: rpc_status(urls[3]),"restarted CometBFT RPC readiness",60)
+            restored_info=abci_info(urls[3])
+            restored_alice=account(urls[3],aid)["balance"]
+            restored_bob=account(urls[3],bid)["balance"]
+            if int(restored_info["last_block_height"]) < pre_hnd_height:
+                raise AssertionError("restarted HND app rolled back below its pre-stop committed height")
+            if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
+                raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
+            print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"pre_stop_height":pre_hnd_height,"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged_at_app_start":True,"balances_unchanged":True,"verified_after_rpc_restart":True},sort_keys=True),flush=True)
             sfinal=wait(lambda:converged(urls,qheight),"restarted validator catch-up",150)
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
             final_bob=[account(u,bid)["balance"] for u in urls]
