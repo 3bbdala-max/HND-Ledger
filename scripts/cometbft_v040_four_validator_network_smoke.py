@@ -331,6 +331,8 @@ def main():
             restored_bob=account(urls[3],bid)["balance"]
             if int(restored_info["last_block_height"]) < pre_hnd_height:
                 raise AssertionError("restarted HND app rolled back below its pre-stop committed height")
+            if restored_info["last_block_app_hash"] != pre_hnd_app_hash:
+                raise AssertionError("restarted HND app hash differs from its exact pre-stop committed app hash")
             if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
                 raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
             print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"pre_stop_height":pre_hnd_height,"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged_at_app_start":True,"balances_unchanged":True,"verified_after_rpc_restart":True},sort_keys=True),flush=True)
