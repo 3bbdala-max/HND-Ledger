@@ -129,3 +129,30 @@ Consequently, a second operation may be prepared on top of an unresolved PREPARE
 **Required regression test:** prepare operation A; attempt to prepare operation B with a distinct ID and a strictly advancing HRS; assert B is rejected, the current anchor record remains A/PREPARED, operation A remains queryable, the last committed pointer is unchanged, and signing remains disabled. Then verify that A can be committed or reconciled through the existing permitted path.
 
 **Evidence status:** this is a source-review finding, not a test result. The correction and regression test are pending; no claim is made that the current implementation already enforces this rule.
+
+## 11. Source-review finding: historical COMMITTED retries are not current-state proof
+
+A second review of the operation-history paths found a related semantic gap:
+
+- `SyntheticAnchor.compare_and_swap` returns the stored record immediately when an operation ID already exists with a matching transaction digest and its stored status is `COMMITTED`.
+- This idempotent return does not establish that the record is still the latest value of `self._record`; a later operation may have advanced the current anchor.
+- `OfflineAntiRollbackModel.prepare` returns an existing historical `COMMITTED` operation after checking its payload and local generation, without requiring it to equal the current anchor record.
+- `commit` may return a cached or historical `COMMITTED` record without proving it is the current anchor record.
+- `reconcile` verifies that the operation-history entry is `COMMITTED` and that its local generation digest matches, but does not compare the returned record with the current anchor record.
+
+This does not by itself show that the current `signing_allowed` path authorizes a historical record: that method reads the latest anchor record independently. The defect is that APIs named or used as prepare/commit/reconcile can return a historical committed result without clearly distinguishing **operation outcome** from **current signing state**.
+
+**Required semantic separation:**
+
+1. An operation-outcome query may report that a historical operation committed, with an explicit historical/non-current result.
+2. A current-state confirmation must read the latest anchor record and compare operation ID, sequence, transaction digest, state digest, and identity context.
+3. A historical committed retry must never be presented as evidence that the operation is still current or that signing is permitted.
+4. Any caller that needs signing readiness must use the separate current-state and signer-readiness checks.
+
+**Required regression tests:**
+
+- Commit A, then commit B; query/retry A through prepare, commit, and reconcile. Historical outcome may be reported, but current-state confirmation for A must fail and B must remain the latest record.
+- Confirm that the same queries for B succeed as current only while B remains the latest committed record.
+- Make the anchor unavailable during current-state confirmation; the result must be unknown/blocked, never inferred from the historical operation map.
+
+This is a source-review finding and test specification only. No code correction or test execution is claimed.
