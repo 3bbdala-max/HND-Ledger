@@ -112,3 +112,20 @@ The current model does **not** provide a durable journal, durable generation sna
 - **Gate D:** supervised disaster-recovery rehearsal and independent sign-off.
 
 Until all required gates are independently satisfied, Stage A remains open, production signing remains prohibited, and no release or custody guarantee is claimed.
+
+
+## 10. Additional code-review finding: prevent a second PREPARED operation
+
+A review of the current in-memory reference implementation identified a state-machine gap requiring correction before the next test cycle:
+
+- `SyntheticAnchor.compare_and_swap` handles a retry or COMMITTED transition for an existing operation ID.
+- For a previously unseen operation ID, it checks the current sequence, predecessor digest, HRS progression, and that the proposed record begins as PREPARED.
+- It does not currently reject a new operation merely because the current anchor record is already PREPARED under a different operation ID.
+
+Consequently, a second operation may be prepared on top of an unresolved PREPARED record. The operation history can then contain multiple unresolved operations, while the latest anchor record points only to the newest one. That is inconsistent with the single-pending-operation decision model in this document.
+
+**Required correction:** before accepting a new operation ID, the anchor must reject the transition whenever its current record is PREPARED. The only permitted transition out of that state is the matching operation's idempotent retry or its exact PREPARED-to-COMMITTED transition. Do not add implicit abort or supersession.
+
+**Required regression test:** prepare operation A; attempt to prepare operation B with a distinct ID and a strictly advancing HRS; assert B is rejected, the current anchor record remains A/PREPARED, operation A remains queryable, the last committed pointer is unchanged, and signing remains disabled. Then verify that A can be committed or reconciled through the existing permitted path.
+
+**Evidence status:** this is a source-review finding, not a test result. The correction and regression test are pending; no claim is made that the current implementation already enforces this rule.
