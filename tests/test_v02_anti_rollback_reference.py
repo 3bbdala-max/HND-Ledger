@@ -249,6 +249,7 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
             {"height": 0, "round": 2**31, "step": 1, "message": "round"},
             {"height": 0, "round": 0, "step": 4, "message": "step"},
             {"height": 0, "round": 0, "step": -1, "message": "step"},
+            {"height": 7, "round": 0, "step": 0, "message": "step 0 is reserved"},
         )
         for index, case in enumerate(invalid_cases):
             with self.subTest(case=case):
