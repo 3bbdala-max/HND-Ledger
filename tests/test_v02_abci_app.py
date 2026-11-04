@@ -390,6 +390,27 @@ class TestV02ABCIApplication(unittest.TestCase):
         with self.assertRaisesRegex(ABCIApplicationError, "cannot be decoded"):
             self.make_app()
 
+    def test_truncated_persisted_store_is_rejected_on_restart(self):
+        self.state_path.write_bytes(b'{"schema_version":')
+        with self.assertRaisesRegex(ABCIApplicationError, "cannot be decoded"):
+            self.make_app()
+
+    def test_persisted_store_from_wrong_network_is_rejected(self):
+        payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        payload["network_id"] = "hnd-other-network"
+        self.reseal_store(payload)
+        self.state_path.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ABCIApplicationError, "network mismatch"):
+            self.make_app()
+
+    def test_persisted_store_from_wrong_genesis_is_rejected(self):
+        payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        payload["genesis_hash"] = "0" * 64
+        self.reseal_store(payload)
+        self.state_path.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ABCIApplicationError, "Genesis mismatch"):
+            self.make_app()
+
     def test_recovery_metadata_tampering_is_rejected_by_store_hash(self):
         self.app.finalize_block(height=1, transactions=[self.raw(amount=40, nonce=0)])
         self.app.commit()
