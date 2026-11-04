@@ -101,6 +101,10 @@ def patch_upstream_test(source_file):
             raise RuntimeError(f"Expected exactly one upstream source anchor, found {patched.count(anchor)}: {anchor[:90]!r}")
 
     patched = patched.replace("appFunc := newKVStore", "")
+    unused_import = '\tcmtsync "github.com/cometbft/cometbft/libs/sync"\n'
+    if patched.count(unused_import) != 1:
+        raise RuntimeError("Could not uniquely locate obsolete local-client mutex import")
+    patched = patched.replace(unused_import, "")
     patched = patched.replace(
         "\t\tstate, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)\n",
         "\t\tstate, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)\n",
