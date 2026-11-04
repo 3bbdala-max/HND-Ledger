@@ -190,6 +190,24 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
                 committed.sequence, bad, host_id="synthetic-host-1", host_epoch=1
             )
 
+    def test_first_anchor_record_uses_zero_predecessor_sentinel(self):
+        first = self.model.prepare(
+            operation_id="first-record", host_id="synthetic-host-1",
+            state=self.state, height=7,
+        )
+        self.assertEqual(first.sequence, 1)
+        self.assertEqual(first.predecessor_digest, "0" * 64)
+        fields = first.unsigned()
+        fields.update(
+            operation_id="wrong-first-sentinel",
+            predecessor_digest="1" * 64,
+        )
+        bad = AnchorRecord(**fields, mac=_mac(fields))
+        with self.assertRaisesRegex(StaleTransition, "predecessor digest"):
+            self.anchor.compare_and_swap(
+                0, bad, host_id="synthetic-host-1", host_epoch=1
+            )
+
     def test_round_and_step_reject_negative_values_and_booleans(self):
         for field in ("round", "step"):
             for invalid in (-1, True, False):
