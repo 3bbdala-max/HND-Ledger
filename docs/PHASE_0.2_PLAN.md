@@ -327,3 +327,15 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Added the probe to `.github/workflows/hnd-v02-tests.yml` after the existing separate-process Unix-socket probe.
 - Triggered CI run [41790821353](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41790821353) on commit `eec2c78f84c58e5238b67f51baef56f22759344e`. At the time this note was written, the first HND unit-test job was still running; the Noise probe has **not yet been confirmed as compiled or passed**.
 - This is an isolated transport integration probe, not yet a Noise-backed four-validator network test, production transport approval, or security certification. Keep the result pending until the complete CI job finishes green and the Noise-specific step is confirmed successful.
+
+
+### WP4.9 — authenticated Noise remote-signer probe passed — 2026-11-04
+
+- Full GitHub Actions workflow [41791350660](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41791350660) completed with **success** on commit `5359321ae76e3ee029d325f59d111ba9d2ca4159`; both `hnd-v02-tests` and `cometbft-single-node-smoke` jobs passed.
+- The Noise-specific step emitted `COMETBFT_V040_NOISE_REMOTE_SIGNER_AUTHORIZED_OK`, `COMETBFT_V040_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED`, and `COMETBFT_V040_NOISE_REMOTE_SIGNER_PROBE_OK`.
+- The probe used disposable identities and loopback TCP. It verified authorized Noise peer authentication, remote-signer Ping/public-key/signature flow, signature validity, and rejection of an identity absent from the configured allowlist.
+- The same full workflow passed the pinned Byzantine prevote/evidence regression, FilePV anti-double-sign guard, Unix-socket protocol/process-isolation probes, connected vote-withholding probe, remote anti-double-sign persistence after restart, single-node ABCI integration, four-validator Genesis/identity preflight, four-validator network integration, external remote-signer outage/recovery, 3/1 partition/reconnection, and 2/2 no-quorum/reconnection tests.
+- **Scope limitation:** the Noise test is a standalone authenticated remote-signer transport probe. The four-validator integration still uses the separately tested local Unix-socket remote signer; Noise has not yet been integrated into the four-validator harness. No production transport is approved.
+- Next gate: integrate the Noise transport into a disposable validator signer in the four-validator harness, then test signer restart/reconnect, unauthorized identity rejection at the integrated boundary, validator catch-up, and failure behavior. Preserve explicit peer-ID allowlisting and disposable keys.
+- Production identity provisioning/rotation, HSM/KMS custody, rollback protection, operational controls, independent security review, governance, and jurisdiction-specific legal review remain open. Public release and real-value activity remain blocked by G2–G4.
+- All changes remain on `phase-0.2-planning`; `main` is unchanged.
