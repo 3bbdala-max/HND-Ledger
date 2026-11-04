@@ -75,3 +75,18 @@ If the upstream test harness cannot be safely adapted without invasive CometBFT 
 ---
 
 This design is a test plan, not proof of Byzantine fault tolerance, production security, legal compliance, or authorization to issue or trade HND.
+
+
+## 8. Pinned-source integration seam verified
+
+A second inspection of the exact CometBFT v0.40.0 source confirms that the upstream regression can be adapted without replacing the P2P path:
+
+- `consensus/byzantine_test.go:TestByzantinePrevoteEquivocation` constructs four consensus states and four consensus reactors, connects them with `p2p.MakeConnectedSwitches`, and signs two conflicting prevotes in the faulty validator's `doPrevote` hook.
+- The two signed votes are sent to each connected peer as `p2p.Envelope{ChannelID: VoteChannel, Message: &cmtcons.Vote{...}}`. This is the actual consensus P2P reactor path and must be retained.
+- The same test subscribes to each validator's committed-block event stream and waits for duplicate-vote evidence to appear in committed blocks. The evidence is expected after the infraction height, not necessarily in the same block.
+- The existing test currently uses `newKVStore`, `abcicli.NewLocalClient`, and an in-memory state store. That is the part to replace for HND integration.
+- The pinned `abci/client/grpc_client.go` exposes `abcicli.NewGRPCClient(addr, true)`; the client implements the ABCI Application interface and can be passed to `proxy.NewAppConnConsensus` and `proxy.NewAppConnMempool`. This provides a supported bridge to the running HND Python gRPC ABCI server without changing the vote injection mechanism.
+- HND application initialization must receive the configured HND `ChainId` and canonical `AppStateBytes` in `RequestInitChain`; the upstream test's current minimal InitChain request supplies only validator updates and is insufficient for HND.
+- After the evidence-bearing block commits, the integration test must query `/evidence` and `Info` from all four HND ABCI endpoints and compare canonical journal contents and `last_block_app_hash`.
+
+**Implementation constraint:** do not simply swap the local KV store for a gRPC client and assume the test is complete. The test must also provide valid HND Genesis bytes, initialize each application independently, close all ABCI clients and processes deterministically, and verify that the four application hashes agree after the same evidence-bearing block.
