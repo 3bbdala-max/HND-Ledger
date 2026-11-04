@@ -234,6 +234,32 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         )
         self.assertEqual((record.round, record.step), (2, 3))
 
+    def test_hrs_matches_cometbft_v040_storage_widths_and_step_mapping(self):
+        maximums = self.model.prepare(
+            operation_id="hrs-maximums", host_id="synthetic-host-1",
+            state=self.state, height=(2**63 - 1), round=(2**31 - 1), step=3,
+        )
+        self.assertEqual(
+            (maximums.height, maximums.round, maximums.step),
+            (2**63 - 1, 2**31 - 1, 3),
+        )
+
+        invalid_cases = (
+            {"height": 2**63, "round": 0, "step": 1, "message": "height"},
+            {"height": 0, "round": 2**31, "step": 1, "message": "round"},
+            {"height": 0, "round": 0, "step": 4, "message": "step"},
+            {"height": 0, "round": 0, "step": -1, "message": "step"},
+        )
+        for index, case in enumerate(invalid_cases):
+            with self.subTest(case=case):
+                with self.assertRaisesRegex(ValueError, case["message"]):
+                    self.model.prepare(
+                        operation_id=f"hrs-invalid-{index}",
+                        host_id="synthetic-host-1", state=self.state,
+                        height=case["height"], round=case["round"],
+                        step=case["step"],
+                    )
+
     def test_stale_model_cannot_commit_after_shared_fencing(self):
         second = OfflineAntiRollbackModel(
             self.anchor, network_id="synthetic-net", genesis_hash="a" * 64,
