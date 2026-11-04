@@ -159,6 +159,52 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         with self.assertRaises(ReferenceModelError):
             self.model.restore(record.generation_id, dual_control=True)
 
+    def test_shared_anchor_fencing_rejects_stale_model_instance(self):
+        first = self.model
+        second = OfflineAntiRollbackModel(
+            self.anchor, network_id="synthetic-net", genesis_hash="a" * 64,
+            validator_id="validator-fixture-1", signer_id="signer-fixture-1",
+        )
+        self.prepare_commit()
+        first.fence_and_takeover("synthetic-host-2")
+        self.assertFalse(second.signing_allowed("synthetic-host-1"))
+        with self.assertRaisesRegex(ReferenceModelError, "fenced host"):
+            second.prepare(operation_id="stale-instance", host_id="synthetic-host-1",
+                           state={"height": 8}, height=8)
+        self.assertTrue(first.signing_allowed("synthetic-host-2"))
+
+    def test_anchor_rejects_wrong_predecessor_digest_at_correct_sequence(self):
+        committed = self.prepare_commit()
+        fields = committed.unsigned()
+        fields.update(
+            operation_id="wrong-predecessor",
+            sequence=committed.sequence + 1,
+            predecessor_digest="f" * 64,
+            status="PREPARED",
+        )
+        bad = AnchorRecord(**fields, mac=_mac(fields))
+        with self.assertRaisesRegex(StaleTransition, "predecessor digest"):
+            self.anchor.compare_and_swap(committed.sequence, bad)
+
+    def test_round_and_step_reject_negative_values_and_booleans(self):
+        for field in ("round", "step"):
+            for invalid in (-1, True, False):
+                kwargs = {field: invalid}
+                with self.subTest(field=field, value=invalid):
+                    with self.assertRaisesRegex(ValueError, field):
+                        self.model.prepare(
+                            operation_id=f"invalid-{field}-{invalid}",
+                            host_id="synthetic-host-1", state=self.state,
+                            height=7, **kwargs,
+                        )
+
+    def test_round_and_step_accept_nonnegative_integers(self):
+        record = self.model.prepare(
+            operation_id="valid-round-step", host_id="synthetic-host-1",
+            state=self.state, height=7, round=2, step=3,
+        )
+        self.assertEqual((record.round, record.step), (2, 3))
+
 
 if __name__ == "__main__":
     unittest.main()
