@@ -418,5 +418,9 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.assertEqual(self.app.account_view(self.alice_id)["balance"], 600_000)
 
 
+    def test_evidence_journal_starts_empty(self):
+        self.assertEqual(self.app.evidence_journal, [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
