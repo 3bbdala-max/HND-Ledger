@@ -356,6 +356,26 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.assertEqual(self.anchor.operation("fence-at-cas").status, "PREPARED")
 
 
+    def test_stale_local_backup_cannot_replace_newer_anchored_generation(self):
+        older = self.prepare_commit()
+        stale_backup = {
+            older.generation_id: dict(self.model.generations[older.generation_id])
+        }
+
+        newer_state = {"height": 8, "app_hash": "newer-committed-state"}
+        newer = self.prepare_commit("newer-operation", newer_state)
+        self.assertEqual(self.anchor.read(), newer)
+
+        # Simulate restoring an old local backup while the anchor remains current.
+        self.model.generations = dict(stale_backup)
+        self.assertFalse(self.model.signing_allowed("synthetic-host-1"))
+        with self.assertRaisesRegex(ReferenceModelError, "not the anchored"):
+            self.model.restore(older.generation_id, dual_control=True)
+        with self.assertRaisesRegex(ReferenceModelError, "digest mismatch"):
+            self.model.restore(newer.generation_id, dual_control=True)
+        self.assertEqual(self.anchor.read(), newer)
+
+
     def test_anchor_outage_after_commit_disables_signing_and_restore(self):
         committed = self.prepare_commit()
         self.assertTrue(self.model.signing_allowed("synthetic-host-1"))
