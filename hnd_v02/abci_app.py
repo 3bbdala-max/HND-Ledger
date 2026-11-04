@@ -11,13 +11,14 @@ import json
 import os
 import tempfile
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
 from .ledger import HNDLedger, LedgerError
 from .transaction import ProtocolConfig, canonical_json
 
-APP_STORE_VERSION = 2
+APP_STORE_VERSION = 3
 MAX_BLOCK_TRANSACTIONS = 1000
 _STORE_KEYS = {
     "schema_version",
@@ -26,6 +27,7 @@ _STORE_KEYS = {
     "genesis_hash",
     "last_committed_height",
     "ledger_snapshot",
+    "evidence_journal",
     "app_hash",
     "store_hash",
 }
@@ -105,6 +107,8 @@ class HNDABCIApplication:
             expected_genesis_hash=expected_genesis_hash,
         )
         self._last_committed_height = 0
+        self._evidence_journal: list[dict[str, Any]] = []
+        self._committed_app_hash = self._calculate_app_hash(self._committed_ledger, self._evidence_journal)
         self._mempool_ledger = self._clone_committed()
         self._pending: dict[str, Any] | None = None
         self._initialized = False
@@ -133,10 +137,20 @@ class HNDABCIApplication:
         with self._lock:
             return self._last_committed_height
 
+    @staticmethod
+    def _calculate_app_hash(ledger: HNDLedger, evidence_journal: list[dict[str, Any]]) -> str:
+        payload = {"ledger_state_hash": ledger.state_hash, "evidence_journal": evidence_journal}
+        return hashlib.sha256(b"HND-ABCI-APP-STATE-V1" + bytes((0,)) + canonical_json(payload)).hexdigest()
+
     @property
     def committed_state_hash(self) -> str:
         with self._lock:
-            return self._committed_ledger.state_hash
+            return self._committed_app_hash
+
+    @property
+    def evidence_journal(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return _json_copy(self._evidence_journal)
 
     def application_genesis_bytes(self) -> bytes:
         """Canonical HND application-state payload for CometBFT InitChain."""
@@ -250,7 +264,43 @@ class HNDABCIApplication:
             except (ABCIApplicationError, LedgerError, TypeError, ValueError) as exc:
                 return {"accepted": False, "reason": str(exc)}
 
-    def finalize_block(self, *, height: int, transactions: list[bytes]) -> dict[str, Any]:
+    @staticmethod
+    def _merge_evidence(existing: list[dict[str, Any]], incoming: list[dict[str, Any]], block_height: int) -> list[dict[str, Any]]:
+        records = {item["evidence_id"]: _json_copy(item) for item in existing}
+        for item in incoming:
+            required = {"type", "validator_address", "validator_power", "height", "time", "total_voting_power"}
+            if type(item) is not dict or set(item) != required:
+                raise ABCIApplicationError("misbehavior record schema")
+            if type(item["type"]) is not int or item["type"] not in (1, 2):
+                raise ABCIApplicationError("unsupported misbehavior type")
+            address = item["validator_address"]
+            if type(address) is not str or len(address) != 40 or any(c not in "0123456789abcdef" for c in address):
+                raise ABCIApplicationError("invalid validator address")
+            vp, total, infraction_height = item["validator_power"], item["total_voting_power"], item["height"]
+            if type(vp) is not int or type(total) is not int or vp <= 0 or total <= 0 or vp > total:
+                raise ABCIApplicationError("invalid misbehavior voting power")
+            if type(infraction_height) is not int or infraction_height <= 0 or infraction_height >= block_height:
+                raise ABCIApplicationError("invalid misbehavior infraction height")
+            stamp = item["time"]
+            if type(stamp) is not str:
+                raise ABCIApplicationError("invalid misbehavior timestamp")
+            try:
+                parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                canonical = parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+                if parsed.tzinfo is None or parsed.utcoffset() is None or canonical != stamp:
+                    raise ValueError("timestamp must be canonical UTC")
+            except ValueError as exc:
+                raise ABCIApplicationError("invalid misbehavior timestamp") from exc
+            normalized = dict(item)
+            identity = {"type": item["type"], "validator_address": address, "height": infraction_height}
+            normalized["evidence_id"] = hashlib.sha256(b"HND-EVIDENCE-ID-V1" + bytes((0,)) + canonical_json(identity)).hexdigest()
+            previous = records.get(normalized["evidence_id"])
+            if previous is not None and previous != normalized:
+                raise ABCIApplicationError("conflicting metadata for duplicate evidence")
+            records[normalized["evidence_id"]] = normalized
+        return [records[key] for key in sorted(records)]
+
+    def finalize_block(self, *, height: int, transactions: list[bytes], misbehavior: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """Execute the decided block in temporary state; do not persist it."""
         with self._lock:
             self._require_initialized()
@@ -259,6 +309,11 @@ class HNDABCIApplication:
             if type(height) is not int or height != self._last_committed_height + 1:
                 raise ABCIApplicationError("unexpected block height")
             self._validate_tx_list(transactions)
+            if misbehavior is None:
+                misbehavior = []
+            if type(misbehavior) is not list:
+                raise ABCIApplicationError("misbehavior must be a list")
+            candidate_journal = self._merge_evidence(self._evidence_journal, misbehavior, height)
 
             candidate = self._clone_committed()
             results: list[dict[str, Any]] = []
@@ -279,10 +334,11 @@ class HNDABCIApplication:
                 candidate = trial
                 results.append({"code": 0, "data": bytes.fromhex(txid), "log": "ok"})
 
-            app_hash = bytes.fromhex(candidate.state_hash)
+            app_hash = bytes.fromhex(self._calculate_app_hash(candidate, candidate_journal))
             self._pending = {
                 "height": height,
                 "ledger": candidate,
+                "evidence_journal": candidate_journal,
                 "tx_results": results,
                 "app_hash": app_hash,
             }
@@ -303,6 +359,8 @@ class HNDABCIApplication:
             pending = self._pending
             self._write_store(pending["ledger"], pending["height"])
             self._committed_ledger = pending["ledger"]
+            self._evidence_journal = pending["evidence_journal"]
+            self._committed_app_hash = pending["app_hash"].hex()
             self._last_committed_height = pending["height"]
             self._mempool_ledger = self._clone_committed()
             self._pending = None
