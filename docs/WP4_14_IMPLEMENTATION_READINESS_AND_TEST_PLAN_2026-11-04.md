@@ -158,3 +158,14 @@ This is a bounded in-memory reference-model test. It does not simulate power los
 Repository boundary check: `phase-0.2-planning` points to `c387b67923ce194d44623fed425f15914affa6aa`; `main` remains at `3f0a71e27924954f27813ec68e483ecf159461e5`. No merge or production action was performed.
 
 **Disposition unchanged:** Stage A remains OPEN pending qualified independent review and signed decisions. Stage C/D and G2–G4 remain closed.
+
+
+## 12. CI scope correction — 2026-11-05
+
+A subsequent audit of `.github/workflows/hnd-v02-tests.yml` found that the `hnd-v02-tests` job's explicit `python -m unittest` command does **not** include `tests.test_v02_anti_rollback_reference`. Therefore, the successful workflow run [41921054546](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41921054546) does not establish that either `test_anchor_outage_after_commit_disables_signing_and_restore` or the later C08 stale-local-backup test was executed by CI. The same limitation applies to the other tests in that module unless they are invoked elsewhere.
+
+A local execution attempt was also unavailable because the environment could not resolve `github.com` to clone the repository. Accordingly, the two new reference-model tests are **committed but not yet execution-verified**. Do not count them as passed tests or as CI evidence.
+
+The workflow file was not modified. Before relying on these tests, they must be run in an authorized test environment or included in a separately reviewed CI change. This correction supersedes any implication in the preceding CI evidence entry that the new anti-rollback unit test itself was covered by that run.
+
+**Disposition:** C08 remains unverified; the additional C14 synthetic-anchor outage test remains unverified. The successful CI run remains valid only for the commands and scenarios actually listed in the workflow. Stage A remains OPEN; no production or release gate changes.
