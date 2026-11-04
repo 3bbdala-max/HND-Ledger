@@ -34,8 +34,12 @@ def wait_for_recovery_readiness(
         code = process.poll()
         if code is not None:
             raise RuntimeError(f"recovery process exited before readiness (exit={code})")
-        if readiness():
-            return
+        try:
+            if readiness():
+                return
+        except OSError:
+            # A refused/not-yet-bound local readiness socket is still pending.
+            pass
         time.sleep(min(poll_interval, max(0.0, deadline - time.monotonic())))
 
     if process.poll() is None:
