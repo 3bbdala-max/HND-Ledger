@@ -88,20 +88,33 @@ class SyntheticAnchor:
             if not self.available:
                 raise AnchorUnavailable("synthetic anchor unavailable")
             prior = self._operations.get(record.operation_id)
-            payload_digest = _digest(record.unsigned())
+            transaction_digest = _digest({
+                key: value for key, value in record.unsigned().items()
+                if key != "status"
+            })
             if prior:
-                if prior[0] != payload_digest:
+                if prior[0] != transaction_digest:
                     raise ReferenceModelError("operation ID reused with conflicting payload")
-                return prior[1]
+                if prior[1].status == "COMMITTED":
+                    return prior[1]
+                if prior[1].status == "PREPARED" and record.status == "COMMITTED":
+                    if self._record != prior[1] or record.sequence != prior[1].sequence:
+                        raise StaleTransition("prepared operation is no longer the current anchor record")
+                    self._record = record
+                    self._operations[record.operation_id] = (transaction_digest, record)
+                    return record
+                if prior[1] == record:
+                    return prior[1]
+                raise ReferenceModelError("invalid repeated operation transition")
             current_sequence = self._record.sequence if self._record else 0
             if current_sequence != expected_sequence:
                 raise StaleTransition("anchor compare-and-swap predecessor is stale")
             if record.sequence != expected_sequence + 1:
                 raise StaleTransition("anchor sequence must increase by exactly one")
-            if record.status not in {"PREPARED", "COMMITTED"}:
-                raise ReferenceModelError("invalid anchor transaction status")
+            if record.status != "PREPARED":
+                raise ReferenceModelError("new anchor operation must begin PREPARED")
             self._record = record
-            self._operations[record.operation_id] = (payload_digest, record)
+            self._operations[record.operation_id] = (transaction_digest, record)
             return record
 
     def operation(self, operation_id: str) -> AnchorRecord | None:
