@@ -308,7 +308,7 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
     def test_finalize_block_passes_misbehavior_into_persisted_hnd_evidence_journal(self):
         item = types_pb2.Misbehavior(
             type=types_pb2.DUPLICATE_VOTE,
-            validator=types_pb2.Validator(address=b"\\xab" * 20, power=10),
+            validator=types_pb2.Validator(address=bytes.fromhex("ab" * 20), power=10),
             height=1,
             time=Timestamp(seconds=1793786400, nanos=0),
             total_voting_power=40,
