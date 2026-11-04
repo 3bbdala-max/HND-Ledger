@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_v02.genesis import genesis_manifest_hash
+from hnd_v02.recovery_controls import assert_replica_convergence
 from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, canonical_json, create_signed_transaction, public_key_b64
 from scripts.hnd_peer_relay import DirectedTCPRelay
 
@@ -413,6 +414,15 @@ def main():
             final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
             final_bob=[account(u,bid)["balance"] for u in urls]
             final_info=abci_info(urls[3])
+            assert_replica_convergence([
+                {
+                    "validator": f"validator-{index+1}",
+                    "height": int(status["sync_info"]["latest_block_height"]),
+                    "block_hash": status["sync_info"]["latest_block_hash"],
+                    "app_hash": base64.b64decode(final_apphash[index], validate=True),
+                }
+                for index, status in enumerate(sfinal)
+            ])
             if any(x["balance"]!=expected_alice_prepartition for x in final_accounts) or any(x!=expected_bob_prepartition for x in final_bob) or len(set(final_apphash))!=1: raise AssertionError("post-restart HND state diverged")
             if int(final_info["last_block_height"]) != int(sfinal[3]["sync_info"]["latest_block_height"]):
                 raise AssertionError("post-catch-up CometBFT and HND heights differ")
