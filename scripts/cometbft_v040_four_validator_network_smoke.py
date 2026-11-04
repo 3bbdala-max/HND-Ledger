@@ -247,7 +247,7 @@ def main():
                 signer_log.flush()
                 signer_log_offset=(root/"signer4.log").stat().st_size
                 signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
-                    signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def restarted_signer_connected():
                     if signer.poll() is not None: return None
                     signer_log.flush()
