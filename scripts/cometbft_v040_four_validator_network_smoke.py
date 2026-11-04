@@ -176,6 +176,11 @@ def main():
                 return s if min(heights)>=minheight and len(set(heights))==1 and len(set(hashes))==1 else None
             urls=[e["rpc"] for e in eps]
             s0=wait(lambda:converged(urls),"four nodes initial consensus")
+            if noise_mode:
+                wait(lambda: "HND_NOISE_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text(errors="replace"),"authenticated Noise signer connection marker",30)
+                rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",noise_addr,str(homes[3]/"config/node_key.json")])
+                if "HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED" not in rejection:
+                    raise AssertionError("integrated Noise listener did not reject unauthorized signer identity")
             h0=int(s0[0]["sync_info"]["latest_block_height"])
             if any(x["node_info"]["network"]!=CHAIN for x in s0): raise AssertionError("chain ID mismatch")
             if any(account(u,aid)["balance"]!=ALICE for u in urls): raise AssertionError("Genesis balances differ")
