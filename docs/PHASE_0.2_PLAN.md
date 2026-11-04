@@ -494,3 +494,12 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Integrated negative controls cover bounded readiness timeout without modifying durable state, height/block-hash mismatch, post-recovery application-hash divergence, truncated/mismatched persisted state, and missing/substituted remote-signer anti-double-sign state.
 - **Status: WP4.13 CI acceptance gate passed for the enumerated disposable local test scenarios.** This supersedes the earlier WP4.13 entries above that state validation is pending or the controls are design-only; those entries remain as chronological implementation history.
 - Scope remains local crash-stop integration, not proof of arbitrary Byzantine fault tolerance, power-loss durability, production backup/restore, or production key anti-rollback. WP4.14 custody/backup/recovery remains a separate design and implementation gate. G2–G4 remain closed; no public release or real-value activity is approved.
+
+
+### WP4.14 — implementation readiness and verification plan recorded — 2026-11-04
+
+- Added `docs/WP4_14_IMPLEMENTATION_READINESS_AND_TEST_PLAN_2026-11-04.md`.
+- Converts the custody architecture into four staged work areas: independent review/decision freeze, synthetic local reference model, isolated provider-adapter evaluation, and supervised disaster-recovery rehearsal.
+- Adds architecture decisions and a verification matrix covering missing/corrupt state, manifest tampering, chain/validator mismatch, rollback, atomic-write crash points, dual control, provider outage, rotation, and split-brain restore.
+- Highlights the key limitation in the current test harness: a digest supplied by the same orchestrator is not an independent anti-rollback trust anchor.
+- **Status: planning artifact only. WP4.14 is not implementation-approved.** Independent security review and explicit architecture decisions are prerequisites. No production keys, credentials, HSM/KMS resources, or production signing are created. G2–G4 remain closed.
