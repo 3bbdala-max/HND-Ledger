@@ -97,7 +97,7 @@ func probeMissingRecoveryState() {
  defer os.RemoveAll(root)
  executable,err:=os.Executable()
  if err!=nil { die("resolve Noise helper executable: %v",err) }
- child:=exec.Command(executable,"--serve-noise-recovery","127.0.0.1:1",root+"/missing-node-key.json",root+"/missing-identity.txt",root+"/missing-validator-key.json",root+"/missing-validator-state.json","hnd-noise-missing-state-probe")
+ child:=exec.Command(executable,"--serve-noise-recovery","127.0.0.1:1",root+"/missing-node-key.json",root+"/missing-identity.txt",root+"/missing-validator-key.json",root+"/missing-validator-state.json","hnd-noise-missing-state-probe","expected-digest-placeholder")
  output,runErr:=child.CombinedOutput()
  if runErr==nil { die("Noise recovery unexpectedly accepted missing anti-double-sign state") }
  if !strings.Contains(string(output),"recovery mode requires existing anti-double-sign state file") {
