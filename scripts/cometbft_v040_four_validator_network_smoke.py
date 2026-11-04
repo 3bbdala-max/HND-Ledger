@@ -176,8 +176,9 @@ def main():
             shutil.move(str(signer_state_source), str(signer_state_path))
             os.chmod(signer_key_path, 0o600)
             os.chmod(signer_state_path, 0o600)
-            # Pin the signer anti-double-sign state before the signer starts; reuse this exact digest for recovery.
-            pre_signer_state_digest = sha256_file(signer_state_path)
+            # The initial state digest is only a baseline; FilePV advances this file
+            # as it signs. Recovery pins the final digest after the signer is stopped.
+            initial_signer_state_digest = sha256_file(signer_state_path)
         eps=[{"p2p":f"127.0.0.1:{BASE+3*i}","rpc":f"http://127.0.0.1:{BASE+3*i+1}","abci":f"127.0.0.1:{BASE+3*i+2}"} for i in range(N)]
         relays={}
         try:
@@ -260,6 +261,11 @@ def main():
             if signer_binary:
                 if not signer or signer.poll() is not None: raise AssertionError("remote signer process exited before outage test")
                 stop(signer); signer=None
+                if not signer_state_path.is_file():
+                    raise AssertionError("remote signer anti-double-sign state disappeared after clean stop")
+                recovery_signer_state_digest = sha256_file(signer_state_path)
+                if recovery_signer_state_digest == initial_signer_state_digest:
+                    raise AssertionError("remote signer anti-double-sign state did not advance after signing")
                 outage_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=1))
                 outage_broadcast=post(urls[0],"broadcast_tx_sync",{"tx":base64.b64encode(outage_tx).decode()})["result"]
                 if int(outage_broadcast.get("code",0)): raise RuntimeError(f"signer-outage CheckTx rejected: {outage_broadcast}")
@@ -275,7 +281,7 @@ def main():
                 # replacement signer, so the reconnect marker must be fresh.
                 signer_log.flush()
                 outage_signer_log_offset=(root/"signer4.log").stat().st_size
-                signer_args=(["--serve-noise-recovery",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN,pre_signer_state_digest] if noise_mode else ["--serve-recovery",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN,pre_signer_state_digest])
+                signer_args=(["--serve-noise-recovery",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN,recovery_signer_state_digest] if noise_mode else ["--serve-recovery",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN,recovery_signer_state_digest])
                 signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
                 def signer_recovered():
                     if signer.poll() is not None: return None
