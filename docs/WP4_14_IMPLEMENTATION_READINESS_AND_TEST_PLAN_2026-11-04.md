@@ -142,3 +142,19 @@ This is evidence for the named CI scenarios on this commit only. The recovery he
 Repository boundary check at this update: `phase-0.2-planning` points to `afd6d17fac73a266a0e7ade2521363efb9615dca`; `main` remains at `3f0a71e27924954f27813ec68e483ecf159461e5`. No merge or production action was performed.
 
 **Disposition unchanged:** Stage A remains OPEN pending a qualified independent review and signed decisions. Stage C/D and G2–G4 remain closed.
+
+
+## 11. CI evidence update — 2026-11-05 (anchor outage after commit)
+
+The GitHub Actions run [41921054546](https://github.com/3bbdala-max/HND-Ledger/actions/runs/41921054546) completed with **success** on branch commit `c387b67923ce194d44623fed425f15914affa6aa`. Both jobs passed:
+
+- `hnd-v02-tests`: success.
+- `cometbft-single-node-smoke`: success.
+
+The added synthetic test `test_anchor_outage_after_commit_disables_signing_and_restore` first commits a state, then makes the synthetic anchor unavailable. It asserts that signing is disabled and restore raises `AnchorUnavailable`; after the anchor is made available again, it checks that the committed anchor record is unchanged and that restore can proceed.
+
+This is a bounded in-memory reference-model test. It does not simulate power loss, durable storage, an independently administered monotonic anchor, or production key custody. It is evidence for the tested fail-closed behavior only; it does not close C08/C09 or C10/C11.
+
+Repository boundary check: `phase-0.2-planning` points to `c387b67923ce194d44623fed425f15914affa6aa`; `main` remains at `3f0a71e27924954f27813ec68e483ecf159461e5`. No merge or production action was performed.
+
+**Disposition unchanged:** Stage A remains OPEN pending qualified independent review and signed decisions. Stage C/D and G2–G4 remain closed.
