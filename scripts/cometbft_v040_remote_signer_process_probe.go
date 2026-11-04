@@ -371,7 +371,16 @@ func runStateDigestMismatchProbe() {
 	keyA, stateA := filepath.Join(root, "key-a.json"), filepath.Join(root, "state-a.json")
 	keyB, stateB := filepath.Join(root, "key-b.json"), filepath.Join(root, "state-b.json")
 	privval.GenFilePV(keyA, stateA).Save()
-	privval.GenFilePV(keyB, stateB).Save()
+	pvB := privval.GenFilePV(keyB, stateB)
+	pvB.Save()
+	substituteVote := (&cmttypes.Vote{
+		ValidatorAddress: cmttypes.Address(pvB.Key.PubKey().Address()),
+		Height: 1, Round: 0, Type: cmtproto.PrevoteType,
+		Timestamp: cmttime.Now(), BlockID: blockID("substituted-state"),
+	}).ToProto()
+	if err := pvB.SignVote(chainID, substituteVote); err != nil {
+		fail("advance disposable substitute signer state: %v", err)
+	}
 	expected, err := fileSHA256(stateA)
 	if err != nil { fail("hash expected signer state: %v", err) }
 	executable, err := os.Executable()
