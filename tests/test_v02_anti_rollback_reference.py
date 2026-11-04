@@ -205,6 +205,17 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         )
         self.assertEqual((record.round, record.step), (2, 3))
 
+    def test_stale_model_cannot_commit_after_shared_fencing(self):
+        second = OfflineAntiRollbackModel(
+            self.anchor, network_id="synthetic-net", genesis_hash="a" * 64,
+            validator_id="validator-fixture-1", signer_id="signer-fixture-1",
+        )
+        second.prepare(operation_id="pending-before-takeover", host_id="synthetic-host-1",
+                       state=self.state, height=7)
+        self.model.fence_and_takeover("synthetic-host-2")
+        with self.assertRaisesRegex(ReferenceModelError, "fenced host cannot commit"):
+            second.commit("pending-before-takeover")
+
 
 if __name__ == "__main__":
     unittest.main()
