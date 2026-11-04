@@ -51,8 +51,14 @@ func probeUnauthorized(addr,nodeKeyPath string) {
  raw,err:=net.DialTimeout("tcp",addr,2*time.Second); if err!=nil {die("dial validator Noise listener: %v",err)}
  ctx,cancel:=context.WithTimeout(context.Background(),4*time.Second)
  secured,handshakeErr:=transport.SecureOutbound(ctx,raw,expected); cancel()
- if secured!=nil { _=secured.Close(); die("unauthorized peer completed Noise handshake") }
- if handshakeErr==nil { _=raw.Close(); die("unauthorized peer was not rejected") }
+ // On an authentication failure Noise may return a partially initialized
+ // session together with an error. Closing that session can panic; close the
+ // raw socket instead and treat the handshake error as the expected rejection.
+ if handshakeErr==nil {
+  if secured!=nil { _=secured.Close() }
+  _=raw.Close()
+  die("unauthorized peer was not rejected")
+ }
  _=raw.Close()
  fmt.Println("HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED")
 }
