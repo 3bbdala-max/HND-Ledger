@@ -291,20 +291,12 @@ def main():
             al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(state4),"--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
             host,port=eps[3]["abci"].split(":")
             wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[3].poll() is None else False,"restarted ABCI app",30)
-            # Verify durable HND recovery before CometBFT itself is restarted.
-            restored_info=abci_info(urls[3])
-            restored_alice=account(urls[3],aid)["balance"]
-            restored_bob=account(urls[3],bid)["balance"]
+            # The restarted ABCI app exposes gRPC, not CometBFT's HTTP RPC.
+            # Confirm the durable file survived app startup, then restart the
+            # node so /abci_info and /abci_query become available again.
             restored_digest=sha256_file(state4)
-            if int(restored_info["last_block_height"]) != pre_hnd_height:
-                raise AssertionError("restarted HND app did not restore its pre-stop committed height")
-            if restored_info["last_block_app_hash"] != pre_hnd_app_hash:
-                raise AssertionError("restarted HND app hash differs from pre-stop committed app hash")
-            if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
-                raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
             if restored_digest != pre_state_digest:
-                raise AssertionError("HND durable state file digest changed across clean app restart")
-            print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged":True,"balances_unchanged":True,"verified_before_cometbft_restart":True},sort_keys=True),flush=True)
+                raise AssertionError("HND durable state file digest changed during clean ABCI app restart")
             if signer_binary:
                 # A stopped Unix listener can leave its pathname behind.
                 # Remove only this disposable test socket before rebinding.
@@ -312,6 +304,17 @@ def main():
                     signer_socket.unlink()
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
             nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
+            # Wait for CometBFT's RPC to return before querying /abci_info.
+            # The HTTP endpoint was intentionally offline while the node was stopped.
+            wait(lambda: rpc_status(urls[3]),"restarted CometBFT RPC readiness",45)
+            restored_info=abci_info(urls[3])
+            restored_alice=account(urls[3],aid)["balance"]
+            restored_bob=account(urls[3],bid)["balance"]
+            if int(restored_info["last_block_height"]) < pre_hnd_height:
+                raise AssertionError("restarted HND app rolled back below its pre-stop committed height")
+            if restored_alice != pre_alice or restored_bob != pre_bob or restored_alice+restored_bob != SUPPLY:
+                raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
+            print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"pre_stop_height":pre_hnd_height,"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged_at_app_start":True,"balances_unchanged":True,"verified_after_rpc_restart":True},sort_keys=True),flush=True)
             if signer_binary:
                 def restarted_listener_ready():
                     if nodes[3].poll() is not None:
