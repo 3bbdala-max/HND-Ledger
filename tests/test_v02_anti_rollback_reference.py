@@ -454,5 +454,34 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.assertEqual(self.anchor.read_last_committed(), previous)
 
 
+    def test_pending_prepare_after_model_restart_fails_closed_without_generation_data(self):
+        previous = self.prepare_commit()
+        pending = self.model.prepare(
+            operation_id="pending-before-model-restart",
+            host_id="synthetic-host-1",
+            state={"height": 8, "app_hash": "pending-after-restart"},
+            height=8,
+        )
+
+        # A new process/model instance has no local generation payload or prepare cache.
+        restarted = OfflineAntiRollbackModel(
+            self.anchor, network_id="synthetic-net", genesis_hash="a" * 64,
+            validator_id="validator-fixture-1", signer_id="signer-fixture-1",
+        )
+        self.assertEqual(self.anchor.read(), pending)
+        self.assertEqual(self.anchor.read_last_committed(), previous)
+        self.assertFalse(restarted.signing_allowed("synthetic-host-1"))
+        with self.assertRaisesRegex(ReferenceModelError, "remains uncommitted"):
+            restarted.reconcile(pending.operation_id)
+        with self.assertRaisesRegex(ReferenceModelError, "generation missing or corrupted"):
+            restarted.commit(pending.operation_id)
+        with self.assertRaisesRegex(
+            ReferenceModelError, "restore target is not the anchored committed generation"
+        ):
+            restarted.restore(previous.generation_id, dual_control=True)
+        self.assertEqual(self.anchor.read(), pending)
+        self.assertFalse(restarted.signing_allowed("synthetic-host-1"))
+
+
 if __name__ == "__main__":
     unittest.main()
