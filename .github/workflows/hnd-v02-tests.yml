@@ -60,7 +60,10 @@ jobs:
       - name: Run pinned CometBFT Byzantine prevote equivocation and evidence regression
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
-          go test ./consensus -run '^TestByzantinePrevoteEquivocation      - name: Run pinned CometBFT validator signer anti-double-sign smoke test
+          go test ./consensus -run '^TestByzantinePrevoteEquivocation$' -count=1 -v
+      - name: Run HND four-replica P2P equivocation evidence integration
+        run: python scripts/cometbft_v040_hnd_p2p_evidence_integration.py --cometbft-source "$RUNNER_TEMP/cometbft-src"
+      - name: Run pinned CometBFT validator signer anti-double-sign smoke test
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
           go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_privval_signing_smoke.go"
