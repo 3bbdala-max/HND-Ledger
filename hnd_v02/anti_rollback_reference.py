@@ -187,7 +187,7 @@ class OfflineAntiRollbackModel:
             raise ReferenceModelError("synthetic anchor record authentication failed")
 
     def prepare(self, *, operation_id: str, host_id: str, state: dict,
-                height: int, round: int = 0, step: int = 0) -> AnchorRecord:
+                height: int, round: int = 0, step: int = 1) -> AnchorRecord:
         if not operation_id or not host_id:
             raise ValueError("operation_id and host_id are required")
         if not self.anchor.host_is_current(host_id, self._host_epoch):
