@@ -513,3 +513,11 @@ All changes remain on `phase-0.2-planning`; `main` is unchanged. Public release 
 - Specifies PREPARED/COMMITTED transaction semantics, crash reconciliation, fail-closed restore, dual control, and synthetic verification vectors TA01–TA14.
 - Requires immutable state generations, retention of the prior committed generation until authenticated anchor read-back, serialized compare-and-swap transitions, and disabled signing during ambiguous commit/reconciliation states.
 - **Status: proposed design requirement only. Independent security review and a synthetic reference model are still required.** No hardware, production keys, credentials, or production signing are used. G2–G4 remain closed.
+
+### WP4.14 — Stage A security review register prepared — 2026-11-04
+
+- Added `docs/WP4_14_STAGE_A_SECURITY_REVIEW_REGISTER_2026-11-04.md`.
+- Records 14 open review topics, including anchor compromise and disaster recovery, first-time enrollment, commit atomicity, concurrent restore/fencing, schema migration, cryptographic agility, CometBFT state semantics, backup authenticity, audit independence, and provider assumptions.
+- Defines ten mandatory state-machine invariants and the independent-review questions and exit criteria required before Stage A can close.
+- Clarifies that an internal review register and green CI are not an independent security audit. The independent review has **not** been performed.
+- **Status: Stage A remains open; Stage B has not started.** Only offline synthetic preparation is permissible; no production key/custody operations or signing. G2–G4 remain closed.
