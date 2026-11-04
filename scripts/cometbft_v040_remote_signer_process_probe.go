@@ -284,15 +284,18 @@ func runPersistentSigner(socketPath, keyPath, statePath, signerChainID string, r
 	if _, err := os.Stat(keyPath); err != nil {
 		fail("signer key file unavailable: %v", err)
 	}
-	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+	stateInfo, stateErr := os.Stat(statePath)
+	if os.IsNotExist(stateErr) {
 		if requireExistingState {
 			fail("recovery mode requires existing anti-double-sign state file")
 		}
 		// First boot only: initialize signer-owned last-sign state.
 		pv := privval.LoadFilePVEmptyState(keyPath, statePath)
 		pv.Save()
-	} else if err != nil {
-		fail("inspect anti-double-sign state file: %v", err)
+	} else if stateErr != nil {
+		fail("inspect anti-double-sign state file: %v", stateErr)
+	} else if !stateInfo.Mode().IsRegular() {
+		fail("anti-double-sign state path is not a regular file")
 	}
 	pv := privval.LoadFilePV(keyPath, statePath)
 	logger := log.NewNopLogger()
