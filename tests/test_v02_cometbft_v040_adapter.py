@@ -12,6 +12,7 @@ from hnd_v02.abci_app import HNDABCIApplication
 from hnd_v02.cometbft_v040_server import (
     HNDCometBFTv040Servicer,
     start_grpc_server,
+    _validate_loopback_bind_address,
     types_pb2,
     types_pb2_grpc,
 )
@@ -244,6 +245,32 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertEqual(committed.retain_height, 0)
         self.assertEqual(self.app.last_committed_height, 1)
 
+    def test_loopback_bind_policy_accepts_ipv4_and_ipv6_literals(self):
+        for address in ("127.0.0.1:26658", "127.0.0.1:0", "[::1]:26658", "[::1]:0"):
+            with self.subTest(address=address):
+                _validate_loopback_bind_address(address)
+
+    def test_loopback_bind_policy_rejects_non_loopback_and_hostnames(self):
+        rejected = (
+            "0.0.0.0:26658",
+            "192.168.1.10:26658",
+            "8.8.8.8:26658",
+            "[::]:26658",
+            "[2001:4860:4860::8888]:26658",
+            "localhost:26658",
+            "example.com:26658",
+            "127.0.0.1",
+            "127.0.0.1:not-a-port",
+            "127.0.0.1:65536",
+        )
+        for address in rejected:
+            with self.subTest(address=address):
+                with self.assertRaises(ValueError):
+                    _validate_loopback_bind_address(address)
+
+    def test_start_grpc_server_rejects_non_loopback_before_binding(self):
+        with self.assertRaisesRegex(ValueError, "restricted to loopback"):
+            start_grpc_server(self.app, bind_address="0.0.0.0:26658")
     def test_real_grpc_echo_and_info_with_concurrent_calls(self):
         server, port = start_grpc_server(
             self.app,
