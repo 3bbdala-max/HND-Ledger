@@ -50,7 +50,7 @@ Domain bytes (hex):
 
 Exact digest preimage is the domain byte sequence above concatenated with the UTF-8 bytes of the canonical JSON line above.
 
-<text weight="semibold">Expected application_config_hash</text>
+**Expected application_config_hash**
 
 ```text
 04e541dddd5da413b21942f162ddb5f4582a1578a454240fb48e379225b11e04
@@ -90,7 +90,7 @@ Domain bytes (hex):
 
 Exact digest preimage is the domain byte sequence above concatenated with the UTF-8 bytes of the canonical manifest line above.
 
-<text weight="semibold">Expected legacy-compatible manifest_hash</text>
+**Expected legacy-compatible manifest_hash**
 
 ```text
 1938cdd0840b438aae7582ae9c3f3970e357dc179a52938347d52adcfecd7211
@@ -124,7 +124,7 @@ Domain bytes (hex):
 
 Exact digest preimage is the domain byte sequence above concatenated with the UTF-8 bytes of the canonical identity line above.
 
-<text weight="semibold">Expected network_genesis_hash</text>
+**Expected network_genesis_hash**
 
 ```text
 a13c84bc3efe9a95853d067a9754609b33c093f8099bdc8ac04a20035a8a30a0
