@@ -9,6 +9,7 @@ to an untrusted network.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
 from datetime import datetime, timezone
@@ -238,6 +239,46 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
         )
 
 
+def _validate_loopback_bind_address(bind_address: str) -> None:
+    """Reject non-loopback and hostname binds while transport remains insecure.
+
+    Port 0 is intentionally allowed for ephemeral local test servers.
+    IPv6 literals must use gRPC's bracketed form, e.g. [::1]:26658.
+    """
+    if type(bind_address) is not str or not bind_address:
+        raise ValueError("bind_address must be a non-empty loopback IP literal")
+
+    if bind_address.startswith("["):
+        closing = bind_address.find("]")
+        if closing < 0 or closing + 1 >= len(bind_address) or bind_address[closing + 1] != ":":
+            raise ValueError("IPv6 bind address must use [address]:port syntax")
+        host = bind_address[1:closing]
+        port_text = bind_address[closing + 2:]
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError("bind address must use a loopback IP literal") from exc
+        if address.version != 6:
+            raise ValueError("bracketed bind address must be IPv6")
+    else:
+        if bind_address.count(":") != 1:
+            raise ValueError("bind address must use IPv4:port or [IPv6]:port syntax")
+        host, port_text = bind_address.rsplit(":", 1)
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError("bind address must use a loopback IP literal") from exc
+        if address.version != 4:
+            raise ValueError("IPv6 bind address must use [address]:port syntax")
+
+    if not address.is_loopback:
+        raise ValueError("insecure ABCI gRPC transport is restricted to loopback addresses")
+    if not port_text.isascii() or not port_text.isdigit():
+        raise ValueError("bind port must be an integer from 0 to 65535")
+    port = int(port_text)
+    if not 0 <= port <= 65535:
+        raise ValueError("bind port must be an integer from 0 to 65535")
+
 def start_grpc_server(
     application: HNDABCIApplication,
     *,
@@ -247,6 +288,7 @@ def start_grpc_server(
     """Start a CometBFT-compatible ABCI gRPC server and return (server, port)."""
     if type(max_workers) is not int or max_workers < 4:
         raise ValueError("max_workers must be an integer >= 4 for ABCI concurrency")
+    _validate_loopback_bind_address(bind_address)
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
     types_pb2_grpc.add_ABCIServicer_to_server(
         HNDCometBFTv040Servicer(application), server
