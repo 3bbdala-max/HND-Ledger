@@ -75,6 +75,18 @@ jobs:
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
           go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
           "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
+      - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
+        run: |
+          home="$RUNNER_TEMP/hnd-remote-only-negative"
+          "$RUNNER_TEMP/cometbft" init --home "$home"
+          rm -f "$home/config/priv_validator_key.json" "$home/data/priv_validator_state.json"
+          if "$RUNNER_TEMP/hnd-cometbft-remote-only" node --home "$home" >"$RUNNER_TEMP/remote-only-negative.log" 2>&1; then
+            echo "remote-only CLI unexpectedly started without an external signer" >&2
+            exit 1
+          fi
+          grep -q "HND remote-only node requires priv_validator_laddr" "$RUNNER_TEMP/remote-only-negative.log"
+          test ! -e "$home/config/priv_validator_key.json"
+          test ! -e "$home/data/priv_validator_state.json"
       - name: Run pinned CometBFT Byzantine prevote equivocation and evidence regression
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
