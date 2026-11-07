@@ -310,3 +310,21 @@ binary does not expose `init` or `gen-validator` commands and that these
 attempts cannot create validator key/state files. This verifies the narrowed
 command surface behavior rather than relying on source inspection alone.
 Fresh CI is pending.
+
+
+## All-four independent signer mode implementation checkpoint (2026-11-07)
+
+The four-validator harness now has an opt-in Unix-only
+`--all-remote-signers` mode. It creates four distinct signer-owned
+directories, moves each validator's consensus key and anti-double-sign state
+into its own directory, configures four independent Unix signer endpoints,
+and starts all four validators with the remote-only CometBFT binary. The mode
+checks each signer public key against its Genesis validator identity and
+asserts that no validator home contains a local consensus key/state file
+after RPC startup. The existing validator-4 outage/restart recovery path is
+retained, with the other three independent signer processes kept online.
+
+A dedicated CI step now invokes this mode. This is a newly added test path,
+not yet verified; it must pass before all-four external signing is marked
+implemented. Authenticated Noise is currently tested with the validator-4
+remote-only path, not yet in an all-four arrangement.
