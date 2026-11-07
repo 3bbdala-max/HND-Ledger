@@ -82,3 +82,33 @@ After that gate, generate deterministic synthetic test keys only, and include ex
 This reconciliation is documentation-only. It changes no source code, tests, dependencies, workflow, Genesis, keys, validator roster, deployment configuration or runtime behavior. It does not authorize production trust-root enrollment or validator startup.
 
 **Status: CONFLICT IDENTIFIED — SPECIFICATION NOT FROZEN — NOT APPROVED FOR PRODUCTION.**
+
+
+## Current status update — isolated JCS spike only (2026-11-07)
+
+The repository now contains an isolated test-only RFC 8785 compatibility
+spike:
+- Python candidate `rfc8785==0.1.4`, hash-pinned in
+  `requirements-vsp-jcs-spike.txt`;
+- independent JavaScript cross-check using `canonicalize@2.1.0`;
+- strict duplicate-member/UTF-8/BOM/constant/surrogate input checks and
+  canonical-byte comparisons;
+- a dedicated CI step separate from the HND production serializer.
+
+Workflow run `42337449661` passed the VSP JCS compatibility spike and the
+full HND v0.2 test job. This is only evidence that the isolated compatibility
+corpus agrees across the two candidate libraries. It does not select a
+normative VSP schema, create VSP golden signatures, implement a VSP verifier,
+or authorize a production dependency/runtime.
+
+The earlier instruction against adding a JCS dependency is superseded only
+for this isolated test spike. The production dependency and runtime remain
+unapproved. The Node-side `canonicalize@2.1.0` is version-pinned in the
+workflow command but does not yet have a committed npm lockfile/integrity
+record; that supply-chain detail remains open.
+
+**Current decision remains unchanged:** VSP v1 is NOT FROZEN. The recommended
+baseline is still only an engineering proposal pending explicit protocol-owner
+approval of the exact schema, canonicalization, digest/signature formula,
+trust bootstrap, resource limits, and CometBFT field semantics. No golden
+signature vectors or production verifier should be generated before that gate.
