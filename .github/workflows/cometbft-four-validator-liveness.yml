@@ -271,7 +271,7 @@ jobs:
           echo "Firewall counters after partition window:"
           sudo iptables -vnxL INPUT
           sudo iptables -nvxL OUTPUT
-          input_drops=$(sudo iptables -nvxL INPUT | awk '$0 ~ /spt:27657:27659/ {print $1; exit}')
+          input_drops=$(sudo iptables -nvxL INPUT | awk '$0 ~ /spts:27657:27659/ {print $1; exit}')
           output_drops=$(sudo iptables -nvxL OUTPUT | grep -F "owner UID match $VALIDATOR0_UID" | awk 'NR==1 {print $1}')
           echo "Validator-0 inbound drops: ${input_drops:-0}; outbound drops: ${output_drops:-0}"
           [[ "${input_drops:-0}" -gt 0 && "${output_drops:-0}" -gt 0 ]] || {
