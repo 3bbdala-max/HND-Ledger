@@ -56,6 +56,8 @@ Each adversarial run must record CometBFT version, source commit, genesis hash, 
 
 | ID | Scenario | Evidence | Result |
 |---|---|---|---|
+| C-20 | A burst of 32 concurrent local IPC clients receives correctly correlated responses | Commit `7e86e0a21a7e51033d44471376cef45b346b2f40`; Python run `42391236132`; one-node `42391236205`; three-validator `42391236154`; four-validator `42391236188` | PASS (32 short requests; not sustained-load or flood-resistance proof) |
+|---|---|---|---|
 | C-19 | An incomplete local IPC JSONL request cannot indefinitely block the sequential Python dispatcher; a following valid Info request is served after the 5-second read deadline | Implementation/test commit `a7665df2edcd18ea15417640593eefd7d994ed0d`; Python run `42382630569` | PASS (single stalled-client regression; not flood-resistance proof) |
 
 The subsequent documentation-only commit `03b2b9c6f601525bb810d123de04c64bb06f4494` completed all four exact-commit workflows: Python run `42382868802`, one-node run `42382868836`, three-validator run `42382868758`, and four-validator liveness/recovery run `42382868746`. These confirm the documented code state still passes the current integration suite; the documentation commit did not change runtime code.
