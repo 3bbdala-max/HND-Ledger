@@ -1081,3 +1081,53 @@ def test_startup_gate_rejects_authority_failure_on_final_read(tmp_path):
         require_local_chain_checkpoint_match(authority, public_key, chain)
     assert authority.read_count == 2
     chain.close()
+
+
+def test_restart_after_local_commit_before_checkpoint_publish_requires_recovery(tmp_path):
+    from hnd_ledger.chain import LocalChain
+    from hnd_ledger.protocol import account_id, create_transaction
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        RollbackCheckpoint,
+        assess_local_chain,
+        require_local_chain_checkpoint_match,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id = account_id(alice.public_key().public_bytes_raw())
+    bob_id = account_id(bob.public_key().public_bytes_raw())
+    db_path = tmp_path / "crash-between-local-commit-and-anchor.sqlite"
+
+    chain = LocalChain(db_path, LedgerState(balances={alice_id: 15}, supply_cap=15))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    genesis_checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=0,
+        block_hash=genesis_hash,
+        app_hash=__import__("hnd_ledger.chain", fromlist=["state_commitment"]).state_commitment(chain.state),
+        sequence=1,
+    )
+    genesis_raw = sign_checkpoint(genesis_checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=genesis_raw
+    )
+
+    # Simulate SQLite Commit succeeding, followed by a crash before external CAS.
+    chain.append([create_transaction(alice, bob_id, 4, 0)])
+    chain.close()
+
+    recovered = LocalChain(db_path)
+    assessment = assess_local_chain(authority, public_key, recovered)
+    assert assessment.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
+    assert "ancestry matches" in assessment.reason
+    assert not assessment.writes_allowed
+    with pytest.raises(CheckpointError, match="local_ahead_unverified"):
+        require_local_chain_checkpoint_match(authority, public_key, recovered)
+    recovered.close()
