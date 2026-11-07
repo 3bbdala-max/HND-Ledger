@@ -93,3 +93,20 @@ The implementation-status refresh commit `338ffc32a0db05b7232086daaab3d366f6bb56
 The new design contract is documented in `docs/EXTERNAL_CHECKPOINT_AUTHORITY_CONTRACT.md` (documentation commit `6d92241551979a5453a926b1ae456fb0ba2ca330`). It specifies the required independent trust boundary, linearizable monotonic compare-and-swap, authenticated transport and authorization, KMS/HSM-backed signing-key custody, consensus-safe publication evidence, crash/recovery behavior, fencing requirements, and real-provider conformance tests.
 
 This document is a specification, not an implemented service. No provider was selected or provisioned, and no credentials or signing secrets were added. The Go CometBFT adapter remains a transport adapter to the Python application; checkpoint startup and commit enforcement remain unwired. Production anti-rollback protection remains unimplemented and unclaimed.
+
+
+## Verified update — cancellable Go-to-Python IPC (2026-11-08)
+
+The Go Unix-socket IPC client now binds an in-flight connection to the caller's context cancellation. If an ABCI request is canceled while waiting for a response, the client closes the socket so the blocked read is interrupted instead of waiting for the full 30-second client timeout. A regression test deliberately withholds the server response and verifies that cancellation stops the call and closes the connection promptly.
+
+Implementation commit: `e7f804754cde282d92f061b5c231ae770e55b31a`.
+Regression-test commit: `66b95a2162cbd45c39d2635d9e7405b3d4dc7835`.
+
+All five workflows passed on the exact test commit `66b95a2162cbd45c39d2635d9e7405b3d4dc7835`:
+- HND Python tests: run `42414469908`.
+- Go ABCI adapter tests and static analysis: run `42414469898`.
+- CometBFT one-node restart: run `42414469758`.
+- CometBFT three-validator integration: run `42414469747`.
+- CometBFT four-validator liveness/recovery: run `42414469752`.
+
+These results validate the cancellation regression and existing testnet scenarios on the same SHA. They do not establish external checkpoint authority, production rollback protection, multi-host operation, or independent security review.
