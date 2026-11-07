@@ -107,3 +107,28 @@ All tests must collect every emitted signature from every process and verify the
 The next implementation review must choose one authoritative single-writer architecture and test its failure modes. The implementation should not be improvised as a small mutex patch: multi-process and multi-host failover require explicit ownership, fencing, durable state, and crash semantics.
 
 This is a source-scope audit, not evidence of an observed production double-sign. It does not approve production signing, token issuance, protocol freeze, or public network launch.
+
+
+## Addendum — same-host signer helper ownership lock (2026-11-07)
+
+The disposable HND signer helpers now acquire a non-blocking OS advisory
+`flock` on a lock file derived from the anti-double-sign state path before
+loading FilePV state or starting a signer server. The lock file is opened with
+no-follow semantics, restricted to mode 0600, checked as a regular file, and
+checked for current-UID ownership. A second helper process using the same
+state path is rejected while the first owner holds the lock. The Noise helper
+uses the same same-host lock rule.
+
+This is a **same-host/local-filesystem mitigation in the test helper**, not a
+CometBFT upstream guarantee and not a distributed fencing protocol. It does
+not protect against a process that bypasses the helper, a hostile privileged
+local actor, filesystems with unsuitable lock semantics, or two hosts that
+do not share a reliable lock authority. It also does not solve AUTH-TOCTOU
+signature-release linearization or stale-host fencing.
+
+The previous negative dual-sign reproduction is being converted into a
+positive lock-contention test: first process acquires the lock and signs;
+second process is rejected while the lock is held; after clean owner exit,
+the second process may acquire the lock only with the newly persisted state
+digest and must reject a conflicting H/R/S vote. Unix and Noise helper lock
+probes are now wired into CI; their new results are pending.
