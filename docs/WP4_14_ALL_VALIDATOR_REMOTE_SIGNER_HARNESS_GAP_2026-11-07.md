@@ -408,3 +408,15 @@ unauthenticated `tcp://` signer endpoint, and leaves no local consensus
 key/state files after rejection. The authenticated Noise single-validator
 variant was still running at this checkpoint; all-four Noise remains a
 separate pending validation.
+
+
+## Full green CI after transport allowlist and all-four Unix signer mode
+
+Workflow run `42335387643` on commit
+`76062ef988c5ea9f127d82bcd3841a4611945235` completed successfully across
+both jobs. It passed the remote-only missing-signer and unauthenticated-TCP
+negative checks, the four-independent-Unix-signer network/recovery step, and
+the validator-4 authenticated Noise integration/recovery step. The dedicated
+remote-only CLI therefore has green CI for both allowed transports, with
+all-four simultaneous signing covered over Unix. All-four simultaneous Noise
+is the next validation milestone.
