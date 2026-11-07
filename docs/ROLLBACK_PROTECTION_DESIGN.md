@@ -112,3 +112,10 @@ The local-tip assessment now accepts optional local block and application commit
 - Matching ancestor commitments establish that the checkpoint appears in the locally replayed chain, but do not authorize writes: the suffix still requires explicit verification and recovery.
 
 New tests cover missing ancestry evidence, matching ancestry, block-hash mismatch, application-hash mismatch, and partial ancestor input. This remains a pure assessment API, not an integrated startup/recovery implementation.
+
+
+## LocalChain ancestry accessor and assessment integration
+
+Commit `40c622b296fc81d2ee5b40c8d565d45cf418179c` adds `LocalChain.checkpoint_ancestor_commitments(height)`. It returns the genesis hash plus genesis app commitment at height zero, or the replay-verified block hash and state root at a positive height. It rejects boolean, negative, and future heights.
+
+A cross-module test now feeds those actual locally replayed ancestor commitments into `assess_local_tip` for a chain that is ahead of the trusted checkpoint. Matching ancestry still produces `LOCAL_AHEAD_UNVERIFIED`; it does not enable writes. This is still not an external authority integration or a recovery authorization mechanism.

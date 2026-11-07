@@ -178,3 +178,8 @@ Added a pure fail-closed assessment for local tip versus trusted checkpoint. Tes
 ## Checkpoint ancestry checks for local-ahead databases
 
 The local-tip assessment accepts the replayed local block hash and app hash at the trusted checkpoint height. A mismatch is rejected as divergence; a match still leaves the suffix in recovery-required status. Tests cover both commitment mismatches and missing/partial ancestry evidence. No writes are enabled merely because the checkpoint is an ancestor.
+
+
+## LocalChain-to-checkpoint assessment integration
+
+Added a cross-module regression test that creates a signed checkpoint at an earlier local height, advances the local chain, retrieves the replay-verified ancestor commitments from `LocalChain.checkpoint_ancestor_commitments`, and feeds them to `assess_local_tip`. The expected result remains local-ahead/recovery-required with writes disabled.

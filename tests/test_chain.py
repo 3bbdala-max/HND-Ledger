@@ -859,3 +859,51 @@ def test_checkpoint_ancestor_commitments_reject_invalid_or_future_heights(tmp_pa
     with pytest.raises(ChainError, match="exceeds local chain height"):
         chain.checkpoint_ancestor_commitments(1)
     chain.close()
+
+
+
+def test_local_chain_ancestor_commitments_feed_checkpoint_assessment(tmp_path):
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        RollbackCheckpoint,
+        assess_local_tip,
+    )
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    carol = Ed25519PrivateKey.generate()
+    alice_id, bob_id, carol_id = account(alice), account(bob), account(carol)
+    chain = LocalChain(
+        tmp_path / "checkpoint-assessment-integration.sqlite",
+        LedgerState(balances={alice_id: 30}, supply_cap=30),
+    )
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    checkpoint_block = chain.append([create_transaction(alice, bob_id, 10, 0)])
+    checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=checkpoint_block.height,
+        block_hash=checkpoint_block.block_hash,
+        app_hash=checkpoint_block.state_root,
+        sequence=1,
+    )
+
+    chain.append([create_transaction(bob, carol_id, 4, 0)])
+    ancestor_block_hash, ancestor_app_hash = chain.checkpoint_ancestor_commitments(
+        checkpoint.height
+    )
+    assessment = assess_local_tip(
+        checkpoint,
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=chain.height,
+        block_hash=chain.tip_hash,
+        app_hash=state_commitment(chain.state),
+        checkpoint_ancestor_block_hash=ancestor_block_hash,
+        checkpoint_ancestor_app_hash=ancestor_app_hash,
+    )
+
+    assert assessment.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
+    assert "ancestry matches" in assessment.reason
+    assert not assessment.writes_allowed
+    chain.close()
