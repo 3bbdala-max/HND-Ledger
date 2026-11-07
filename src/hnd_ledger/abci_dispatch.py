@@ -91,10 +91,8 @@ class ABCIDispatcher:
         chain_id = payload.get("chain_id")
         if chain_id != EXTERNAL_CHAIN_ID or self.application.chain.state.chain_id != CHAIN_ID:
             raise IPCError("genesis chain ID does not match the HND local protocol")
-        if self.application.height != 0 or self.application.chain.state.total_supply != 0:
-            raise IPCError("InitChain only supports an empty height-zero development genesis")
-        if self.application.chain.state.balances or self.application.chain.state.next_nonces:
-            raise IPCError("development genesis must not contain preloaded account state")
+        if self.application.height != 0:
+            raise IPCError("InitChain only supports height zero")
         app_state = _bytes(payload, "app_state_bytes", required=False)
         marker = hashlib.sha256(
             json.dumps(
@@ -109,6 +107,10 @@ class ABCIDispatcher:
             if row[0] != marker:
                 raise IPCError("a different CometBFT genesis was already initialized")
             return {"validators": []}
+        if (self.application.chain.state.total_supply != 0
+                or self.application.chain.state.balances
+                or self.application.chain.state.next_nonces):
+            raise IPCError("uninitialized chain must be a pristine zero-allocation genesis")
 
         if app_state:
             try:
