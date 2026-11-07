@@ -57,3 +57,17 @@ def test_noncanonical_cbor_is_rejected():
     noncanonical = bytes([0x98, 0x08]) + raw[1:]
     with pytest.raises(ProtocolError, match="non-canonical"):
         decode_transaction(noncanonical, CHAIN_ID)
+
+@pytest.mark.parametrize("field,value", [("amount", True), ("nonce", True)])
+def test_boolean_integer_fields_are_rejected(field, value):
+    sender_key, recipient_key = keys()
+    recipient = account_id(recipient_key.public_key().public_bytes_raw())
+
+    amount = value if field == "amount" else 1
+    nonce = value if field == "nonce" else 0
+    with pytest.raises(ProtocolError, match=field):
+        create_transaction(sender_key, recipient, amount, nonce)
+
+    valid = create_transaction(sender_key, recipient, 1, 0)
+    with pytest.raises(ProtocolError, match=field):
+        verify_transaction(replace(valid, **{field: value}))
