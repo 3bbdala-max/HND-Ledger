@@ -652,3 +652,26 @@ def test_publish_checkpoint_reports_unknown_outcome_if_cas_throws_without_commit
     candidate = sign_checkpoint(make_checkpoint(), key).encode()
     with pytest.raises(CheckpointError, match="outcome is unknown"):
         publish_checkpoint(authority, public_key, candidate)
+
+
+
+def test_publish_checkpoint_resolves_false_cas_when_candidate_is_already_stored():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+
+    class CommitButReturnFalseAuthority(MemoryAuthorityForTest):
+        def compare_and_swap(self, **kwargs):
+            accepted = super().compare_and_swap(**kwargs)
+            # Simulate an ambiguous provider response after durable acceptance.
+            return False if accepted else False
+
+    authority = CommitButReturnFalseAuthority(public_key)
+    candidate = sign_checkpoint(make_checkpoint(), key).encode()
+    accepted = publish_checkpoint(authority, public_key, candidate)
+    assert accepted == SignedRollbackCheckpoint.decode(candidate).checkpoint
+    stored = SignedRollbackCheckpoint.decode(
+        authority.read(b"C" * 32, b"G" * 32)
+    ).checkpoint
+    assert stored == accepted

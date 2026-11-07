@@ -198,3 +198,6 @@ Tests cover a valid pinned-key checkpoint, missing record, untrusted signature, 
 ## Provider-neutral checkpoint publication helper
 
 Tests cover first publication, monotonic successor publication, exact retry, skipped sequence rejection, CAS conflict, and authority outage. The helper verifies the signed candidate and current authority state before CAS, then rereads to resolve an ambiguous false CAS result. It does not close the SQLite/remote distributed-commit crash window and is not integrated into the live consensus commit path.
+
+
+Additional test: simulated authority durably stores a candidate but returns false from CAS; publisher rereads and resolves the exact stored candidate as success without creating another sequence.
