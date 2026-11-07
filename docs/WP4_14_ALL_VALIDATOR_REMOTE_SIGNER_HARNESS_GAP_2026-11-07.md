@@ -350,3 +350,24 @@ endpoint, expects the explicit rejection, and verifies no local consensus
 key/state files are created. The Unix and Noise positive integration tests
 cover the two allowed transports. This transport policy change is awaiting
 fresh pinned-source CI.
+
+
+## First successful all-four independent Unix remote-signer integration
+
+Workflow run `42335090721` on commit
+`d46a327d075649a13ca6d3b6aeed2a98a7e1240b` completed the dedicated
+`Run four independent external signers with no local consensus keys` step
+successfully. This run exercised four distinct signer directories, four
+independent Unix endpoints, four remote-only CometBFT node processes, and the
+existing four-validator consensus/transaction, validator-4 signer outage and
+recovery, and 3/1 plus 2/2 network partition checks. The harness verifies
+Genesis signer identity matching and absence of local consensus key/state
+files for all four validators after startup. The validator-4 restart path
+retains its own signer-owned state while the other three signer processes
+remain active.
+
+This closes the all-four remote-signer **Unix test-harness milestone**. It
+does not yet prove production deployment, multi-host fencing, signer hardware
+security, or authenticated Noise for all four simultaneously. The dedicated
+machine-readable all-four marker was added after this run and awaits its
+next CI confirmation.
