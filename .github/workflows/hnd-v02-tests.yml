@@ -73,6 +73,8 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/cometbft-src" rev-parse HEAD)" = "0880b4d378f347ab16e54ec677ff50d803f37d62"
           cd "$RUNNER_TEMP/cometbft-src"
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
+          go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
+          "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
       - name: Run pinned CometBFT Byzantine prevote equivocation and evidence regression
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
