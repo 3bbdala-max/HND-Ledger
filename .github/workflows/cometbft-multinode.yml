@@ -274,17 +274,23 @@ jobs:
           print(f"All validators committed the signed transfer at height {meta['height']}; balances, nonce, and app hash agree: {hashes[0].hex()}")
           PY
 
+          # CometBFT publishes the app hash committed at H in header H+1.
+          target_header_height=$((tx_height + 1))
+          header_ready=false
+          for _ in $(seq 1 120); do
+            ready=0
+            for i in 0 1 2; do
+              curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/status-$i.json" || continue
+              height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status-$i.json")
+              [[ "$height" -ge "$target_header_height" ]] && ready=$((ready+1))
+            done
+            if [[ "$ready" -eq 3 ]]; then header_ready=true; break; fi
+            sleep 1
+          done
+          [[ "$header_ready" == true ]] || { echo "Validators did not reach app-hash header height $target_header_height"; exit 1; }
+
           for i in 0 1 2; do
-            curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/status-$i.json" || {
-              cat "$RUNNER_TEMP/hnd-data/node-$i.log"; exit 1;
-            }
-            height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status-$i.json")
-            if [[ "$height" -lt 3 ]]; then
-              echo "Validator $i did not reach height 3 (height=$height)"
-              for j in 0 1 2; do cat "$RUNNER_TEMP/hnd-data/node-$j.log"; done
-              exit 1
-            fi
-            curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=2" -o "$RUNNER_TEMP/commit-$i.json"
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=$target_header_height" -o "$RUNNER_TEMP/commit-$i.json"
           done
 
           python - "$RUNNER_TEMP" <<'PY'
@@ -292,6 +298,7 @@ jobs:
           import pathlib
           import sys
           root = pathlib.Path(sys.argv[1])
+          meta = json.loads((root / "hnd-data" / "transfer.json").read_text())
           hashes = []
           heights = []
           for i in range(3):
@@ -300,8 +307,8 @@ jobs:
               commit = json.loads((root / f"commit-{i}.json").read_text())
               hashes.append(commit["result"]["signed_header"]["header"]["app_hash"])
           if len(set(hashes)) != 1:
-              raise SystemExit(f"validator application hashes diverged at height 2: {hashes}")
-          print(f"Three validators agree at height 2; app_hash={hashes[0]}; observed heights={heights}")
+              raise SystemExit(f"validator CometBFT app hashes diverged after transfer: {hashes}")
+          print(f"Three validators agree on post-transfer CometBFT app_hash at header height {meta['height'] + 1}: {hashes[0]}; heights={heights}")
           PY
 
           # Restart validator 0 together with its application and adapter,
@@ -347,19 +354,34 @@ jobs:
           [[ "$recovered" == true ]] || { echo "Validator 0 did not recover"; cat "$RUNNER_TEMP/hnd-data/python-0.log" "$RUNNER_TEMP/hnd-data/adapter-0.log" "$RUNNER_TEMP/hnd-data/node-0.log"; exit 1; }
 
           for i in 0 1 2; do
-            curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=2" -o "$RUNNER_TEMP/commit-restarted-$i.json"
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=$target_header_height" -o "$RUNNER_TEMP/commit-restarted-$i.json"
           done
           python - "$RUNNER_TEMP" <<'PY'
           import json
           import pathlib
           import sys
+          from hnd_ledger.chain import LocalChain
           root = pathlib.Path(sys.argv[1])
+          meta = json.loads((root / "hnd-data" / "transfer.json").read_text())
+          alice, bob = bytes.fromhex(meta["alice"]), bytes.fromhex(meta["bob"])
+          chain = LocalChain(root / "hnd-data" / "ledger-0.sqlite")
+          try:
+              if chain.height < meta["height"]:
+                  raise SystemExit("restarted validator lost committed transfer height")
+              if chain.blocks[meta["height"] - 1].transactions.count(bytes.fromhex(meta["raw"])) != 1:
+                  raise SystemExit("restarted validator did not retain exactly one transfer")
+              if chain.state.balances.get(alice) != 750_000 or chain.state.balances.get(bob) != 250_000:
+                  raise SystemExit("restarted validator balances do not match committed transfer")
+              if chain.state.next_nonces.get(alice) != 1:
+                  raise SystemExit("restarted validator nonce does not match committed transfer")
+          finally:
+              chain.close()
           hashes = [
               json.loads((root / f"commit-restarted-{i}.json").read_text())
                   ["result"]["signed_header"]["header"]["app_hash"]
               for i in range(3)
           ]
           if len(set(hashes)) != 1:
-              raise SystemExit(f"application hash diverged after validator restart: {hashes}")
-          print(f"Validator restart recovery verified; all three app_hash values still match: {hashes[0]}")
+              raise SystemExit(f"post-transfer CometBFT app_hash diverged after restart: {hashes}")
+          print(f"Restarted validator retained transfer, balances, nonce; all post-transfer app_hash values match: {hashes[0]}")
           PY
