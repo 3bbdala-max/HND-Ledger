@@ -783,3 +783,46 @@ def test_append_fails_closed_if_tip_version_is_removed_while_open(tmp_path):
     assert chain.height == 0
     assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
     chain.close()
+
+
+@pytest.mark.parametrize("missing_key", ["chain_tip", "chain_tip_version"])
+def test_initialize_genesis_fails_closed_if_tip_metadata_is_removed_while_open(
+    tmp_path, missing_key
+):
+    alice = Ed25519PrivateKey.generate()
+    alice_id = account(alice)
+    path = tmp_path / f"genesis-missing-{missing_key}.sqlite"
+    chain = LocalChain(path, LedgerState(supply_cap=100))
+    before_genesis = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0]
+    before_hash = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0]
+
+    external = sqlite3.connect(path)
+    external.execute("DELETE FROM metadata WHERE key=?", (missing_key,))
+    external.commit()
+    external.close()
+
+    with pytest.raises(ChainError):
+        chain.initialize_genesis(
+            LedgerState(balances={alice_id: 50}, supply_cap=100),
+            marker=b"G" * 32,
+        )
+
+    assert chain.state.total_supply == 0
+    assert chain.state.balances == {}
+    assert chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0] == before_genesis
+    assert chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0] == before_hash
+    assert chain.db.execute(
+        "SELECT COUNT(*) FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0] == 0
+    assert chain.db.execute(
+        "SELECT COUNT(*) FROM metadata WHERE key=?", (missing_key,)
+    ).fetchone()[0] == 0
+    chain.close()

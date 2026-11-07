@@ -135,6 +135,7 @@ class LocalChain:
         """
         if not isinstance(initial_state, LedgerState):
             raise ChainError("genesis state must be a LedgerState")
+        self._assert_tip_metadata()
         if self.height != 0 or self.state.total_supply != 0 or self.state.balances or self.state.next_nonces:
             raise ChainError("genesis allocations can only initialize a pristine empty chain")
         if initial_state.chain_id != self.state.chain_id:
@@ -154,16 +155,16 @@ class LocalChain:
         if marker is not None and (not isinstance(marker, bytes) or len(marker) != 32):
             raise ChainError("genesis marker must be 32 bytes")
         with self.db:
-            self.db.execute(
-                "UPDATE metadata SET value=? WHERE key='genesis_state'", (snapshot,)
-            )
-            self.db.execute(
-                "UPDATE metadata SET value=? WHERE key='genesis_hash'", (genesis_hash,)
-            )
-            self.db.execute(
-                "UPDATE metadata SET value=? WHERE key='chain_tip'",
-                (canonical_cbor([1, 0, genesis_hash]),),
-            )
+            for key, value in (
+                ("genesis_state", snapshot),
+                ("genesis_hash", genesis_hash),
+                ("chain_tip", canonical_cbor([1, 0, genesis_hash])),
+            ):
+                cursor = self.db.execute(
+                    "UPDATE metadata SET value=? WHERE key=?", (value, key)
+                )
+                if cursor.rowcount != 1:
+                    raise ChainError(f"required genesis metadata is missing: {key}")
             if marker is not None:
                 self.db.execute(
                     "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
