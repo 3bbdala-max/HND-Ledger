@@ -134,7 +134,20 @@ jobs:
             if [[ "$count" -eq 4 ]]; then ready=true; break; fi
             sleep 1
           done
-          [[ "$ready" == true ]] || { echo "Four validators did not reach startup height"; exit 1; }
+          [[ "$ready" == true ]] || {
+            echo "Four validators did not reach startup height; diagnostic logs follow"
+            for i in 0 1 2 3; do
+              echo "===== validator $i Python engine ====="
+              cat "$DATA/python-$i.log" || true
+              echo "===== validator $i Go ABCI adapter ====="
+              cat "$DATA/adapter-$i.log" || true
+              echo "===== validator $i CometBFT node ====="
+              cat "$DATA/node-$i.log" || true
+              echo "===== validator $i RPC status ====="
+              cat "$DATA/status-$i.json" || true
+            done
+            exit 1
+          }
 
           baseline=0
           for i in 1 2 3; do
