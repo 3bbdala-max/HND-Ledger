@@ -6,16 +6,16 @@ A result is PASS only when the test, source commit, workflow run, and observed r
 
 ## Verified CI evidence
 
-- Python suite run 42362574022 on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf: PASS, 75 tests.
-- One-node CometBFT restart run 42362573986 on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf: PASS.
-- Three-validator transfer, Query, overspend filtering, app-hash comparison, and restart recovery run 42362574012 on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf: PASS.
+- Python suite run 42365173568 on commit 294c27db92655adbced5eac65fc9c813f216020a: PASS, 76 tests. Includes mempool item/byte limits, duplicate accounting, and capacity release after Commit.
+- One-node CometBFT restart run 42365173534 on the same commit: PASS.
+- Three-validator transfer, Query, overspend filtering, app-hash comparison, and restart recovery run 42365173545 on the same commit: PASS.
 - Go adapter tests/static analysis run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af: PASS.
 
 ## Unit test coverage
 
 Python tests cover canonical CBOR and base64, Ed25519 verification, chain separation, malformed encodings, replay, nonce gaps/conflicts/overflow, self-transfer, overspend, balance overflow, supply cap, duplicate transactions, atomic proposals, genesis validation/idempotence across restart, conflicting-genesis rejection across restart, atomic genesis marker persistence, state commitment coverage, block hashes, SQLite restore/replay, IPC validation, and read-only Query responses.
 
-The dispatcher test confirms weak CheckTx accepts a well-formed signed overspend, while PrepareProposal filters it without changing committed state and still selects a valid following transaction.
+The dispatcher tests confirm weak CheckTx accepts a well-formed signed overspend, while PrepareProposal filters it without changing committed state and still selects a valid following transaction. Mempool tests cover item and byte ceilings, duplicate submissions without double-counting bytes, capacity rejection, and capacity reuse after Commit evicts included transactions.
 
 Persistence tests include SQLite trigger aborts during block insertion and before/after insertion of the CometBFT genesis marker, plus child processes terminated inside uncommitted SQLite transactions. Reopening verifies rollback to the original genesis state with no partial block or marker. The suite also checks that a funded-genesis retry after restart is idempotent and a different genesis cannot mutate the persisted state.
 
@@ -38,6 +38,7 @@ Go tests cover IPC request correlation, malformed/mismatched responses, typed er
 | INT-10 | Identical funded-genesis retry after application restart | PASS, 42362574022 |
 | INT-11 | Conflicting funded-genesis request rejected after restart without state mutation | PASS, 42362574022 |
 | INT-12 | Non-canonical base64 genesis payload rejected without writing marker or allocations | PASS, 42362574022 |
+| INT-13 | Mempool item/byte caps, duplicate accounting, and committed-entry capacity release | PASS, 42365173568 |
 
 ## Remaining adversarial and operational tests
 
