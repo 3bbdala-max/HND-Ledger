@@ -246,28 +246,37 @@ jobs:
           # Drop already-established outbound TCP sockets for validator 0.
           # The firewall rule alone prevents new packets but Linux can retain
           # the peer objects until their existing TCP sessions are closed.
-          python - "$NODE_PIDS" <<'PY'
-          import os, re, subprocess, sys
-          pid = int(sys.argv[1])
-          output = subprocess.run(["ss", "-tnp"], check=True, capture_output=True, text=True).stdout
-          closed = 0
+          validator0_pids=$(pgrep -u "$VALIDATOR0_UID" || true)
+          [[ -n "$validator0_pids" ]] || { echo "No validator-0 process found for socket isolation"; exit 1; }
+          printf 'Validator 0 process IDs: %s\\n' "$validator0_pids"
+          printf '%s\\n' "$validator0_pids" > "$DATA/validator0-pids.txt"
+          python - "$DATA/validator0-pids.txt" <<'PY'
+          import pathlib, re, subprocess, sys
+          pids = {int(value) for value in pathlib.Path(sys.argv[1]).read_text().split()}
+          output = subprocess.run(["sudo", "ss", "-tnp"], check=True, capture_output=True, text=True).stdout
+          matched = 0
           for line in output.splitlines():
-              if f"pid={pid}," not in line or "ESTAB" not in line:
+              if "ESTAB" not in line:
                   continue
-              endpoints = re.findall(r"127\.0\.0\.1:(\d+)", line)
+              owners = {int(value) for value in re.findall(r"pid=(\\d+)", line)}
+              if not (owners & pids):
+                  continue
+              endpoints = re.findall(r"127\\.0\\.0\\.1:(\\d+)", line)
               if len(endpoints) != 2:
                   continue
               local_port, remote_port = map(int, endpoints)
               if remote_port not in (27657, 27658, 27659):
                   continue
-              subprocess.run([
+              matched += 1
+              result = subprocess.run([
                   "sudo", "ss", "-K", "src", "127.0.0.1",
                   "sport", "=", f":{local_port}", "dst", "127.0.0.1",
                   "dport", "=", f":{remote_port}",
-              ], check=True, capture_output=True, text=True)
-              closed += 1
-          print(f"Closed {closed} pre-existing validator-0 outbound P2P TCP sockets.")
-          if closed == 0:
+              ], capture_output=True, text=True)
+              if result.returncode != 0:
+                  raise SystemExit(f"Failed to close validator-0 socket {local_port}->{remote_port}: {result.stderr}")
+          print(f"Matched and issued close for {matched} validator-0 established P2P TCP sockets.")
+          if matched == 0:
               raise SystemExit("No validator-0 established P2P sockets were found to isolate")
           PY
           sudo iptables -vnL INPUT
