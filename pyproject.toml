@@ -19,5 +19,10 @@ test = ["pytest>=8,<9"]
 testpaths = ["tests"]
 addopts = "-q"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["hnd_ledger*"]
+namespaces = false
