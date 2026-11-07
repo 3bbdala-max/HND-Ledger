@@ -241,3 +241,15 @@ is committed in the branch; the resulting new CI runs must pass before the
 no-local-fallback property is considered verified. The architecture is still
 validator-4-only; the other three validators intentionally remain local in
 this integration stage.
+
+
+## Remote-only CLI command-surface hardening (2026-11-07)
+
+The dedicated binary's command registration has been reduced to node startup,
+node-ID inspection, version, debug, and shell completion. It no longer
+registers CometBFT commands that initialize, generate, reset, or replace
+validator consensus keys (including `InitFilesCmd`,
+`GenValidatorCmd`, `ResetPrivValidatorCmd`, and `TestnetFilesCmd`).
+This narrows the remote-only executable's exposed operations in addition to
+the provider's fail-closed behavior. The new command-surface change is awaiting
+a fresh pinned-source CI build.
