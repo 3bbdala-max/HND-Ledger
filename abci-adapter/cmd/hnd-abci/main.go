@@ -34,17 +34,11 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	done := make(chan struct{})
-	go func() {
-		srv.Wait()
-		close(done)
-	}()
 	select {
 	case <-ctx.Done():
 		if err := srv.Stop(); err != nil {
 			fmt.Fprintln(os.Stderr, "stop ABCI socket server:", err)
 		}
-		<-done
-	case <-done:
+	case <-srv.Quit():
 	}
 }
