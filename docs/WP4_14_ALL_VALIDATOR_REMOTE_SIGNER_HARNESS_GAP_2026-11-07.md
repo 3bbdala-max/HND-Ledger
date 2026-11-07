@@ -147,3 +147,32 @@ The pinned source also exposes a supported extension point that avoids modifying
 The custom CLI should be a separate CI artifact used only by external-signer scenarios; keep the stock CometBFT CLI for ordinary private-FilePV regression tests. First validate the custom provider with a one-validator negative startup test (missing endpoint rejected; remote endpoint succeeds; no local key/state files appear before or after startup; remote public key equals Genesis identity). Only after that passes should the four-validator harness be parameterized to use four isolated signer records and the custom binary.
 
 **Important caveat:** this is a viable upstream-supported design path established by static API inspection, not an implementation or executed test. The all-validator lifecycle refactor, signer-mode policy authentication, and distributed single-writer/fencing controls remain separate required work.
+
+
+## Remote-only provider implementation checkpoint (2026-11-07)
+
+A dedicated CometBFT v0.40.0 CLI entrypoint has now been added at
+`scripts/cometbft_v040_remote_only_main.go`. Unlike the stock CLI provider, its
+provider:
+
+- rejects startup when `priv_validator_laddr` is empty;
+- loads/generates only the P2P node identity;
+- passes a deliberately non-signing `types.PrivValidator` placeholder to
+  `node.NewNode`;
+- relies on the pinned CometBFT `NewNodeWithContext` remote-signer replacement
+  branch to install the socket client before requesting the validator public
+  key; and
+- has no call to `LoadOrGenFilePV`, `LoadFilePV`, or consensus-key generation.
+
+CI now builds this dedicated binary from the exact pinned CometBFT source
+revision. A negative startup check is also wired to remove the local consensus
+key/state files, invoke the remote-only CLI with no signer endpoint, require
+the explicit fail-closed error, and assert that neither file is regenerated.
+
+**Status at this checkpoint:** source and CI steps are committed; the newly
+triggered CI run has not yet completed. The dedicated binary has not yet been
+used by the four-validator external-signer integration, and no positive
+remote-signer startup/no-local-file result is claimed. The validator-4 lifecycle
+test still uses the stock binary until that runtime integration is adapted and
+verified. The all-four signer refactor, distributed fencing, and production
+signer approval remain OPEN.
