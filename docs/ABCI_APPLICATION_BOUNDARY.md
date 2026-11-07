@@ -12,7 +12,7 @@ The HND state machine must not persist speculative proposal state. Proposal prep
 
 - `info()`: committed height and state commitment.
 - `check_tx(raw)`: weak mempool admission check for canonical encoding, chain ID, and signature only; deliberately does not reject state-dependent balance/nonce conditions or mutate state.
-- `prepare_proposal(raw_transactions)`: build an ordered valid selection against an isolated state copy, bounded by the current transaction-count and byte limits.
+- `prepare_proposal(raw_transactions)`: build an ordered valid selection against an isolated state copy, bounded by transaction-count and byte limits.
 - `process_proposal(raw_transactions)`: deterministically validate the complete proposal against committed state.
 - `finalize_block(raw_transactions)`: calculate the resulting application hash in memory and retain one pending finalized candidate.
 - `commit()`: persist the finalized transactions through the local chain's atomic append operation and verify the resulting application hash.
@@ -27,19 +27,15 @@ The HND state machine must not persist speculative proposal state. Proposal prep
 6. Transaction count and encoded transaction byte limits are enforced before execution.
 7. State transition rules remain in the existing HND protocol/state modules; the lifecycle facade does not implement a second set of transaction rules.
 
-## Verification added
+## Verification
 
-`tests/test_application.py` covers:
-- No durable write before commit.
-- Abandoned candidate leaves committed state unchanged.
-- Proposal retries do not mutate committed state.
-- Invalid proposal rejection is read-only; CheckTx accepts well-formed future-nonce transactions and leaves state-dependent validity to proposal execution.
-- Commit/finalize lifecycle preconditions.
-
-These are automated tests awaiting a successful CI run on the exact commit. The test that discards a candidate simulates loss of the in-memory process state; it is not a full CometBFT crash/recovery test.
+- `tests/test_application.py` adds coverage for persistence boundaries, abandoned candidates, proposal retry isolation, weak CheckTx behavior, sequential nonces, wrong chain IDs, commit/finalize preconditions, and stale-candidate rejection.
+- GitHub Actions run [42344679339](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42344679339), on exact code commit `29ae7ec7bee8cbea8b11469407ec48ab7be006a6`, completed successfully: **38 tests passed**.
+- A prior CI run failed because a test incorrectly expected weak CheckTx to reject a well-formed transaction with insufficient funds. The test was corrected to reflect the intended mempool/consensus boundary; the subsequent 38-test run passed.
+- Candidate discard tests simulate loss of in-memory process state; they are not full CometBFT crash/recovery tests.
 
 ## Explicit limitations
 
-- No ABCI protobuf service, socket transport, CometBFT process, mempool, validator set, or distributed consensus is implemented here.
+- No ABCI protobuf service, socket transport, CometBFT process, CometBFT mempool, validator set, or distributed consensus is implemented here.
 - This facade models the application lifecycle only. A real adapter must map the exact CometBFT v0.40.0 ABCI++ request/response types and prove restart/commit semantics.
 - The current `LocalChain` is a single-process SQLite reference store, not a production multi-node database.
