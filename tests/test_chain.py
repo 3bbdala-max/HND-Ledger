@@ -493,3 +493,56 @@ def test_failed_reopen_closes_sqlite_connection(tmp_path, monkeypatch):
     with pytest.raises(ChainError, match="genesis commitment"):
         LocalChain(path)
     assert tracked["closed"] is True
+
+
+def test_sqlite_backup_restores_verified_independent_chain(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    carol = Ed25519PrivateKey.generate()
+    alice_id, bob_id, carol_id = account(alice), account(bob), account(carol)
+    source_path = tmp_path / "source.sqlite"
+    backup_path = tmp_path / "backup.sqlite"
+
+    source = LocalChain(
+        source_path, LedgerState(balances={alice_id: 90}, supply_cap=90)
+    )
+    source.append([create_transaction(alice, bob_id, 35, 0)])
+    source_height = source.height
+    source_tip = source.tip_hash
+    source_commitment = state_commitment(source.state)
+    source_balances = dict(source.state.balances)
+    source_nonces = dict(source.state.next_nonces)
+
+    destination = sqlite3.connect(backup_path)
+    try:
+        source.db.backup(destination)
+    finally:
+        destination.close()
+
+    check = sqlite3.connect(backup_path)
+    try:
+        assert check.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    finally:
+        check.close()
+
+    restored = LocalChain(backup_path)
+    assert restored.height == source_height
+    assert restored.tip_hash == source_tip
+    assert state_commitment(restored.state) == source_commitment
+    assert restored.state.balances == source_balances
+    assert restored.state.next_nonces == source_nonces
+    assert restored.state.supply_cap == source.state.supply_cap
+    assert restored.state.chain_id == source.state.chain_id
+
+    restored.append([create_transaction(alice, carol_id, 10, 1)])
+    assert restored.height == source_height + 1
+    assert restored.state.balances[alice_id] == 45
+    assert restored.state.balances[carol_id] == 10
+
+    assert source.height == source_height
+    assert source.tip_hash == source_tip
+    assert state_commitment(source.state) == source_commitment
+    assert source.state.balances == source_balances
+    assert source.state.next_nonces == source_nonces
+    restored.close()
+    source.close()
