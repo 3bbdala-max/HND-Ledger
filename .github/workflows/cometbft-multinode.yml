@@ -55,6 +55,7 @@ jobs:
           import cbor2
           from cryptography.hazmat.primitives import serialization
           from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+          from hnd_ledger.protocol import account_id
 
           root = pathlib.Path(sys.argv[1])
           data_root = pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "hnd-data"
@@ -67,7 +68,7 @@ jobs:
           alice_public = alice_key.public_key().public_bytes(
               serialization.Encoding.Raw, serialization.PublicFormat.Raw
           )
-          alice_id = hashlib.sha256(b"HND-ACCOUNT-V2\\x00" + alice_public).digest()
+          alice_id = account_id(alice_public)
           (data_root / "alice.seed").write_bytes(alice_seed)
           (data_root / "alice.seed").chmod(0o600)
           genesis_app_state = cbor2.dumps(
@@ -227,7 +228,7 @@ jobs:
           import json
           import pathlib
           import sys
-          from hnd_ledger.chain import LocalChain
+          from hnd_ledger.chain import LocalChain, state_commitment
 
           root = pathlib.Path(sys.argv[1])
           meta = json.loads((root / "hnd-data" / "transfer.json").read_text())
@@ -247,7 +248,7 @@ jobs:
                       raise SystemExit(f"validator {i} Bob balance mismatch: {chain.state.balances.get(bob)}")
                   if chain.state.next_nonces.get(alice) != 1:
                       raise SystemExit(f"validator {i} Alice nonce mismatch")
-                  hashes.append(chain.app_hash if hasattr(chain, "app_hash") else __import__("hnd_ledger.chain", fromlist=["state_commitment"]).state_commitment(chain.state))
+                  hashes.append(state_commitment(chain.state))
               finally:
                   chain.close()
           if len(set(hashes)) != 1:
