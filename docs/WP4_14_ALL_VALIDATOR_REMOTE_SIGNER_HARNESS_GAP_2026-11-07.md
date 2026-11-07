@@ -270,3 +270,26 @@ post-connection and post-restart assertions check that validator 4 has no
 local consensus key or state file, and that the signer-owned public key
 matches Genesis. The separate authenticated Noise variant is still running
 in this same workflow; no Noise remote-only result is claimed yet.
+
+
+## Positive remote-only runtime results: Unix and authenticated Noise
+
+Workflow run `42334495538` on commit
+`61e94b5bf53a56295c2fcb63e5c96a4f179d21f5` has now completed with
+**both** external-signer network integration steps successful:
+
+- Unix remote signer: success, including outage/restart and durable recovery.
+- Authenticated Noise remote signer: success, including outage/restart and
+  durable recovery.
+
+Both invocations use the dedicated remote-only CometBFT binary for validator
+4. The harness verifies the signer public key against Genesis and checks that
+validator 4 does not create local consensus key/state files after signer/RPC
+startup or after recovery. The existing four-validator network and partition
+checks are also included in the successful workflow.
+
+**Scope remains limited:** this is a proven no-local-fallback runtime path for
+validator 4 under both supported test transports. Validators 1–3 remain local
+FilePV in these network runs; all-four external signer mode has not yet been
+implemented or tested. The reduced CLI command-surface hardening committed
+after this run also awaits its own fresh CI result.
