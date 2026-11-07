@@ -163,6 +163,11 @@ class HNDABCIApplication:
         return canonical_json({
             "genesis_hash": self.expected_genesis_hash,
             "manifest": self.manifest,
+            "protocol_config": {
+                "network_id": self.config.network_id,
+                "protocol_version": self.config.protocol_version,
+                "max_amount": self.config.max_amount,
+            },
         })
 
     def info(self) -> dict[str, Any]:
@@ -179,8 +184,15 @@ class HNDABCIApplication:
             if type(chain_id) is not str or chain_id != self.config.network_id:
                 raise ABCIApplicationError("CometBFT chain_id does not match HND network_id")
             payload = _decode_canonical_object(app_state_bytes, label="application Genesis")
-            if set(payload) != {"genesis_hash", "manifest"}:
+            if set(payload) != {"genesis_hash", "manifest", "protocol_config"}:
                 raise ABCIApplicationError("application Genesis schema")
+            expected_config = {
+                "network_id": self.config.network_id,
+                "protocol_version": self.config.protocol_version,
+                "max_amount": self.config.max_amount,
+            }
+            if payload["protocol_config"] != expected_config:
+                raise ABCIApplicationError("application Genesis protocol config mismatch")
             if payload["genesis_hash"] != self.expected_genesis_hash:
                 raise ABCIApplicationError("application Genesis hash mismatch")
             if canonical_json(payload["manifest"]) != canonical_json(self.manifest):
