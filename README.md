@@ -7,7 +7,7 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - **Version 0.1:** archived documentation and historical claims; not independently reproduced by the current implementation.
 - **Version 0.2 design:** protocol and cryptographic serialization specifications are maintained under `docs/`.
 - **Local implementation branch:** `implementation/v0.2-local-ledger` contains an initial Python implementation of Ed25519-signed transactions, canonical CBOR encoding, an atomic account ledger, deterministic block commitments, and SQLite-backed replay on restart.
-- **Automated tests:** 36 pytest tests passed in GitHub Actions run [42344596476](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42344596476), tied to commit `8952948d211b4ff94b85a4c1794e655e7065ac00`. This run includes the application lifecycle and stale-candidate guards.
+- **Automated tests:** 38 pytest tests passed in GitHub Actions run [42344679339](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42344679339), tied to commit `29ae7ec7bee8cbea8b11469407ec48ab7be006a6`. This run includes lifecycle isolation, stale-candidate guards, weak CheckTx admission, and ordered nonce execution.
 - **Consensus evaluation:** CometBFT v0.40.0 is the pinned candidate for a controlled ABCI++ integration spike. The application lifecycle and Go socket-adapter/Python-engine boundary are documented; the adapter is not implemented and no independent validators are running.
 - **Not implemented:** peer-to-peer networking, wallet, public RPC, production genesis allocation, or public network.
 
