@@ -12,7 +12,7 @@ Each block has a sequential height, previous block hash, exact canonical signed-
 
 The state commitment is SHA-256 over `HND-STATE-V2\0` and canonical CBOR of account rows sorted by account identifier. Each row contains account identifier, balance, and next expected nonce.
 
-The genesis identifier commits to protocol version, chain identifier, and the initial state commitment.
+The genesis identifier commits to protocol version, chain identifier, supply cap, and the initial state commitment. The supply cap is included so two chains with identical initial balances but different issuance limits cannot share a genesis identifier.
 
 ## Persistence and recovery
 
