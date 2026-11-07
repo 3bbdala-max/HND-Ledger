@@ -197,7 +197,7 @@ func runRemoteAntiDoubleSignProbe() {
 	// Recreate the node-side listener/client after the child exits. Reusing a
 	// stale endpoint can leave a broken pipe even when the signer has restarted.
 	if err := client.Close(); err != nil { fail("close first anti-double-sign client: %v", err) }
-	if err := rawListener.Close(); err != nil { fail("close first anti-double-sign listener: %v", err) }
+	_ = rawListener.Close()
 	_ = os.Remove(socketPath)
 	rawListener, err = net.Listen("unix", socketPath)
 	if err != nil { fail("reopen anti-double-sign listener: %v", err) }
