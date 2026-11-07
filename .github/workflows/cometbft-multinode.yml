@@ -353,7 +353,7 @@ jobs:
           python - "$RUNNER_TEMP/overspend-check.json" <<'PY'
           import json
           import sys
-          result = json.load(open(sys.argv[1]))["result"]["check_tx"]
+          result = json.load(open(sys.argv[1]))["result"]
           if result["code"] != 0:
               raise SystemExit(f"well-formed signed transaction failed weak CheckTx admission: {result}")
           print("Overspend passed signature/encoding CheckTx admission as designed")
