@@ -6,13 +6,24 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 COMET_TAG="v0.40.0"
+COMET_COMMIT="0880b4d378f347ab16e54ec677ff50d803f37d62"
 GOGO_TAG="v1.7.2"
+GOGO_COMMIT="cf5213e4dcbf1fea203185c0af00840e566790d9"
 COMET_DIR="$TMP/cometbft"
 GOGO_DIR="$TMP/gogoproto"
 OUT="$ROOT/hnd_v02/_cometbft_v040"
 
-git clone --quiet --depth 1 --branch "$COMET_TAG" https://github.com/cometbft/cometbft.git "$COMET_DIR"
-git clone --quiet --depth 1 --branch "$GOGO_TAG" https://github.com/cosmos/gogoproto.git "$GOGO_DIR"
+git init --quiet "$COMET_DIR"
+git -C "$COMET_DIR" remote add origin https://github.com/cometbft/cometbft.git
+git -C "$COMET_DIR" fetch --quiet --depth 1 origin "$COMET_COMMIT"
+git -C "$COMET_DIR" checkout --quiet --detach FETCH_HEAD
+test "$(git -C "$COMET_DIR" rev-parse HEAD)" = "$COMET_COMMIT"
+
+git init --quiet "$GOGO_DIR"
+git -C "$GOGO_DIR" remote add origin https://github.com/cosmos/gogoproto.git
+git -C "$GOGO_DIR" fetch --quiet --depth 1 origin "$GOGO_COMMIT"
+git -C "$GOGO_DIR" checkout --quiet --detach FETCH_HEAD
+test "$(git -C "$GOGO_DIR" rev-parse HEAD)" = "$GOGO_COMMIT"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
