@@ -22,10 +22,14 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Install hash-verified isolated JCS spike dependency
         run: python -m pip install --require-hashes -r requirements-vsp-jcs-spike.txt
-      - name: Install pinned independent JavaScript JCS comparator
+      - name: Install integrity-locked independent JavaScript JCS comparator
         run: |
           mkdir -p "$RUNNER_TEMP/hnd-jcs-node"
-          npm install --prefix "$RUNNER_TEMP/hnd-jcs-node" --no-save --ignore-scripts --no-audit --no-fund canonicalize@2.1.0
+          cp tools/vsp-jcs-node/package.json tools/vsp-jcs-node/package-lock.json "$RUNNER_TEMP/hnd-jcs-node/"
+          expected="sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ=="
+          actual="$(npm view canonicalize@2.1.0 dist.integrity)"
+          test "$actual" = "$expected"
+          npm ci --prefix "$RUNNER_TEMP/hnd-jcs-node" --ignore-scripts --no-audit --no-fund
           echo "HND_JCS_NODE_MODULES=$RUNNER_TEMP/hnd-jcs-node/node_modules" >> "$GITHUB_ENV"
       - name: Generate pinned CometBFT v0.40.0 Python bindings
         run: bash scripts/generate_cometbft_v040_python.sh
