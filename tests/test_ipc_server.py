@@ -122,3 +122,45 @@ def test_incomplete_client_cannot_block_following_ipc_request(tmp_path, monkeypa
         stalled.close()
         server.close()
         thread.join(timeout=2)
+
+
+def test_concurrent_ipc_clients_receive_correlated_responses(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "hnd-concurrent.sock"
+    server = IPCServer(
+        path, lambda method, payload: {"method": method, "client": payload["client"]}
+    )
+    server.start()
+    thread = threading.Thread(target=server._server.serve_forever, daemon=True)
+    thread.start()
+
+    def request(client_number):
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(3)
+        try:
+            client.connect(str(path))
+            client.sendall(frame({"client": client_number}, id=f"client-{client_number}"))
+            client.shutdown(socket.SHUT_WR)
+            received = b""
+            while not received.endswith(b"\\n"):
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                received += chunk
+            return json.loads(received)
+        finally:
+            client.close()
+
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            responses = list(pool.map(request, range(16)))
+        assert len(responses) == 16
+        assert all(response["ok"] is True for response in responses)
+        assert {response["id"] for response in responses} == {
+            f"client-{number}" for number in range(16)
+        }
+        assert {response["result"]["client"] for response in responses} == set(range(16))
+    finally:
+        server.close()
+        thread.join(timeout=2)
