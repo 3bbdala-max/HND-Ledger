@@ -13,6 +13,7 @@ Status: implemented between the Go CometBFT adapter and Python application.
 - Duplicate JSON keys, unknown top-level fields, malformed frames, invalid request IDs, unsupported protocol versions, and unsupported methods are rejected.
 - Byte slices are JSON base64 strings between Go and Python.
 - Python handles requests sequentially on the SQLite-owning thread.
+- The Unix listener uses a bounded accept backlog of 64 pending connections; this queues short bursts but does not make request dispatch concurrent or establish flood resistance.
 
 Request fields: protocol, id, method, payload.
 Success response fields: protocol, id, ok=true, result.
@@ -30,4 +31,4 @@ Fresh databases require explicit development-genesis initialization or a valid C
 
 ## Operational limits
 
-The read deadline bounds one incomplete client from holding the sequential dispatcher indefinitely. It is not a complete denial-of-service defense: connection-rate limits, per-peer quotas, concurrent-client stress, and CPU/memory exhaustion testing remain open. Crash injection around SQLite commit and independent multi-host validation also remain open.
+The read deadline bounds one incomplete client from holding the sequential dispatcher indefinitely. It is not a complete denial-of-service defense: connection-rate limits, per-peer quotas, sustained/high-volume client stress, and CPU/memory exhaustion testing remain open. A 16-client concurrent connection regression test exists; it checks request/response correlation, not sustained load or overload behavior. Crash injection around SQLite commit and independent multi-host validation also remain open.
