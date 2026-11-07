@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/url"
 	"strconv"
-	"strings"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,11 +29,9 @@ func validateListenAddress(address string) error {
 	if err != nil {
 		return fmt.Errorf("HND_ABCI_LISTEN must include a valid host and port: %w", err)
 	}
-	if !strings.EqualFold(host, "localhost") {
-		ip := net.ParseIP(host)
-		if ip == nil || !ip.IsLoopback() {
-			return fmt.Errorf("HND_ABCI_LISTEN must bind to loopback; public ABCI listeners are refused")
-		}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("HND_ABCI_LISTEN must use a literal loopback IP; DNS hostnames and public ABCI listeners are refused")
 	}
 	portNumber, err := strconv.Atoi(port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
