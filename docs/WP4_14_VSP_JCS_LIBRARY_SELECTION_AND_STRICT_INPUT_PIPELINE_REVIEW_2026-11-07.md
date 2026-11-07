@@ -175,3 +175,13 @@ value with that exact value and installs via `npm ci --ignore-scripts`.
 This remains an isolated test-only tool, not a production VSP dependency.
 The new integrity check and lockfile installation require a fresh successful
 CI run before being treated as verified.
+
+
+### CI result for the locked JavaScript comparator
+
+Workflow run `42338218975` completed the `hnd-v02-tests` job successfully.
+The run passed the registry-integrity equality check, installed the committed
+Node lockfile with `npm ci --ignore-scripts`, passed the cross-language JCS
+compatibility spike, and completed the isolated v0.2 test suite. This verifies
+the test-only package lock and install path for that commit. It does not
+approve the package for production use or freeze VSP v1.
