@@ -503,15 +503,26 @@ def main():
                 raise AssertionError("restarted HND account state or total supply differs from pre-stop state")
             print(json.dumps({"result":"HND_WP4_13_DURABLE_ABCI_RECOVERY_OK","restored_height":int(restored_info["last_block_height"]),"pre_stop_height":pre_hnd_height,"restored_app_hash":restored_info["last_block_app_hash"],"state_file_sha256_unchanged_at_app_start":True,"balances_unchanged":True,"verified_after_rpc_restart":True},sort_keys=True),flush=True)
             def recovered_application_caught_up():
+                # Sample a coherent four-node snapshot: all CometBFT nodes must
+                # agree on height/block, and each ABCI app must have executed
+                # exactly that height. Re-read/retry if consensus advances while
+                # the four application endpoints are being sampled.
                 statuses=converged(urls,qheight)
                 if not statuses: return None
-                info=abci_info(urls[3])
-                if int(info["last_block_height"]) != int(statuses[3]["sync_info"]["latest_block_height"]): return None
-                return statuses
-            sfinal=wait(recovered_application_caught_up,"restarted validator consensus and HND application catch-up",150)
-            final_accounts=[account(u,aid) for u in urls]; final_apphash=[app_hash(u) for u in urls]
+                infos=[abci_info(u) for u in urls]
+                if any(int(info["last_block_height"]) != int(status["sync_info"]["latest_block_height"])
+                       for info,status in zip(infos,statuses)): return None
+                app_hashes=[info["last_block_app_hash"] for info in infos]
+                if len(set(app_hashes)) != 1: return None
+                return statuses,infos,app_hashes
+            sfinal,final_infos,final_apphash=wait(
+                recovered_application_caught_up,
+                "all four CometBFT and HND application replicas catch up to one coherent height",
+                150,
+            )
+            final_accounts=[account(u,aid) for u in urls]
             final_bob=[account(u,bid)["balance"] for u in urls]
-            final_info=abci_info(urls[3])
+            final_info=final_infos[3]
             assert_replica_convergence([
                 {
                     "validator": f"validator-{index+1}",
