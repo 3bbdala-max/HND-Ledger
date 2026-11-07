@@ -148,6 +148,9 @@ def test_check_tx_recheck_revalidates_against_committed_state(tmp_path):
     # Recheck is state-aware: the now-unfunded transaction is rejected, while
     # a correctly signed transaction that fits the new state is retained.
     assert dispatcher("CheckTx", {"type": 1, "tx": _b64(stale)})["code"] == 1
+    stale_nonce = encode_transaction(create_transaction(alice, bob_id, 1, 0))
+    assert dispatcher("CheckTx", {"type": 1, "tx": _b64(stale_nonce)})["code"] == 1
+    assert dispatcher("CheckTx", {"type": 2, "tx": _b64(stale_nonce)})["code"] == 1
     still_valid = encode_transaction(create_transaction(alice, bob_id, 30, 1))
     assert dispatcher("CheckTx", {"type": 1, "tx": _b64(still_valid)})["code"] == 0
 
