@@ -216,14 +216,14 @@ func runRemoteAntiDoubleSignProbe() {
 // if both processes emit valid signatures for conflicting blocks at the same
 // H/R/type, cross-process single-writer ownership is not enforced.
 func runConcurrentSharedFilePVProbe() {
-	root, err := os.MkdirTemp("", "hnd-shared-filepv-dual-writer-")
-	if err != nil { fail("create shared FilePV probe directory: %v", err) }
+	root, err := os.MkdirTemp("", "hnd-shared-filepv-owner-lock-")
+	if err != nil { fail("create shared FilePV ownership probe directory: %v", err) }
 	defer os.RemoveAll(root)
 
 	keyPath, statePath := filepath.Join(root, "key.json"), filepath.Join(root, "state.json")
 	pv := privval.GenFilePV(keyPath, statePath)
 	pv.Save()
-	expectedDigest, err := fileSHA256(statePath)
+	initialDigest, err := fileSHA256(statePath)
 	if err != nil { fail("hash initial shared FilePV state: %v", err) }
 
 	type signerClient struct {
@@ -233,7 +233,7 @@ func runConcurrentSharedFilePVProbe() {
 	}
 	signers := make([]signerClient, 2)
 	executable, err := os.Executable()
-	if err != nil { fail("resolve shared FilePV probe executable: %v", err) }
+	if err != nil { fail("resolve shared FilePV ownership probe executable: %v", err) }
 	for i := range signers {
 		socketPath := filepath.Join(root, fmt.Sprintf("signer-%d.sock", i))
 		listener, listenErr := net.Listen("unix", socketPath)
@@ -242,64 +242,87 @@ func runConcurrentSharedFilePVProbe() {
 		endpoint := privval.NewSignerListenerEndpoint(log.NewNopLogger(), privval.NewUnixListener(listener))
 		client, clientErr := privval.NewSignerClient(endpoint, chainID)
 		if clientErr != nil { fail("create shared FilePV client %d: %v", i, clientErr) }
-		child := exec.Command(executable, "--serve-recovery", socketPath, keyPath, statePath, chainID, expectedDigest)
-		child.Stdout, child.Stderr = os.Stdout, os.Stderr
-		if startErr := child.Start(); startErr != nil { fail("start shared FilePV signer process %d: %v", i, startErr) }
-		signers[i] = signerClient{client: client, listener: listener, child: child}
+		signers[i] = signerClient{client: client, listener: listener}
 	}
 	defer func() {
 		for i := range signers {
 			_ = signers[i].client.Close()
 			_ = signers[i].listener.Close()
-			if signers[i].child.Process != nil {
+			if signers[i].child != nil && signers[i].child.Process != nil {
 				_ = signers[i].child.Process.Signal(syscall.SIGTERM)
 				_ = signers[i].child.Wait()
 			}
 		}
 	}()
 
-	// Both child processes must have loaded the same initial state before either
-	// request is sent. Connection establishment occurs after LoadFilePV.
-	for i := range signers {
-		if err := signers[i].client.WaitForConnection(10 * time.Second); err != nil {
-			fail("wait for shared FilePV signer %d connection: %v", i, err)
-		}
-	}
-	pubKey0, err := signers[0].client.GetPubKey()
-	if err != nil { fail("get shared FilePV signer 0 public key: %v", err) }
-	pubKey1, err := signers[1].client.GetPubKey()
-	if err != nil { fail("get shared FilePV signer 1 public key: %v", err) }
-	if !bytes.Equal(pubKey0.Bytes(), pubKey1.Bytes()) {
-		fail("shared FilePV signer processes do not expose the same validator key")
+	startChild := func(index int, expectedDigest string) *exec.Cmd {
+		socketPath := filepath.Join(root, fmt.Sprintf("signer-%d.sock", index))
+		child := exec.Command(executable, "--serve-recovery", socketPath, keyPath, statePath, chainID, expectedDigest)
+		child.Stdout, child.Stderr = os.Stdout, os.Stderr
+		if startErr := child.Start(); startErr != nil { fail("start shared FilePV signer process %d: %v", index, startErr) }
+		signers[index].child = child
+		return child
 	}
 
+	// The first process acquires the state-path lock and starts serving.
+	first := startChild(0, initialDigest)
+	if err := signers[0].client.WaitForConnection(10 * time.Second); err != nil {
+		fail("wait for first shared FilePV signer connection: %v", err)
+	}
+	pubKey, err := signers[0].client.GetPubKey()
+	if err != nil { fail("get first shared FilePV public key: %v", err) }
+
+	// A second independent process using the same state path must fail before
+	// loading FilePV or opening its signer listener.
+	secondAttempt := exec.Command(executable, "--serve-recovery", filepath.Join(root, "signer-1.sock"), keyPath, statePath, chainID, initialDigest)
+	output, secondErr := secondAttempt.CombinedOutput()
+	if secondErr == nil { fail("second signer process unexpectedly acquired the same state-path ownership lock") }
+	if !bytes.Contains(output, []byte("signer ownership lock already held")) {
+		fail("second signer was rejected for an unexpected reason: %s", output)
+	}
+
+	// The active owner signs one vote. Its persisted state must survive process
+	// exit and be used by the next owner.
 	makeVote := func(label string) *cmtproto.Vote {
 		return (&cmttypes.Vote{
-			ValidatorAddress: cmttypes.Address(pubKey0.Address()),
+			ValidatorAddress: cmttypes.Address(pubKey.Address()),
 			ValidatorIndex: 0, Height: 77, Round: 3, Type: cmtproto.PrevoteType,
 			Timestamp: cmttime.Now(), BlockID: blockID(label),
 		}).ToProto()
 	}
-	votes := []*cmtproto.Vote{makeVote("shared-state-conflict-A"), makeVote("shared-state-conflict-B")}
-	// Both processes loaded the same empty state before either request. Sign
-	// through process 0 first, then process 1 using its stale in-memory state.
-	// Sequential requests avoid conflating the ownership defect with an
-	// incidental simultaneous filesystem-write race.
-	if err := signers[0].client.SignVote(chainID, votes[0]); err != nil {
-		fail("shared FilePV signer 0 rejected its vote: %v", err)
+	accepted := makeVote("shared-state-owner-A")
+	if err := signers[0].client.SignVote(chainID, accepted); err != nil {
+		fail("active signer rejected its vote: %v", err)
 	}
-	if err := signers[1].client.SignVote(chainID, votes[1]); err != nil {
-		fail("shared FilePV signer 1 rejected conflicting vote from stale loaded state: %v", err)
+	if len(accepted.Signature) == 0 || !pubKey.VerifySignature(cmttypes.VoteSignBytes(chainID, accepted), accepted.Signature) {
+		fail("active signer returned an invalid vote signature")
 	}
-	for i := range votes {
-		if len(votes[i].Signature) == 0 || !pubKey0.VerifySignature(cmttypes.VoteSignBytes(chainID, votes[i]), votes[i].Signature) {
-			fail("shared FilePV signer %d did not return a valid conflicting signature", i)
-		}
+	if err := first.Process.Signal(syscall.SIGTERM); err != nil { fail("stop first shared FilePV owner: %v", err) }
+	if err := first.Wait(); err != nil { fail("wait for first shared FilePV owner exit: %v", err) }
+	deadline := time.Now().Add(5 * time.Second)
+	for signers[0].client.IsConnected() && time.Now().Before(deadline) { time.Sleep(25 * time.Millisecond) }
+
+	updatedDigest, err := fileSHA256(statePath)
+	if err != nil { fail("hash committed shared FilePV state after first owner: %v", err) }
+	second := startChild(1, updatedDigest)
+	if err := signers[1].client.WaitForConnection(10 * time.Second); err != nil {
+		fail("wait for second owner after first owner released lock: %v", err)
 	}
-	if bytes.Equal(votes[0].Signature, votes[1].Signature) {
-		fail("conflicting vote requests unexpectedly returned identical signatures")
+	restartedPub, err := signers[1].client.GetPubKey()
+	if err != nil { fail("get second owner public key: %v", err) }
+	if !bytes.Equal(pubKey.Bytes(), restartedPub.Bytes()) {
+		fail("validator identity changed during same-host signer ownership handoff")
 	}
-	fmt.Println("HND_REMOTE_SIGNER_SHARED_FILEPV_DUAL_SIGN_REPRODUCED_UNSAFE: two independent processes signed conflicting blocks at identical H/R/type")
+	conflicting := makeVote("shared-state-owner-B")
+	if err := signers[1].client.SignVote(chainID, conflicting); err == nil {
+		fail("second owner accepted a conflicting vote after acquiring the released lock")
+	}
+	if len(conflicting.Signature) != 0 {
+		fail("second owner returned a signature for a conflicting vote")
+	}
+	if err := second.Process.Signal(syscall.SIGTERM); err != nil { fail("stop second shared FilePV owner: %v", err) }
+	if err := second.Wait(); err != nil { fail("wait for second shared FilePV owner exit: %v", err) }
+	fmt.Println("HND_REMOTE_SIGNER_SAME_HOST_SINGLE_WRITER_LOCK_ENFORCED_OK")
 }
 
 func runNodeParent() {
