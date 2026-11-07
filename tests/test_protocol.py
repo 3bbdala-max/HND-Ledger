@@ -71,3 +71,19 @@ def test_boolean_integer_fields_are_rejected(field, value):
     valid = create_transaction(sender_key, recipient, 1, 0)
     with pytest.raises(ProtocolError, match=field):
         verify_transaction(replace(valid, **{field: value}))
+
+@pytest.mark.parametrize("field", ["amount", "nonce"])
+def test_uint64_upper_boundary_is_accepted_and_overflow_rejected(field):
+    sender_key, recipient_key = keys()
+    recipient = account_id(recipient_key.public_key().public_bytes_raw())
+
+    amount = (1 << 64) - 1 if field == "amount" else 1
+    nonce = (1 << 64) - 1 if field == "nonce" else 0
+    tx = create_transaction(sender_key, recipient, amount, nonce)
+    verify_transaction(tx)
+    assert decode_transaction(encode_transaction(tx)) == tx
+
+    overflow_amount = (1 << 64) if field == "amount" else 1
+    overflow_nonce = (1 << 64) if field == "nonce" else 0
+    with pytest.raises(ProtocolError, match="uint64"):
+        create_transaction(sender_key, recipient, overflow_amount, overflow_nonce)
