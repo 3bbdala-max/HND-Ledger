@@ -253,3 +253,20 @@ validator consensus keys (including `InitFilesCmd`,
 This narrows the remote-only executable's exposed operations in addition to
 the provider's fail-closed behavior. The new command-surface change is awaiting
 a fresh pinned-source CI build.
+
+
+## First positive remote-only runtime result: Unix transport (2026-11-07)
+
+Workflow run `42334495538` on commit
+`61e94b5bf53a56295c2fcb63e5c96a4f179d21f5` completed the
+`Run four-validator external remote-signer integration and outage recovery`
+step successfully while invoking the dedicated remote-only CometBFT binary
+for validator 4. The preceding pinned-source build and missing-signer
+fail-closed test also passed in this run.
+
+This is the first positive runtime CI evidence for the remote-only provider
+with the Unix external signer in the four-validator harness. The harness's
+post-connection and post-restart assertions check that validator 4 has no
+local consensus key or state file, and that the signer-owned public key
+matches Genesis. The separate authenticated Noise variant is still running
+in this same workflow; no Noise remote-only result is claimed yet.
