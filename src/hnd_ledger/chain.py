@@ -203,7 +203,11 @@ class LocalChain:
             if row is None:
                 raise ChainError("persisted genesis state is missing")
             try:
-                decoded = cbor2.loads(row[0])
+                raw_genesis = row[0]
+                decoded = cbor2.loads(raw_genesis)
+                if (not isinstance(raw_genesis, bytes)
+                        or cbor2.dumps(decoded, canonical=True) != raw_genesis):
+                    raise ChainError("non-canonical persisted genesis state")
                 if (not isinstance(decoded, list) or len(decoded) != 4
                         or decoded[0] != 2 or not isinstance(decoded[3], list)):
                     raise ChainError("persisted genesis state is malformed")

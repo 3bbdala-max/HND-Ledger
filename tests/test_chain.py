@@ -907,3 +907,28 @@ def test_local_chain_ancestor_commitments_feed_checkpoint_assessment(tmp_path):
     assert "ancestry matches" in assessment.reason
     assert not assessment.writes_allowed
     chain.close()
+
+
+
+def test_checkpoint_ancestor_commitments_reject_noncanonical_genesis_after_open(tmp_path):
+    import cbor2
+
+    chain = LocalChain(
+        tmp_path / "checkpoint-noncanonical-genesis.sqlite",
+        LedgerState(supply_cap=100),
+    )
+    raw = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0]
+    decoded = cbor2.loads(raw)
+    noncanonical = bytes([0x98, len(decoded)]) + raw[1:]
+    assert cbor2.loads(noncanonical) == decoded
+    chain.db.execute(
+        "UPDATE metadata SET value=? WHERE key='genesis_state'",
+        (noncanonical,),
+    )
+    chain.db.commit()
+
+    with pytest.raises(ChainError, match="non-canonical persisted genesis"):
+        chain.checkpoint_ancestor_commitments(0)
+    chain.close()
