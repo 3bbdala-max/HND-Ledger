@@ -87,6 +87,16 @@ jobs:
           grep -q "HND remote-only node requires priv_validator_laddr" "$RUNNER_TEMP/remote-only-negative.log"
           test ! -e "$home/config/priv_validator_key.json"
           test ! -e "$home/data/priv_validator_state.json"
+          if "$RUNNER_TEMP/hnd-cometbft-remote-only" init --home "$home" >/dev/null 2>&1; then
+            echo "remote-only CLI unexpectedly exposes key-generating init command" >&2
+            exit 1
+          fi
+          if "$RUNNER_TEMP/hnd-cometbft-remote-only" gen-validator --home "$home" >/dev/null 2>&1; then
+            echo "remote-only CLI unexpectedly exposes validator-key generation command" >&2
+            exit 1
+          fi
+          test ! -e "$home/config/priv_validator_key.json"
+          test ! -e "$home/data/priv_validator_state.json"
       - name: Run pinned CometBFT Byzantine prevote equivocation and evidence regression
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
