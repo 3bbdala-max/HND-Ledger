@@ -36,6 +36,16 @@ func (pv voteWithholdingPV) SignVote(string, *cmtproto.Vote) error {
 	return errors.New("test signer intentionally withholds vote signatures")
 }
 
+type crashAfterVotePV struct { cmttypes.PrivValidator }
+
+func (pv crashAfterVotePV) SignVote(chainID string, vote *cmtproto.Vote) error {
+	if err := pv.PrivValidator.SignVote(chainID, vote); err != nil { return err }
+	// The underlying FilePV has completed its durable LastSignState.Save().
+	// Exit before SignerServer can serialize a response to the node.
+	os.Exit(77)
+	return nil
+}
+
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "HND_REMOTE_SIGNER_PROCESS_PROBE_FAILED: "+format+"\n", args...)
 	os.Exit(1)
@@ -81,7 +91,7 @@ func acquireLocalSignerLock(statePath string) *os.File {
 	return lockFile
 }
 
-func runSignerChild(socketPath, keyPath, statePath string, withholdVotes, loadExisting bool) {
+func runSignerChild(socketPath, keyPath, statePath string, withholdVotes, loadExisting bool, crashAfterVote bool) {
 	lockFile := acquireLocalSignerLock(statePath)
 	defer lockFile.Close()
 	logger := log.NewNopLogger()
@@ -96,6 +106,9 @@ func runSignerChild(socketPath, keyPath, statePath string, withholdVotes, loadEx
 	var signer cmttypes.PrivValidator = pv
 	if withholdVotes {
 		signer = voteWithholdingPV{PrivValidator: pv}
+	}
+	if crashAfterVote {
+		signer = crashAfterVotePV{PrivValidator: signer}
 	}
 	server := privval.NewSignerServer(dialer, chainID, signer)
 	if err := server.Start(); err != nil {
@@ -601,7 +614,9 @@ func main() {
 			fail("usage: --signer-child <socket> <key-file> <state-file> [--withhold-votes]")
 		}
 		withhold := len(os.Args) == 6 && os.Args[5] == "--withhold-votes"
-		runSignerChild(os.Args[2], os.Args[3], os.Args[4], withhold, len(os.Args) == 6 && os.Args[5] == "--load-existing")
+		loadExisting := len(os.Args) == 6 && os.Args[5] == "--load-existing"
+		crashAfterVote := len(os.Args) == 6 && os.Args[5] == "--crash-after-vote"
+		runSignerChild(os.Args[2], os.Args[3], os.Args[4], withhold, loadExisting, crashAfterVote)
 		return
 	}
 	runNodeParent()
