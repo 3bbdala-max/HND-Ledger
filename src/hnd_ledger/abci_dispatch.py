@@ -15,7 +15,7 @@ from typing import Any
 
 from .application import LedgerApplication
 from .ipc_server import IPCError
-from .protocol import CHAIN_ID
+from .protocol import CHAIN_ID, encode_transaction
 
 EXTERNAL_CHAIN_ID = "HND-LOCAL-V2"
 MAX_MEMPOOL_ITEMS = 10_000
@@ -175,7 +175,7 @@ class ABCIDispatcher:
 
     def _handle_Commit(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self._mempool_lock:
-            included = set(self.application._finalized.transactions) if self.application._finalized else set()
+            included = {encode_transaction(tx) for tx in self.application._finalized.transactions} if self.application._finalized else set()
             self.application.commit()
             kept = deque(raw for raw in self._mempool if raw not in included)
             self._mempool = kept
