@@ -1,4 +1,4 @@
-cryptography>=41.0
+cryptography==50.0.2  # exact release pin; hashes/complete transitive lock still required
 # Pinned CometBFT v0.40.0 Python ABCI gRPC tooling
 grpcio==1.76.0
 grpcio-tools==1.76.0
