@@ -984,3 +984,100 @@ def test_require_local_chain_checkpoint_match_rejects_every_non_match(
     with pytest.raises(CheckpointError, match=expected):
         require_local_chain_checkpoint_match(authority, public_key, chain)
     chain.close()
+
+
+def test_startup_gate_rejects_authority_advance_between_assessment_and_final_read(tmp_path):
+    from hnd_ledger.chain import LocalChain, state_commitment
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointError,
+        RollbackCheckpoint,
+        require_local_chain_checkpoint_match,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    chain = LocalChain(tmp_path / "authority-race.sqlite", LedgerState(supply_cap=20))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    first_checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=0,
+        block_hash=chain.tip_hash,
+        app_hash=state_commitment(chain.state),
+        sequence=1,
+    )
+    advanced_checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=1,
+        block_hash=b"X" * 32,
+        app_hash=b"Y" * 32,
+        sequence=2,
+    )
+    first_raw = sign_checkpoint(first_checkpoint, key).encode()
+    advanced_raw = sign_checkpoint(advanced_checkpoint, key).encode()
+
+    class AdvancingAuthority:
+        def __init__(self):
+            self.read_count = 0
+
+        def read(self, chain_id, requested_genesis):
+            assert chain_id == chain.state.chain_id
+            assert requested_genesis == genesis_hash
+            self.read_count += 1
+            return first_raw if self.read_count == 1 else advanced_raw
+
+        def compare_and_swap(self, **kwargs):
+            raise AssertionError("startup gate must be read-only")
+
+    authority = AdvancingAuthority()
+    with pytest.raises(CheckpointError, match="changed during startup gate"):
+        require_local_chain_checkpoint_match(authority, public_key, chain)
+    assert authority.read_count == 2
+    chain.close()
+
+
+def test_startup_gate_rejects_authority_failure_on_final_read(tmp_path):
+    from hnd_ledger.chain import LocalChain, state_commitment
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointError,
+        RollbackCheckpoint,
+        require_local_chain_checkpoint_match,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    chain = LocalChain(tmp_path / "authority-final-read-failure.sqlite", LedgerState(supply_cap=20))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=0,
+        block_hash=chain.tip_hash,
+        app_hash=state_commitment(chain.state),
+        sequence=1,
+    )
+    raw = sign_checkpoint(checkpoint, key).encode()
+
+    class FailingSecondReadAuthority:
+        def __init__(self):
+            self.read_count = 0
+
+        def read(self, chain_id, requested_genesis):
+            self.read_count += 1
+            if self.read_count == 1:
+                return raw
+            raise OSError("simulated authority outage during final gate read")
+
+        def compare_and_swap(self, **kwargs):
+            raise AssertionError("startup gate must be read-only")
+
+    authority = FailingSecondReadAuthority()
+    with pytest.raises(CheckpointError, match="reread failed"):
+        require_local_chain_checkpoint_match(authority, public_key, chain)
+    assert authority.read_count == 2
+    chain.close()
