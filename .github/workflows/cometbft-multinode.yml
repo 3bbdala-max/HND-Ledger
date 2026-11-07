@@ -296,7 +296,7 @@ jobs:
                       "prove": "false",
                   }
                   if path == "/hnd/v1/account":
-                      params["data"] = json.dumps(meta["alice"])
+                      params["data"] = "0x" + meta["alice"]
                   url = base + "?" + urllib.parse.urlencode(params)
                   try:
                       with urllib.request.urlopen(url, timeout=15) as response:
