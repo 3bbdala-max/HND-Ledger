@@ -132,3 +132,20 @@ second process is rejected while the lock is held; after clean owner exit,
 the second process may acquire the lock only with the newly persisted state
 digest and must reject a conflicting H/R/S vote. Unix and Noise helper lock
 probes are now wired into CI; their new results are pending.
+
+
+### Execution result — same-host helper lock
+
+Workflow run `42336661940` on commit
+`d952ba745e5b2950efb55621cd45e2b6dff19c3a` passed the Unix shared-state
+contention/handoff probe and the Noise helper state-lock contention probe.
+Both helpers acquire a non-blocking same-host advisory lock before loading
+FilePV state. The process probe verifies a second owner is rejected while the
+first is active, then can acquire after clean release only with the updated
+state digest and must reject a conflicting H/R/type request.
+
+**Scope:** this closes the same-host advisory-lock behavior for the HND test
+helpers. It does not change the upstream CometBFT source or establish
+cross-host locking, durable distributed fencing, resistance to privileged
+bypass, or linearizable signer authorization. Production ownership remains
+NOT APPROVED.
