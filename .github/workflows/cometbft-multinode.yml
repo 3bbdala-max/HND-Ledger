@@ -1,0 +1,182 @@
+name: CometBFT three-validator smoke
+
+on:
+  push:
+    branches:
+      - implementation/v0.2-local-ledger
+  pull_request:
+    branches:
+      - implementation/v0.2-local-ledger
+
+jobs:
+  three-validators:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+          cache-dependency-path: |
+            abci-adapter/go.sum
+            abci-adapter/go.mod
+
+      - name: Install HND Python application
+        run: python -m pip install -e .
+
+      - name: Install pinned CometBFT node
+        run: go install github.com/cometbft/cometbft/cmd/cometbft@v0.40.0
+
+      - name: Build HND ABCI socket adapter
+        run: |
+          cd abci-adapter
+          go mod tidy
+          go build -o "$RUNNER_TEMP/hnd-abci" ./cmd/hnd-abci
+
+      - name: Generate and configure three independent validators
+        shell: bash
+        run: |
+          set -euo pipefail
+          cometbft testnet --v 3 --o "$RUNNER_TEMP/hnd-net" --populate-persistent-peers=false
+          python - "$RUNNER_TEMP/hnd-net" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          ids = []
+          for i in range(3):
+              node = root / f"node{i}"
+              key = json.loads((node / "config" / "node_key.json").read_text())
+              ids.append(key["id"])
+
+          def set_key(text, section, key, value):
+              pattern = rf"(?ms)(\[{re.escape(section)}\]\n)(.*?)(?=^\[|\Z)"
+              match = re.search(pattern, text)
+              if not match:
+                  raise SystemExit(f"missing TOML section [{section}]")
+              body = match.group(2)
+              line = re.compile(rf"(?m)^{re.escape(key)}\s*=.*$")
+              replacement = f'{key} = "{value}"'
+              if line.search(body):
+                  body = line.sub(replacement, body, count=1)
+              else:
+                  body += replacement + "\n"
+              return text[:match.start(2)] + body + text[match.end(2):]
+
+          for i in range(3):
+              node = root / f"node{i}"
+              cfg = node / "config" / "config.toml"
+              text = cfg.read_text()
+              text = re.sub(r'(?m)^proxy_app\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{26658+i}"', text, count=1)
+              text = set_key(text, "rpc", "laddr", f"tcp://127.0.0.1:{26657+i}")
+              text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{26656+i}")
+              text = set_key(text, "p2p", "allow_duplicate_ip", "true")
+              peers = ",".join(
+                  f"{ids[j]}@127.0.0.1:{26656+j}" for j in range(3) if j != i
+              )
+              text = set_key(text, "p2p", "persistent_peers", peers)
+              cfg.write_text(text)
+
+              genesis = node / "config" / "genesis.json"
+              data = json.loads(genesis.read_text())
+              data["chain_id"] = "HND-LOCAL-V2"
+              genesis.write_text(json.dumps(data, separators=(",", ":")))
+
+          print("Configured three validators with separate RPC, P2P, ABCI, DB, and IPC endpoints.")
+          PY
+
+      - name: Run three validators and compare committed application hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/hnd-net"
+          mkdir -p "$RUNNER_TEMP/hnd-data"
+          PIDS=()
+
+          cleanup() {
+            for pid in "${PIDS[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+            for pid in "${PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+          }
+          trap cleanup EXIT
+
+          for i in 0 1 2; do
+            SOCKET="$RUNNER_TEMP/hnd-data/python-$i.sock"
+            DB="$RUNNER_TEMP/hnd-data/ledger-$i.sqlite"
+            PY_LOG="$RUNNER_TEMP/hnd-data/python-$i.log"
+            GO_LOG="$RUNNER_TEMP/hnd-data/adapter-$i.log"
+            NODE_LOG="$RUNNER_TEMP/hnd-data/node-$i.log"
+
+            hnd-abci-python --chain-db "$DB" --socket "$SOCKET" --init-empty-dev-genesis >"$PY_LOG" 2>&1 &
+            PY_PID=$!
+            PIDS+=("$PY_PID")
+            for _ in $(seq 1 30); do
+              [[ -S "$SOCKET" ]] && break
+              kill -0 "$PY_PID" 2>/dev/null || { cat "$PY_LOG"; exit 1; }
+              sleep 1
+            done
+            [[ -S "$SOCKET" ]]
+
+            HND_IPC_SOCKET="$SOCKET" HND_ABCI_LISTEN="tcp://127.0.0.1:$((26658+i))" \
+              "$RUNNER_TEMP/hnd-abci" >"$GO_LOG" 2>&1 &
+            GO_PID=$!
+            PIDS+=("$GO_PID")
+            sleep 1
+            kill -0 "$GO_PID"
+
+            cometbft start --home "$ROOT/node$i" >"$NODE_LOG" 2>&1 &
+            NODE_PID=$!
+            PIDS+=("$NODE_PID")
+          done
+
+          for _ in $(seq 1 180); do
+            ready=0
+            for i in 0 1 2; do
+              if curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/status-$i.json"; then
+                height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status-$i.json")
+                [[ "$height" -ge 3 ]] && ready=$((ready+1))
+              fi
+            done
+            if [[ "$ready" -eq 3 ]]; then
+              echo "All three validators reached at least height 3"
+              break
+            fi
+            sleep 1
+          done
+
+          for i in 0 1 2; do
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/status-$i.json" || {
+              cat "$RUNNER_TEMP/hnd-data/node-$i.log"; exit 1;
+            }
+            height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status-$i.json")
+            if [[ "$height" -lt 3 ]]; then
+              echo "Validator $i did not reach height 3 (height=$height)"
+              for j in 0 1 2; do cat "$RUNNER_TEMP/hnd-data/node-$j.log"; done
+              exit 1
+            fi
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=2" -o "$RUNNER_TEMP/commit-$i.json"
+          done
+
+          python - "$RUNNER_TEMP" <<'PY'
+          import json
+          import pathlib
+          import sys
+          root = pathlib.Path(sys.argv[1])
+          hashes = []
+          heights = []
+          for i in range(3):
+              status = json.loads((root / f"status-{i}.json").read_text())
+              heights.append(int(status["result"]["sync_info"]["latest_block_height"]))
+              commit = json.loads((root / f"commit-{i}.json").read_text())
+              hashes.append(commit["result"]["signed_header"]["header"]["app_hash"])
+          if len(set(hashes)) != 1:
+              raise SystemExit(f"validator application hashes diverged at height 2: {hashes}")
+          print(f"Three validators agree at height 2; app_hash={hashes[0]}; observed heights={heights}")
+          PY
