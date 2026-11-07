@@ -233,7 +233,7 @@ func runRemoteAntiDoubleSignProbe() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_ANTI_DOUBLE_SIGN_RESTART_OK")
 }
 
-func runCrashAfterDurableVoteProbe() {
+func runCrashAfterStateSaveVoteProbe() {
 	root, err := os.MkdirTemp("", "hnd-remote-signer-crash-after-save-")
 	if err != nil { fail("create crash-after-save probe directory: %v", err) }
 	defer os.RemoveAll(root)
@@ -308,7 +308,7 @@ func runCrashAfterDurableVoteProbe() {
 		fail("recovered signer accepted a conflicting vote after crash-before-response")
 	}
 	stopSignerProcess(child, "recovered crash-after-save signer")
-	fmt.Println("HND_REMOTE_SIGNER_CRASH_AFTER_DURABLE_SAVE_BEFORE_RESPONSE_OK")
+	fmt.Println("HND_REMOTE_SIGNER_CRASH_AFTER_STATE_SAVE_BEFORE_RESPONSE_OK")
 }
 
 // runConcurrentSharedFilePVProbe deliberately starts two independent signer
@@ -677,6 +677,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--remote-anti-double-sign-probe" {
 		runRemoteAntiDoubleSignProbe()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--crash-after-state-save-vote-probe" {
+		runCrashAfterStateSaveVoteProbe()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--shared-filepv-dual-writer-probe" {
