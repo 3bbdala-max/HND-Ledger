@@ -70,12 +70,14 @@ class LedgerState:
         next_nonce = expected + 1
         if next_nonce > MAX_U64:
             raise LedgerError("sender nonce overflow")
+        if self.total_supply > self.supply_cap:
+            raise LedgerError("current state exceeds supply cap")
 
         # All validation precedes mutation: rejected transactions are atomic.
+        # A transfer preserves total supply, so the cap check above remains
+        # valid for the candidate state without a post-mutation failure path.
         new_sender_balance = sender_balance - tx.amount
         new_recipient_balance = recipient_balance + tx.amount
         self.balances[tx.sender] = new_sender_balance
         self.balances[tx.recipient] = new_recipient_balance
         self.next_nonces[tx.sender] = next_nonce
-        if self.total_supply > self.supply_cap:
-            raise AssertionError("internal supply invariant violated")
