@@ -170,3 +170,20 @@ def test_block_transaction_count_limit_is_atomic(tmp_path):
     assert chain.state.balances[alice_id] == 20
     assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
     chain.close()
+
+
+
+def test_block_encoded_byte_limit_is_checked_before_state_changes(tmp_path):
+    from hnd_ledger.chain import MAX_BLOCK_TRANSACTIONS
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    chain = LocalChain(tmp_path / "bytes.sqlite", LedgerState(balances={alice_id: 20}, supply_cap=20))
+    tx = create_transaction(alice, bob_id, 1, 0)
+    with pytest.raises(ChainError, match="byte limit"):
+        chain.append([tx] * MAX_BLOCK_TRANSACTIONS)
+    assert chain.height == 0
+    assert chain.state.balances[alice_id] == 20
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    chain.close()
