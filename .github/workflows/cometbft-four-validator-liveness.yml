@@ -1,0 +1,218 @@
+name: CometBFT four-validator liveness and recovery
+
+on:
+  push:
+    branches:
+      - implementation/v0.2-local-ledger
+  pull_request:
+    branches:
+      - implementation/v0.2-local-ledger
+
+jobs:
+  four-validator-liveness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+          cache-dependency-path: |
+            abci-adapter/go.sum
+            abci-adapter/go.mod
+      - name: Install HND Python application
+        run: python -m pip install -e .
+      - name: Install pinned CometBFT node
+        run: go install github.com/cometbft/cometbft/cmd/cometbft@v0.40.0
+      - name: Build HND ABCI socket adapter
+        run: |
+          cd abci-adapter
+          go mod tidy
+          go build -o "$RUNNER_TEMP/hnd-abci" ./cmd/hnd-abci
+      - name: Generate four-validator test network
+        shell: bash
+        run: |
+          set -euo pipefail
+          cometbft testnet --v 4 --o "$RUNNER_TEMP/hnd-four-net" --populate-persistent-peers=false
+          python - "$RUNNER_TEMP/hnd-four-net" <<'PY'
+          import base64, json, pathlib, re, subprocess, sys
+          import cbor2
+          root = pathlib.Path(sys.argv[1])
+          data_root = pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "hnd-four-data"
+          data_root.mkdir(parents=True, exist_ok=True)
+          # Empty, capped development genesis; no keys or balances are issued.
+          raw = cbor2.dumps([2, 1_000_000, []], canonical=True)
+          app_state = {"version": 2, "payload": base64.b64encode(raw).decode("ascii")}
+          ids = []
+          for i in range(4):
+              node = root / f"node{i}"
+              ids.append(subprocess.run(
+                  ["cometbft", "show-node-id", "--home", str(node)],
+                  check=True, capture_output=True, text=True,
+              ).stdout.strip())
+          def set_key(text, section, key, value, quoted=True):
+              pattern = rf"(?ms)(\\[{re.escape(section)}\\]\\n)(.*?)(?=^\\[|\\Z)"
+              match = re.search(pattern, text)
+              if not match:
+                  raise SystemExit(f"missing TOML section [{section}]")
+              body = match.group(2)
+              line = re.compile(rf"(?m)^{re.escape(key)}\\s*=.*$")
+              replacement = f'{key} = "{value}"' if quoted else f"{key} = {value}"
+              body = line.sub(replacement, body, count=1) if line.search(body) else body + replacement + "\\n"
+              return text[:match.start(2)] + body + text[match.end(2):]
+          for i in range(4):
+              node = root / f"node{i}"
+              cfg = node / "config" / "config.toml"
+              text = cfg.read_text()
+              text = re.sub(r'(?m)^proxy_app\\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{28658+i}"', text, count=1)
+              text = set_key(text, "rpc", "laddr", f"tcp://127.0.0.1:{26657+i}")
+              text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{27656+i}")
+              text = set_key(text, "p2p", "allow_duplicate_ip", "true", quoted=False)
+              peers = ",".join(f"{ids[j]}@127.0.0.1:{27656+j}" for j in range(4) if j != i)
+              text = set_key(text, "p2p", "persistent_peers", peers)
+              cfg.write_text(text)
+              genesis = node / "config" / "genesis.json"
+              data = json.loads(genesis.read_text())
+              data["chain_id"] = "HND-LOCAL-V2"
+              data["app_state"] = app_state
+              genesis.write_text(json.dumps(data, separators=(",", ":")))
+          print("Configured four validators with distinct RPC, P2P, ABCI, SQLite, and IPC endpoints.")
+          PY
+      - name: Verify quorum continues during validator outage and restart catches up
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/hnd-four-net"
+          DATA="$RUNNER_TEMP/hnd-four-data"
+          mkdir -p "$DATA"
+          declare -a PY_PIDS GO_PIDS NODE_PIDS
+          cleanup() {
+            for pid in "${NODE_PIDS[@]:-}" "${GO_PIDS[@]:-}" "${PY_PIDS[@]:-}"; do
+              [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+            done
+            for pid in "${NODE_PIDS[@]:-}" "${GO_PIDS[@]:-}" "${PY_PIDS[@]:-}"; do
+              [[ -n "$pid" ]] && wait "$pid" 2>/dev/null || true
+            done
+          }
+          trap cleanup EXIT
+          start_node() {
+            local i="$1"
+            local socket="$DATA/python-$i.sock"
+            hnd-abci-python --chain-db "$DATA/ledger-$i.sqlite" --socket "$socket" \
+              --init-empty-dev-genesis >"$DATA/python-$i.log" 2>&1 &
+            PY_PIDS[$i]=$!
+            for _ in $(seq 1 30); do
+              [[ -S "$socket" ]] && break
+              kill -0 "${PY_PIDS[$i]}" 2>/dev/null || { cat "$DATA/python-$i.log"; return 1; }
+              sleep 1
+            done
+            [[ -S "$socket" ]]
+            HND_IPC_SOCKET="$socket" HND_ABCI_LISTEN="tcp://127.0.0.1:$((28658+i))" \
+              "$RUNNER_TEMP/hnd-abci" >"$DATA/adapter-$i.log" 2>&1 &
+            GO_PIDS[$i]=$!
+            sleep 1
+            kill -0 "${GO_PIDS[$i]}"
+            cometbft start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
+            NODE_PIDS[$i]=$!
+          }
+          for i in 0 1 2 3; do start_node "$i"; done
+
+          ready=false
+          for _ in $(seq 1 180); do
+            count=0
+            for i in 0 1 2 3; do
+              if curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$DATA/status-$i.json"; then
+                h=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/status-$i.json")
+                [[ "$h" -ge 3 ]] && count=$((count+1))
+              fi
+            done
+            if [[ "$count" -eq 4 ]]; then ready=true; break; fi
+            sleep 1
+          done
+          [[ "$ready" == true ]] || { echo "Four validators did not reach startup height"; exit 1; }
+
+          baseline=0
+          for i in 1 2 3; do
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$DATA/before-$i.json"
+            h=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/before-$i.json")
+            (( h > baseline )) && baseline=$h
+          done
+          echo "Stopping validator 0 at peer height $baseline"
+          kill "${NODE_PIDS[0]}" "${GO_PIDS[0]}" "${PY_PIDS[0]}"
+          wait "${NODE_PIDS[0]}" "${GO_PIDS[0]}" "${PY_PIDS[0]}" 2>/dev/null || true
+          rm -f "$DATA/python-0.sock"
+          unset 'NODE_PIDS[0]' 'GO_PIDS[0]' 'PY_PIDS[0]'
+
+          target=$((baseline + 2))
+          quorum_progress=false
+          for _ in $(seq 1 120); do
+            count=0
+            for i in 1 2 3; do
+              if curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$DATA/offline-$i.json"; then
+                h=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/offline-$i.json")
+                [[ "$h" -ge "$target" ]] && count=$((count+1))
+              fi
+            done
+            if [[ "$count" -eq 3 ]]; then quorum_progress=true; break; fi
+            sleep 1
+          done
+          [[ "$quorum_progress" == true ]] || {
+            echo "The remaining three validators failed to advance by two blocks during validator-0 outage"
+            for i in 1 2 3; do cat "$DATA/node-$i.log" || true; done
+            exit 1
+          }
+          if curl --silent --fail http://127.0.0.1:26657/status -o "$DATA/unexpected-node0.json"; then
+            echo "Validator 0 unexpectedly remained available after stop"
+            exit 1
+          fi
+          echo "Quorum liveness confirmed: validators 1, 2, and 3 advanced to at least $target while validator 0 was offline."
+
+          start_node 0
+          recovered=false
+          for _ in $(seq 1 180); do
+            count=0
+            min_peer=999999999
+            for i in 1 2 3; do
+              if curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$DATA/peer-$i.json"; then
+                h=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/peer-$i.json")
+                (( h < min_peer )) && min_peer=$h
+              fi
+            done
+            if curl --silent --fail http://127.0.0.1:26657/status -o "$DATA/recovered-0.json"; then
+              h0=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/recovered-0.json")
+              if [[ "$h0" -ge "$min_peer" && "$h0" -ge "$target" ]]; then recovered=true; break; fi
+            fi
+            sleep 1
+          done
+          [[ "$recovered" == true ]] || {
+            echo "Validator 0 did not catch up to the active quorum"
+            cat "$DATA/python-0.log" "$DATA/adapter-0.log" "$DATA/node-0.log" || true
+            exit 1
+          }
+
+          common_height=$((target))
+          for i in 0 1 2 3; do
+            for _ in $(seq 1 60); do
+              if curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=$common_height" -o "$DATA/commit-$i.json"; then break; fi
+              sleep 1
+            done
+            [[ -s "$DATA/commit-$i.json" ]] || { echo "Missing commit response for validator $i"; exit 1; }
+          done
+          python - "$DATA" "$common_height" <<'PY'
+          import json, pathlib, sys
+          root, height = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+          hashes = []
+          for i in range(4):
+              data = json.loads((root / f"commit-{i}.json").read_text())
+              header = data["result"]["signed_header"]["header"]
+              if int(header["height"]) != height:
+                  raise SystemExit(f"validator {i} returned height {header['height']} not {height}")
+              hashes.append(header["app_hash"])
+          if len(set(hashes)) != 1:
+              raise SystemExit(f"app hash mismatch after catch-up: {hashes}")
+          print(f"PASS: all four validators agree on app_hash at height {height}: {hashes[0]}")
+          PY
