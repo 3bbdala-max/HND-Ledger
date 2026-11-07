@@ -135,3 +135,17 @@ All four workflows passed on that exact commit:
 - CometBFT four-validator liveness/recovery run `42401168614`: PASS.
 
 The metadata anchor and version marker are stored in the same SQLite database. Deletion or coordinated replacement of both markers cannot be detected by this in-database mechanism alone; an independently stored checkpoint or signed external backup is required for that threat model.
+
+## Runtime chain-tip integrity guard
+
+On code/test commit `86dc2e53bb1a0a7a9348c03336f7e22aff5950b7`, the chain now validates the persisted `chain_tip_version` and `chain_tip` anchor against the in-memory height and tip hash before accepting an append. The metadata update during block persistence must affect exactly one row; otherwise the append fails and the SQLite transaction rolls back.
+
+Two regression tests remove the tip anchor or version marker through a second SQLite connection while the chain process remains open. In both cases, append fails closed and the chain height/block state does not advance.
+
+All four workflows passed on this exact code commit:
+- HND Python tests run `42401439072`: PASS.
+- CometBFT one-node smoke run `42401439028`: PASS.
+- CometBFT three-validator smoke run `42401439056`: PASS.
+- CometBFT four-validator liveness/recovery run `42401439030`: PASS.
+
+These are targeted in-process metadata-tampering regressions plus the listed CI integration paths. They do not protect against coordinated deletion or replacement of both metadata markers in the same SQLite database; an independently stored checkpoint remains necessary for that threat model.
