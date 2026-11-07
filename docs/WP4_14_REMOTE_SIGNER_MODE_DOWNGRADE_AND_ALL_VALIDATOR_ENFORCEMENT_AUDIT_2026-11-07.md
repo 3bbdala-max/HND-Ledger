@@ -91,3 +91,20 @@ These are proposed acceptance tests only. No test result is implied.
 This report is based on static inspection of the repository files named above. It does not claim to have reproduced a downgrade, observed a local fallback, audited every CometBFT v0.40.0 startup branch in this report, or run any of the proposed tests. CI evidence must be associated with the exact commit and job that executed it.
 
 **Final status:** Remote-signer integration exists as a disposable test path for validator 4. Universal remote-signer enforcement, signer-mode anti-downgrade policy, and all-validator coverage remain OPEN. No production approval or launch authorization is granted.
+
+
+## 7. Correction after pinned CLI startup-path trace (2026-11-07)
+
+The original evidence boundary above predates a deeper trace of the exact CometBFT v0.40.0 CLI path and must be read with this correction.
+
+The CI-pinned CometBFT source commit is `0880b4d378f347ab16e54ec677ff50d803f37d62`. Its standard CLI `node`/ `start` command is wired to `node.DefaultNewNode`. That provider calls `privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())` before calling `node.NewNode`. `NewNodeWithContext` then replaces the supplied validator object with the remote socket client when `PrivValidatorListenAddr` is configured.
+
+The HND CI workflow builds this stock CLI from the pinned source and the harness launches it using `[binary, "node", "--home", ...]`. In the external-signer fixture, validator 4's original key/state are moved out of its node home before this command is run. Consequently, the stock CLI provider can generate a replacement local FilePV key/state in that home before the node switches to the external signer client.
+
+**Corrected interpretation:** the earlier statement that moving validator 4's key makes the local fallback path unavailable is incomplete and must not be used as a security conclusion. The existing test has not demonstrated no-local-key behavior; it may leave a newly generated local consensus key alongside the remote signer path. This is a provisioning hazard even if the remote signer remains the active interface used by consensus.
+
+The current harness does not assert that the node home remains free of `priv_validator_key.json` after startup. Its later identity assertions read that path, which is consistent with the harness relying on a local file rather than proving its absence.
+
+**Required action:** use a reviewed custom provider/startup executable or an approved upstream code change that avoids `LoadOrGenFilePV` for remote-signer validators; assert no local key file is created before and after startup; assert remote `GetPubKey` equals the Genesis validator identity; and execute downgrade/no-fallback tests. Do not remove a regenerated key after startup and call that prevention.
+
+This correction supersedes the narrower interpretation in sections 1 and 3 for the stock CLI path. All-validator external signing and mandatory no-local-key enforcement remain OPEN.
