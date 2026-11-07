@@ -45,7 +45,9 @@ def _block_hash(height: int, previous_hash: bytes, transactions: tuple[bytes, ..
 
 
 def _genesis_hash(chain_id: bytes, state: LedgerState) -> bytes:
-    payload = [PROTOCOL_VERSION, chain_id, state_commitment(state)]
+    # Supply policy is part of genesis: identical balances with different caps
+    # must never produce the same network identity.
+    payload = [PROTOCOL_VERSION, chain_id, state.supply_cap, state_commitment(state)]
     return hashlib.sha256(GENESIS_PREFIX + canonical_cbor(payload)).digest()
 
 
@@ -149,11 +151,14 @@ class LocalChain:
     def _restore(self) -> None:
         import cbor2
         previous = self.tip_hash
-        for expected_height, (payload,) in enumerate(
-            self.db.execute("SELECT payload FROM blocks ORDER BY height"), start=1
+        for expected_height, (stored_payload, stored_hash) in enumerate(
+            self.db.execute("SELECT payload, block_hash FROM blocks ORDER BY height"), start=1
         ):
+            payload = stored_payload
             try:
                 row = cbor2.loads(payload)
+                if cbor2.dumps(row, canonical=True) != payload:
+                    raise ChainError("non-canonical stored block")
                 if not isinstance(row, list) or len(row) != 6:
                     raise ChainError("malformed stored block")
                 version, height, prev_hash, tx_raws, root, claimed_hash = row
@@ -172,7 +177,7 @@ class LocalChain:
                     candidate.apply(tx)
                 calculated_root = state_commitment(candidate)
                 calculated_hash = _block_hash(height, prev_hash, tuple(tx_raws), calculated_root)
-                if root != calculated_root or claimed_hash != calculated_hash:
+                if root != calculated_root or claimed_hash != calculated_hash or stored_hash != claimed_hash:
                     raise ChainError("stored block commitment mismatch")
                 block = Block(height, prev_hash, tuple(tx_raws), root, claimed_hash)
                 self.blocks.append(block)
