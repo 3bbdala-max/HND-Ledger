@@ -42,3 +42,9 @@ The integration job also passed its existing process-isolated signer, anti-doubl
 Do not use multiple signer processes against one FilePV state directory as a production ownership design. Before production signing, select and prove one authoritative signing/ownership architecture with durable single-writer enforcement and fencing at the signing boundary. It must reject a stale writer after failover and cover crash/restart and backup-restore boundaries. A local mutex, PID file, atomic rename, or peer allowlist alone is insufficient evidence of distributed fencing.
 
 No production signer, key, validator, network deployment, token issuance, protocol freeze, or release approval is authorized by this result.
+
+## Validator topology limitation
+
+The existing four-validator external-signer smoke script configures the external signer only for validator 4 (`i == 3`). Validators 1–3 retain their local FilePV key/state paths in this test fixture. The authenticated Noise variant has the same validator-4-only topology. Therefore these integration tests do **not** prove mandatory external signing for every validator, nor do they establish that a production launch can prevent local FilePV bypasses.
+
+Before production approval, the topology must be redesigned and tested so every validator's consensus signing path is routed through the approved signer boundary, with startup rejection if a local key or bypass path is present. This must be verified for all four validators in the test profile and separately reviewed for production deployment.
