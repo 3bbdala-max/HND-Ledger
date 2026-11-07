@@ -77,3 +77,17 @@ On commit `747560b396344d89d3fb223fe12ee29c95684a0c`, workflow run `42377936382`
 ## Remaining adversarial and operational tests
 
 Live partition and healing are now verified on one CI runner (INT-16/INT-17); independent multi-host partition testing remains unverified. Conflicting proposals, equivocation, replayed votes, Byzantine voting-power scenarios, validator crash after signing, validator-set updates, state sync, snapshot integrity, database rollback detection, backup/restore, multi-host deployment, mempool flooding, per-peer quotas, CPU/memory exhaustion, and crash injection around every SQLite commit boundary remain unverified.
+
+## Exact-commit verification after P2P mesh-readiness correction
+
+All four workflows completed successfully on code commit `41c4eeb4cb61c34b8f1caf4f454de346a06a3a60`:
+- Python tests run `42382470345`: PASS.
+- One-node CometBFT restart run `42382470355`: PASS.
+- Three-validator integration run `42382470350`: PASS.
+- Four-validator liveness and recovery run `42382470318`: PASS. The workflow now waits up to 90 seconds for every validator to establish all three P2P peers before beginning the partition scenario; the complete liveness/recovery scenario then passed.
+
+The Python dispatcher regression test on commit `0ab7294c52f12366aea99a55564b063896e82294`, run `42381330354`, confirms vote-extension and snapshot methods raise explicit unsupported-method errors. The same Python suite passed again on `41c4eeb4...` in run `42382470345`.
+
+## v0.2 feature boundary
+
+Validator membership is fixed at genesis for this release candidate. Dynamic validator-set updates, vote extensions, snapshots, and state sync are not implemented features. Unsupported vote-extension and snapshot methods fail closed. The four-validator partition test uses four processes/data directories on one CI runner; independent multi-host/multi-operator validation remains open.
