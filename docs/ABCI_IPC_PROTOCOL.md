@@ -9,6 +9,7 @@ Status: implemented between the Go CometBFT adapter and Python application.
 - Protocol identifier: hnd-ipc/1.
 - Maximum frame: 1 MiB.
 - Python socket mode: 0600.
+- Each request frame has a 5-second read deadline; incomplete or stalled client writes are closed and logged without a protocol response.
 - Duplicate JSON keys, unknown top-level fields, malformed frames, invalid request IDs, unsupported protocol versions, and unsupported methods are rejected.
 - Byte slices are JSON base64 strings between Go and Python.
 - Python handles requests sequentially on the SQLite-owning thread.
@@ -27,4 +28,6 @@ Go performs typed ABCI-to-IPC translation, request correlation, bounded framing,
 
 Fresh databases require explicit development-genesis initialization or a valid CometBFT InitChain request. Funded genesis uses a canonical JSON v2 envelope containing Base64 canonical-CBOR allocations. Genesis state, genesis hash, and CometBFT marker are persisted atomically. Repeated identical InitChain is idempotent; conflicting genesis identity is rejected. On restart, Python replays and verifies the stored chain before serving committed height/hash.
 
-Crash injection around SQLite commit, IPC disconnect/reconnect under load, and resource-exhaustion testing remain open.
+## Operational limits
+
+The read deadline bounds one incomplete client from holding the sequential dispatcher indefinitely. It is not a complete denial-of-service defense: connection-rate limits, per-peer quotas, concurrent-client stress, and CPU/memory exhaustion testing remain open. Crash injection around SQLite commit and independent multi-host validation also remain open.
