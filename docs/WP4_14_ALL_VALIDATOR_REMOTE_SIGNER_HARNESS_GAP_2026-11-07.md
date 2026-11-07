@@ -38,3 +38,11 @@ Even a passing all-four external-signer integration would establish only that th
 - Production signer approval: **NOT APPROVED**.
 
 No test result is claimed by this review. The implementation must be delivered as a coherent lifecycle refactor with CI evidence, not as a flag-only change.
+
+## CI regression evidence and correction
+
+A short-lived all-validator experiment was pushed as commit `77def8c85b2d9b95a548d26d8d557cdb2779f978`. Its CI run `42328113608` failed in the **ordinary private four-validator smoke test**, before the external-signer scenario, with a Python `NameError: name 'all_signers_mode' is not defined` at the stale experimental process-registration line. This was a harness regression, not evidence of a consensus or signer protocol failure.
+
+The follow-up commit `18a5b9de299b81ceb4483a027a42702672cc6052` removed the incomplete experimental workflow invocation and the stale registration line, and recorded this harness gap. CI run `42328227277` on that follow-up commit completed successfully: both `hnd-v02-tests` and `cometbft-single-node-smoke` passed. The passing run confirms the regression was removed and the existing suite is green; it does **not** add all-validator external-signer coverage.
+
+Acceptance remains unchanged: validator 4 only is exercised through the current external-signer integration. The next implementation must be a coherent per-validator lifecycle refactor, with explicit no-local-fallback assertions and restart/outage coverage, before adding the all-validator mode back to CI.
