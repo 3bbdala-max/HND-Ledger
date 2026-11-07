@@ -360,12 +360,13 @@ def test_mempool_enforces_item_and_byte_limits_and_releases_committed_capacity(t
 
     # Each transaction fits by itself, but the aggregate byte budget does not
     # allow all three. Duplicate submissions must not consume extra capacity.
-    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_BYTES", len(first) + len(second) - 1)
+    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_BYTES", len(first) + len(second))
     monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_ITEMS", 3)
     assert dispatcher("InsertTx", {"tx": _b64(first)}) == {"code": 0}
     assert dispatcher("InsertTx", {"tx": _b64(first)}) == {"code": 0}
     assert dispatcher("InsertTx", {"tx": _b64(second)}) == {"code": 0}
     assert dispatcher._mempool_bytes == len(first) + len(second)
+    assert dispatcher._mempool_bytes == dispatch_module.MAX_MEMPOOL_BYTES
     assert list(dispatcher._mempool) == [first, second]
     assert dispatcher("InsertTx", {"tx": _b64(third)}) == {"code": 2}
     assert dispatcher._mempool_bytes == len(first) + len(second)
