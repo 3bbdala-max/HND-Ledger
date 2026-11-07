@@ -504,3 +504,31 @@ This run includes:
 This is the strongest current integration evidence for the all-four remote
 signer lifecycle. It remains test-harness evidence, not production
 multi-host fencing or launch authorization.
+
+
+## Consolidated all-four Noise, signer lock, and crash-boundary confirmation
+
+Workflow run `42337642540` completed both CI jobs successfully. Its
+CometBFT smoke log contains the all-four authenticated Noise evidence marker:
+`HND_WP4_14_ALL_FOUR_REMOTE_SIGNERS_NO_LOCAL_KEYS_OK`, with
+`signer_count=4`, all Genesis identities matching, all four signer
+connections established, independent signer records, and no local consensus
+key/state files in any validator home.
+
+The same successful run also emitted:
+- `COMETBFT_V040_REMOTE_SIGNER_ANTI_DOUBLE_SIGN_RESTART_OK`;
+- `HND_REMOTE_SIGNER_CRASH_AFTER_STATE_SAVE_BEFORE_RESPONSE_OK`;
+- `COMETBFT_V040_NOISE_SIGNER_SAME_HOST_LOCK_CONTENTION_REJECTED`;
+- the Noise missing-state recovery rejection marker;
+- four-validator 3/1 and 2/2 partition safety and reconnection markers.
+
+The all-four Noise signer outage/restart recovery step completed with all four
+states converged and a three-validator quorum commit while one signer was
+restarted. The 221-test HND suite also passed.
+
+This closes the **all-four authenticated Noise integration milestone** in
+CI, in addition to the earlier all-four Unix result. Same-host file-lock
+contention and the injected crash-after-state-save boundary are covered by
+these process-level probes. Neither test establishes distributed multi-host
+fencing, a durable consensus-backed ownership lease, hardware-backed key
+custody, or production disaster recovery; those remain open.
