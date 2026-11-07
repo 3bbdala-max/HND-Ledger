@@ -48,14 +48,18 @@ jobs:
           import json
           import pathlib
           import re
+          import subprocess
           import sys
 
           root = pathlib.Path(sys.argv[1])
           ids = []
           for i in range(3):
               node = root / f"node{i}"
-              key = json.loads((node / "config" / "node_key.json").read_text())
-              ids.append(key["id"])
+              result = subprocess.run(
+                  ["cometbft", "show-node-id", "--home", str(node)],
+                  check=True, capture_output=True, text=True,
+              )
+              ids.append(result.stdout.strip())
 
           def set_key(text, section, key, value, *, quoted=True):
               pattern = rf"(?ms)(\[{re.escape(section)}\]\n)(.*?)(?=^\[|\Z)"
