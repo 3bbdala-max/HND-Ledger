@@ -24,7 +24,7 @@ Wallet/private-key holder to transaction decoder; untrusted mempool to proposer;
 | Crash during block/genesis write | SQLite transaction rollback; trigger failures and child-process termination at block insert and genesis-marker boundaries; restart tests for idempotent/conflicting genesis | Other crash points and power-loss durability remain untested |
 | Malicious proposer | ProcessProposal and FinalizeBlock validate ordered transactions | No adversarial proposer/round campaign |
 | Validator equivocation | CometBFT voting/signing protocol | No HND-specific slashing/evidence policy or double-sign campaign |
-| Network partition | CometBFT quorum consensus | Partition/healing tests not executed |
+| Network partition | Four-validator live isolation and healing: validator 0 stayed running but lost peers; validators 1–3 retained quorum, advanced, and validator 0 caught up after healing | Proven only with four processes/data directories on one CI runner; independent hosts/operators and hostile network conditions remain untested |
 | Sybil identities | Explicit test validator identities from genesis | Production validator admission/voting-power governance undefined |
 | Key theft | No production key custody claimed | Secure storage, backup, rotation, revocation absent |
 | Denial of service | 1 MiB IPC frame, bounded mempool, block limits, loopback ABCI listener | No rate limits, per-peer quotas, or sustained exhaustion tests |
@@ -33,7 +33,7 @@ Wallet/private-key holder to transaction decoder; untrusted mempool to proposer;
 
 ## Consensus assumptions
 
-CometBFT v0.40.0 is integrated in local CI. Three validators run as separate processes with separate node homes, identities, Python apps, SQLite databases, and IPC sockets, but are co-located on one CI runner. Tests demonstrate ordinary proposal/commit, application-hash agreement, query responses, overspend filtering, and restart recovery. They do not test Byzantine validators, conflicting quorums, partitions, independent operators, or multi-host operation.
+CometBFT v0.40.0 is integrated in local CI. Three validators run as separate processes with separate node homes, identities, Python apps, SQLite databases, and IPC sockets, but are co-located on one CI runner. Tests demonstrate ordinary proposal/commit, application-hash agreement, query responses, overspend filtering, and restart recovery. A live partition/healing scenario is covered by four separate processes/data directories on one CI runner. They do not test Byzantine validators, conflicting quorums, independent operators, or multi-host operation.
 
 ## Mandatory release gates
 
