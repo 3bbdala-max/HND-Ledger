@@ -128,7 +128,8 @@ jobs:
               # Go-installed binary before changing user and pass its absolute path.
               local cometbft_bin
               cometbft_bin="$(command -v cometbft)"
-              sudo -u hnd-validator0 "$cometbft_bin" start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
+              sudo install -m 0755 "$cometbft_bin" /usr/local/bin/hnd-cometbft
+              sudo -u hnd-validator0 /usr/local/bin/hnd-cometbft start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
             else
               cometbft start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
             fi
