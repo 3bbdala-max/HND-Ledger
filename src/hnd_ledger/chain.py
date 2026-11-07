@@ -110,6 +110,39 @@ class LocalChain:
         self.blocks: list[Block] = []
         self._restore()
 
+    def initialize_genesis(self, initial_state: LedgerState) -> None:
+        """Install an explicitly supplied genesis allocation before block 1.
+
+        This is only permitted on a pristine zero-allocation chain. Reopening
+        an initialized chain must use the persisted genesis and never replace it.
+        """
+        if not isinstance(initial_state, LedgerState):
+            raise ChainError("genesis state must be a LedgerState")
+        if self.height != 0 or self.state.total_supply != 0 or self.state.balances or self.state.next_nonces:
+            raise ChainError("genesis allocations can only initialize a pristine empty chain")
+        if initial_state.chain_id != self.state.chain_id:
+            raise ChainError("genesis state uses a different chain id")
+        candidate = LedgerState(
+            balances=dict(initial_state.balances),
+            next_nonces=dict(initial_state.next_nonces),
+            chain_id=initial_state.chain_id,
+            supply_cap=initial_state.supply_cap,
+        )
+        snapshot = canonical_cbor([
+            2, candidate.chain_id, candidate.supply_cap,
+            [[a, candidate.balances.get(a, 0), candidate.next_nonces.get(a, 0)]
+             for a in sorted(set(candidate.balances) | set(candidate.next_nonces))]
+        ])
+        genesis_hash = _genesis_hash(candidate.chain_id, candidate)
+        with self.db:
+            self.db.execute(
+                "UPDATE metadata SET value=? WHERE key='genesis_state'", (snapshot,)
+            )
+            self.db.execute(
+                "UPDATE metadata SET value=? WHERE key='genesis_hash'", (genesis_hash,)
+            )
+        self.state = candidate
+
     @property
     def tip_hash(self) -> bytes:
         if self.blocks:
