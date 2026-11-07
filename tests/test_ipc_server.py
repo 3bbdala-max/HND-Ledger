@@ -17,7 +17,7 @@ def frame(payload=None, **overrides):
         "payload": {} if payload is None else payload,
     }
     value.update(overrides)
-    return json.dumps(value, separators=(",", ":")).encode() + b"\\n"
+    return json.dumps(value, separators=(",", ":")).encode() + b"\n"
 
 
 def test_decode_valid_request():
@@ -33,7 +33,7 @@ def test_decode_valid_request():
     frame(id=""),
     frame(method="info"),
     frame(payload=[]),
-    b'{"protocol":"hnd-ipc/1","id":"x","id":"y","method":"Info","payload":{}}\\n',
+    b'{"protocol":"hnd-ipc/1","id":"x","id":"y","method":"Info","payload":{}}\n',
 ])
 def test_rejects_malformed_or_ambiguous_frames(raw):
     with pytest.raises(IPCError):
