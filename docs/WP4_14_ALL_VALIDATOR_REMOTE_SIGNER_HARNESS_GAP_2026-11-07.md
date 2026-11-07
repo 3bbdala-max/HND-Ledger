@@ -328,3 +328,10 @@ A dedicated CI step now invokes this mode. This is a newly added test path,
 not yet verified; it must pass before all-four external signing is marked
 implemented. Authenticated Noise is currently tested with the validator-4
 remote-only path, not yet in an all-four arrangement.
+
+
+The all-four mode now emits a machine-readable
+`HND_WP4_14_ALL_FOUR_REMOTE_SIGNERS_NO_LOCAL_KEYS_OK` evidence marker only
+after all four signer connections, Genesis public-key matches, local-key
+absence checks, and distinct signer key/state paths have been verified.
+This marker is an assertion result, not a production-readiness claim.
