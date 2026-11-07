@@ -1,0 +1,10 @@
+{
+  "name": "hnd-vsp-jcs-crosscheck",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Disposable cross-language RFC 8785 compatibility test only",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "canonicalize": "2.1.0"
+  }
+}
