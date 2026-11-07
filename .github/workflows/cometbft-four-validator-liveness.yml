@@ -55,20 +55,20 @@ jobs:
                   check=True, capture_output=True, text=True,
               ).stdout.strip())
           def set_key(text, section, key, value, quoted=True):
-              pattern = rf"(?ms)(\\[{re.escape(section)}\\]\\n)(.*?)(?=^\\[|\\Z)"
+              pattern = rf"(?ms)(\[{re.escape(section)}\]\n)(.*?)(?=^\[|\Z)"
               match = re.search(pattern, text)
               if not match:
                   raise SystemExit(f"missing TOML section [{section}]")
               body = match.group(2)
-              line = re.compile(rf"(?m)^{re.escape(key)}\\s*=.*$")
+              line = re.compile(rf"(?m)^{re.escape(key)}\s*=.*$")
               replacement = f'{key} = "{value}"' if quoted else f"{key} = {value}"
-              body = line.sub(replacement, body, count=1) if line.search(body) else body + replacement + "\\n"
+              body = line.sub(replacement, body, count=1) if line.search(body) else body + replacement + "\n"
               return text[:match.start(2)] + body + text[match.end(2):]
           for i in range(4):
               node = root / f"node{i}"
               cfg = node / "config" / "config.toml"
               text = cfg.read_text()
-              text = re.sub(r'(?m)^proxy_app\\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{28658+i}"', text, count=1)
+              text = re.sub(r'(?m)^proxy_app\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{28658+i}"', text, count=1)
               text = set_key(text, "rpc", "laddr", f"tcp://127.0.0.1:{26657+i}")
               text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{27656+i}")
               text = set_key(text, "p2p", "allow_duplicate_ip", "true", quoted=False)
@@ -102,8 +102,9 @@ jobs:
           start_node() {
             local i="$1"
             local socket="$DATA/python-$i.sock"
-            hnd-abci-python --chain-db "$DATA/ledger-$i.sqlite" --socket "$socket" \
-              --init-empty-dev-genesis >"$DATA/python-$i.log" 2>&1 &
+            init_args=()
+            if [[ ! -e "$DATA/ledger-$i.sqlite" ]]; then init_args+=(--init-empty-dev-genesis); fi
+            hnd-abci-python --chain-db "$DATA/ledger-$i.sqlite" --socket "$socket" ${init_args[@]} >"$DATA/python-$i.log" 2>&1 &
             PY_PIDS[$i]=$!
             for _ in $(seq 1 30); do
               [[ -S "$socket" ]] && break
