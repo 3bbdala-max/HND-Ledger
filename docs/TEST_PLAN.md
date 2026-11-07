@@ -53,7 +53,7 @@ All five CI paths completed successfully on commit `54229259b05ed322f94deaaf87ab
 - Three-validator integration run `42378294043`: PASS.
 - Four-validator liveness and live partition/recovery run `42378294063`: PASS.
 
-The Go suite includes `TestFilePVRecoversSignatureAndRejectsConflictingVoteAfterReload`: after a persisted Prevote is reloaded, the same H/R/S vote reuses the original signature and a conflicting block vote is rejected. This is a targeted FilePV reload unit test only. It does **not** complete INT/C-10's separate process-crash CometBFT integration requirement.
+The Go suite on `54229259...` includes a FilePV reload unit test proving same-vote signature reuse and conflicting-vote rejection. A stronger follow-up test was added on `95f6ffb996e77661c809f536981461558d56640a`: a child signing process exits immediately after signing/persisting, then a parent process reloads the FilePV and checks same-vote reuse plus conflict rejection. CI evidence for this follow-up is pending. Neither unit test completes the separate full CometBFT node crash/restart integration requirement.
 
 All four workflows completed successfully on code commit `a76cee10eabafc7d27f36dbd66910f0f7feea790`:
 - Python tests run `42368248628`: PASS (77 tests).
