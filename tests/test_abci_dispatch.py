@@ -104,6 +104,33 @@ def test_proposal_finalize_and_commit_flow(tmp_path):
     chain.close()
 
 
+
+def test_weak_mempool_admission_filters_overspend_before_proposal(tmp_path):
+    dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path)
+    bob_id = _key_account(bob)
+    overspend = encode_transaction(create_transaction(alice, bob_id, 101, 0))
+    valid = encode_transaction(create_transaction(alice, bob_id, 60, 0))
+
+    assert dispatcher("CheckTx", {"tx": _b64(overspend)})["code"] == 0
+    assert dispatcher("InsertTx", {"tx": _b64(overspend)})["code"] == 0
+    assert dispatcher("InsertTx", {"tx": _b64(valid)})["code"] == 0
+
+    reaped = dispatcher("ReapTxs", {"max_bytes": 65_536})["txs"]
+    assert reaped == [_b64(overspend), _b64(valid)]
+    prepared = dispatcher("PrepareProposal", {
+        "txs": reaped, "max_tx_bytes": 65_536,
+    })["txs"]
+    assert prepared == [_b64(valid)]
+    assert dispatcher("ProcessProposal", {"txs": prepared}) == {"status": 1}
+    assert chain.state.balances[alice_id] == 100
+
+    dispatcher("FinalizeBlock", {"height": 1, "txs": prepared})
+    dispatcher("Commit", {})
+    assert chain.state.balances[alice_id] == 40
+    assert chain.state.balances[bob_id] == 60
+    chain.close()
+
+
 def test_invalid_proposal_is_rejected_and_unsupported_methods_fail_closed(tmp_path):
     dispatcher, chain, alice, bob, _ = _dispatcher(tmp_path)
     invalid = encode_transaction(create_transaction(alice, _key_account(bob), 101, 0))
