@@ -26,7 +26,16 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 
 The dispatcher now distinguishes new CheckTx submissions from CometBFT RECHECK. New submissions retain weak admission semantics; RECHECK validates against the latest committed state so stale balance/nonce transactions are rejected and cannot remain indefinitely in CometBFT's mempool. This path is covered by a regression test proving rejection after a balance-changing commit, acceptance of a still-valid transaction, and no state mutation during recheck.\n\nThe test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. The mempool tests additionally verify item/byte caps, duplicate submissions not inflating byte accounting, and capacity reuse after committed transactions are evicted. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
 
-## Latest exact-commit CI evidence\n\nCommit `05f4449c052a0e869dd1c6f18f5da67d88c24532` passed all three workflows: Python run `42365759445` (77 tests), one-node CometBFT restart run `42365759497`, and three-validator integration run `42365759520`. These results are tied to the exact commit above.\n\n## Remaining work
+## Latest exact-commit CI evidence
+
+Code commit `c91bb1478a50da0bd3c7c59c6b46c4bdb1bc897f` passed all three workflows:
+- Python suite run `42365922063`: success, 77 tests.
+- One-node CometBFT restart run `42365922052`: success.
+- Three-validator integration run `42365922077`: success, including signed transfer, RPC Query, overspend filtering, application-hash agreement, and validator-0 restart recovery.
+
+The RECHECK regression specifically verifies that transactions made stale by a committed balance/nonce change are rejected on recheck, valid transactions remain admissible, unsupported CheckTx types are rejected, and committed state is not mutated.
+
+## Remaining work
 
 - Process-level crash injection at other FinalizeBlock/Commit and database boundaries; power-loss durability testing.
 - Adversarial proposals, equivocation, partitions, delayed/reordered messages, and Byzantine voting-power tests.
