@@ -46,3 +46,35 @@ A short-lived all-validator experiment was pushed as commit `77def8c85b2d9b95a54
 The follow-up commit `18a5b9de299b81ceb4483a027a42702672cc6052` removed the incomplete experimental workflow invocation and the stale registration line, and recorded this harness gap. CI run `42328227277` on that follow-up commit completed successfully: both `hnd-v02-tests` and `cometbft-single-node-smoke` passed. The passing run confirms the regression was removed and the existing suite is green; it does **not** add all-validator external-signer coverage.
 
 Acceptance remains unchanged: validator 4 only is exercised through the current external-signer integration. The next implementation must be a coherent per-validator lifecycle refactor, with explicit no-local-fallback assertions and restart/outage coverage, before adding the all-validator mode back to CI.
+
+
+## Concrete refactor blueprint from source-level follow-up (2026-11-07)
+
+A second pass over the current harness confirms the refactor boundary is larger than the initial signer-start loop. The existing script has validator-4 assumptions in its identity reader, signer process variables, endpoint setup, outage/recovery path, and post-restart identity checks. The following is the implementation contract for the next source change; it is not a claim that the refactor has been implemented.
+
+### Per-validator record
+
+Replace the singleton values (`signer`, `signer_log`, `signer_socket`, `signer_key_path`, `signer_state_path`, `identity_path`, `noise_addr`) with one record per validator, keyed by validator index. Each record must carry: node home, expected consensus public key/address captured before key isolation, node P2P identity, transport mode, unique endpoint, signer transport identity (Noise only), signer-owned key/state paths, signer process, log handle/path, and current expected state digest. Keep signer processes and logs in arrays/maps whose cardinality is asserted to equal N.
+
+### Required setup ordering and invariants
+
+1. Generate all four node homes and validator-set entries first; preserve only the public consensus identity in the harness's expected-identity record.
+2. For every validator, verify the initial FilePV key and state files exist, move both into a unique signer-owned directory, and set restrictive permissions. Do not copy the private key back into a node home for later identity assertions.
+3. Configure `priv_validator_laddr` for every node, using a unique Unix socket or unique Noise listener address. Generate a distinct Noise transport identity per signer and pin that signer's expected node peer identity.
+4. Before starting any node, assert that every node home lacks `config/priv_validator_key.json`, that each signer-owned key/state path is a regular file, that all key/state paths are distinct, and that each node's configured endpoint matches exactly one signer record.
+5. Start all node-side listeners, then start all signer processes (or use a deterministic per-node handshake sequence); require a fresh successful connection marker from each signer before treating the network as initialized. A process being alive or a socket path existing is not proof of an authenticated connection.
+6. Verify each node's remote public key equals its previously captured validator public key. For Noise, additionally prove each signer accepts only its pinned node peer and that cross-wiring signer i to node j is rejected.
+
+### Lifecycle and recovery
+
+- Replace the single validator-4 outage case with a parameterized one-validator-at-a-time outage test. The other three remote signers must remain connected and the three-node quorum must commit; the isolated validator must not advance. Restart that signer only after pinning its own state digest, then require a fresh connection marker and four-way convergence.
+- Parameterize node restart/recovery over each validator. Stop that validator's signer and node-side process in a controlled order, preserve its node P2P key and HND application state, and restart using the same signer-owned consensus key/state. The signer recovery command must reject missing or substituted state and accept only the digest captured after a clean signer stop.
+- Track every original and replacement signer process for cleanup. Cleanup must stop all signers even when an earlier validator's recovery assertion fails.
+- Change identity assertions to compare the node's remote `GetPubKey` result against the captured public identity. The existing `validator_identity()` helper reads `config/priv_validator_key.json`; retaining that helper as-is would either fail after proper key isolation or tempt the test to restore a dangerous local private-key copy.
+- Keep the existing consensus, transaction, partition, ABCI recovery, and application-hash checks, but require all four validators to satisfy the external-signer invariants throughout the run.
+
+### Explicit non-goals
+
+This harness refactor does not solve cross-process or cross-host signer ownership, durable fencing, stale-leader rejection, signature-release linearization, signer authorization TOCTOU, or production key custody. It must not be described as proving those properties. The existing CI invocation also needs separate private-only and all-remote-signer modes so the ordinary private smoke path remains a regression guard and the all-signer mode is independently visible in logs.
+
+**Disposition after this review:** implementation remains OPEN. No source change was made because the lifecycle and identity refactor must be delivered atomically with its assertions and full CI execution; a partial loop conversion would create misleading coverage.
