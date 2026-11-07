@@ -60,6 +60,8 @@ class FinalizedCandidate:
 
     transactions: tuple[Transaction, ...]
     app_hash: bytes
+    base_height: int
+    base_app_hash: bytes
 
 
 class LedgerApplication:
@@ -132,7 +134,12 @@ class LedgerApplication:
         txs = _decode_batch(raw_transactions, self.chain.state.chain_id)
         candidate = _execute(self.chain.state, txs)
         app_hash = state_commitment(candidate)
-        self._finalized = FinalizedCandidate(txs, app_hash)
+        self._finalized = FinalizedCandidate(
+            transactions=txs,
+            app_hash=app_hash,
+            base_height=self.height,
+            base_app_hash=self.app_hash,
+        )
         return app_hash
 
     def commit(self) -> Block:
@@ -140,6 +147,8 @@ class LedgerApplication:
         if self._finalized is None:
             raise ChainError("no finalized block is awaiting commit")
         pending = self._finalized
+        if self.height != pending.base_height or self.app_hash != pending.base_app_hash:
+            raise ChainError("committed state changed after finalization; candidate must be discarded")
         block = self.chain.append(pending.transactions)
         actual_app_hash = state_commitment(self.chain.state)
         if actual_app_hash != pending.app_hash:
