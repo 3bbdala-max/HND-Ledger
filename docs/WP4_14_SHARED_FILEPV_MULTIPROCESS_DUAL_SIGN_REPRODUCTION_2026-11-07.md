@@ -48,3 +48,24 @@ No production signer, key, validator, network deployment, token issuance, protoc
 The existing four-validator external-signer smoke script configures the external signer only for validator 4 (`i == 3`). Validators 1–3 retain their local FilePV key/state paths in this test fixture. The authenticated Noise variant has the same validator-4-only topology. Therefore these integration tests do **not** prove mandatory external signing for every validator, nor do they establish that a production launch can prevent local FilePV bypasses.
 
 Before production approval, the topology must be redesigned and tested so every validator's consensus signing path is routed through the approved signer boundary, with startup rejection if a local key or bypass path is present. This must be verified for all four validators in the test profile and separately reviewed for production deployment.
+
+
+## Addendum — same-host advisory lock mitigation added (2026-11-07)
+
+The disposable HND Unix and Noise signer helpers have since been changed to
+acquire a non-blocking OS advisory lock derived from the anti-double-sign
+state path before loading FilePV state or starting a signer server. The
+shared-state probe is being converted from reproducing two valid conflicting
+signatures to verifying this behavior:
+
+- owner process A acquires the lock and signs;
+- process B using the same state path is rejected while A remains active;
+- after A exits, B can acquire the lock only with the updated persisted-state
+  digest and must reject a conflicting H/R/type request.
+
+This is a same-host, same-local-filesystem mitigation for cooperating HND
+helper processes only. It does not change the historical upstream finding:
+CometBFT FilePV and its per-process mutex do not provide cross-process
+ownership. It is not a distributed lease, durable host fencing, or protection
+against processes that bypass the helper. The corresponding Unix and Noise
+lock CI probes are pending; no safety result is claimed until they pass.
