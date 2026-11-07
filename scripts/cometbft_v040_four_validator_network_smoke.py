@@ -282,7 +282,8 @@ def main():
                 genesis_validators=json.loads((homes[0]/"config"/"genesis.json").read_text())["validators"]
                 for i in range(N):
                     log_path=root/f"signer{i+1}.log"
-                    wait(lambda lp=log_path: "HND_REMOTE_SIGNER_CONNECTED" in lp.read_text(errors="replace"),f"validator {i+1} external signer connection",30)
+                    connection_marker="HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED"
+                    wait(lambda lp=log_path, marker=connection_marker: marker in lp.read_text(errors="replace"),f"validator {i+1} external signer connection",30)
                     local_key=homes[i]/"config"/"priv_validator_key.json"
                     local_state=homes[i]/"data"/"priv_validator_state.json"
                     if local_key.exists() or local_state.exists():
@@ -295,12 +296,14 @@ def main():
                 state_paths=[str(signer_records[i]["state"].resolve()) for i in range(N)]
                 if len(set(key_paths)) != N or len(set(state_paths)) != N:
                     raise AssertionError("all-four signer key/state records are not independently stored")
-                print(json.dumps({"result":"HND_WP4_14_ALL_FOUR_REMOTE_SIGNERS_NO_LOCAL_KEYS_OK","signer_count":N,"transport":"unix","all_signers_connected":True,"all_genesis_identities_match":True,"all_local_consensus_key_state_files_absent":True,"independent_signer_records":True},sort_keys=True),flush=True)
+                print(json.dumps({"result":"HND_WP4_14_ALL_FOUR_REMOTE_SIGNERS_NO_LOCAL_KEYS_OK","signer_count":N,"transport":"noise" if noise_mode else "unix","all_signers_connected":True,"all_genesis_identities_match":True,"all_local_consensus_key_state_files_absent":True,"independent_signer_records":True},sort_keys=True),flush=True)
             if noise_mode:
                 wait(lambda: "HND_NOISE_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text(errors="replace"),"authenticated Noise signer connection marker",30)
-                rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",noise_addr,str(homes[3]/"config/node_key.json")])
-                if "HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED" not in rejection:
-                    raise AssertionError("integrated Noise listener did not reject unauthorized signer identity")
+                noise_indices=range(N) if all_signers_mode else [3]
+                for i in noise_indices:
+                    rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",signer_records[i]["noise_addr"],str(homes[i]/"config/node_key.json")])
+                    if "HND_NOISE_REMOTE_SIGNER_UNAUTHORIZED_REJECTED" not in rejection:
+                        raise AssertionError(f"integrated Noise listener {i+1} did not reject unauthorized signer identity")
             h0=int(s0[0]["sync_info"]["latest_block_height"])
             if any(x["node_info"]["network"]!=CHAIN for x in s0): raise AssertionError("chain ID mismatch")
             if any(account(u,aid)["balance"]!=ALICE for u in urls): raise AssertionError("Genesis balances differ")
