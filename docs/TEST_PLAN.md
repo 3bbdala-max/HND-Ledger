@@ -91,3 +91,16 @@ The Python dispatcher regression test on commit `0ab7294c52f12366aea99a55564b063
 ## v0.2 feature boundary
 
 Validator membership is fixed at genesis for this release candidate. Dynamic validator-set updates, vote extensions, snapshots, and state sync are not implemented features. Unsupported vote-extension and snapshot methods fail closed. The four-validator partition test uses four processes/data directories on one CI runner; independent multi-host/multi-operator validation remains open.
+
+
+## IPC stalled-client regression and exact-commit verification
+
+On code/test commit `a7665df2edcd18ea15417640593eefd7d994ed0d`, Python workflow run `42382630569` passed, including `test_incomplete_client_cannot_block_following_ipc_request`. The test holds one Unix-socket client after a partial JSON frame and verifies that a subsequent valid Info request is served after the configured read deadline. The implementation sets a 5-second request read timeout and closes/logs incomplete clients.
+
+The four integration workflows on the same exact commit all completed successfully:
+- Python suite and IPC timeout regression: run `42382630569`, PASS.
+- One-node CometBFT restart: run `42382630603`, PASS.
+- Three-validator integration: run `42382630560`, PASS.
+- Four-validator liveness and recovery: run `42382630546`, PASS.
+
+This establishes the tested single-client timeout behavior and integration regression coverage. It does not establish connection-rate protection, per-peer quotas, multi-client flood resistance, or CPU/memory exhaustion resistance.
