@@ -149,6 +149,8 @@ jobs:
         run: python scripts/cometbft_v040_four_validator_network_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src"
       - name: Run four-validator external remote-signer integration and outage recovery
         run: python scripts/cometbft_v040_four_validator_network_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src" --remote-signer-binary "$RUNNER_TEMP/hnd-remote-signer" --remote-only-binary "$RUNNER_TEMP/hnd-cometbft-remote-only"
+      - name: Run four independent external signers with no local consensus keys
+        run: python scripts/cometbft_v040_four_validator_network_smoke.py --binary "$RUNNER_TEMP/cometbft" --cometbft-source "$RUNNER_TEMP/cometbft-src" --remote-signer-binary "$RUNNER_TEMP/hnd-remote-signer" --remote-only-binary "$RUNNER_TEMP/hnd-cometbft-remote-only" --all-remote-signers
       - name: Build pinned Noise remote signer helper
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
