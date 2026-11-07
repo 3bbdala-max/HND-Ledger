@@ -293,3 +293,13 @@ validator 4 under both supported test transports. Validators 1–3 remain local
 FilePV in these network runs; all-four external signer mode has not yet been
 implemented or tested. The reduced CLI command-surface hardening committed
 after this run also awaits its own fresh CI result.
+
+
+## Repeated CI confirmation after readiness-bound no-local-key assertions
+
+The later workflow runs `42334524327` and `42334548900` also completed
+successfully on commits `22e90205832d93fb26dc4208be909ecf9f5ecc01` and
+`da491eacb18c2602cf49932a90e1ed565786faf6`. Both include the Unix and
+authenticated Noise remote-only validator-4 integration steps. These runs
+therefore re-exercise the explicit post-signer-connection/RPC-startup and
+post-restart no-local-key/state assertions after those assertions were added.
