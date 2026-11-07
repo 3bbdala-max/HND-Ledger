@@ -129,3 +129,24 @@ processes on the same host and local filesystem. It is not a distributed
 lease, a durable fencing token, or a protection against other software that
 does not honor the lock. The RS-CON and RS-CRASH matrix, multi-host failover,
 and signer-side authorization linearization remain OPEN.
+
+
+### First execution result for the same-host lock probe
+
+Workflow run `42336393585` on commit
+`a913f03fee7bc26a5095263fcc88ed8e5e631973` passed the step
+`Enforce same-host single-writer lock for shared FilePV signer processes`.
+The probe verified that a second process cannot acquire the same state-path
+lock while the first owner is active, and that a later owner can acquire the
+lock after release only with the updated state digest and cannot sign a
+conflicting H/R/type vote.
+
+The overall workflow subsequently failed in the separate
+`Run remote signer anti-double-sign persistence across restart` probe because
+the node-side client reused a stale listener endpoint after signer restart
+(the failure was a broken-pipe/GetPubKey error, not a lock bypass). The probe
+has been changed to close and recreate the node-side listener/client before
+restarting the signer, and to use the controlled SIGTERM shutdown helper.
+Those corrections await fresh CI. The Unix same-host lock step itself is
+recorded as **PASS**; overall CI for the commit is **FAIL** due to the separate
+restart probe.
