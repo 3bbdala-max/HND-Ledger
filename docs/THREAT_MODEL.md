@@ -19,9 +19,9 @@ Wallet/private-key holder to transaction decoder; untrusted mempool to proposer;
 | Transaction replay | Sequential account nonce and replay tests | No public wallet/indexer UX |
 | Overspend | Atomic balance validation; PrepareProposal filters signed overspend; three-validator integration confirms no commit | Adversarial proposal/round campaign remains |
 | Supply inflation | Genesis cap and invariant; cap included in state commitment v3 | No issuance governance or public allocation policy |
-| Non-canonical encoding | Canonical CBOR re-encoding check | Fuzzing/sustained malformed-input campaign remains |
+| Non-canonical encoding | Canonical CBOR re-encoding and canonical base64 validation for funded-genesis payloads | Fuzzing/sustained malformed-input campaign and canonicalization of every transport wrapper remain |
 | Block/database tampering | Parent linkage, replay, state-root and block-hash verification | No external trusted checkpoint or rollback detection |
-| Crash during block write | SQLite transaction rollback; trigger failure and child-process termination test | Other crash points and power-loss durability remain untested |
+| Crash during block/genesis write | SQLite transaction rollback; trigger failures and child-process termination at block insert and genesis-marker boundaries; restart tests for idempotent/conflicting genesis | Other crash points and power-loss durability remain untested |
 | Malicious proposer | ProcessProposal and FinalizeBlock validate ordered transactions | No adversarial proposer/round campaign |
 | Validator equivocation | CometBFT voting/signing protocol | No HND-specific slashing/evidence policy or double-sign campaign |
 | Network partition | CometBFT quorum consensus | Partition/healing tests not executed |
