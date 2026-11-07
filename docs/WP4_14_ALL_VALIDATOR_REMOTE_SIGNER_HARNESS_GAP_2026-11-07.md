@@ -303,3 +303,10 @@ successfully on commits `22e90205832d93fb26dc4208be909ecf9f5ecc01` and
 authenticated Noise remote-only validator-4 integration steps. These runs
 therefore re-exercise the explicit post-signer-connection/RPC-startup and
 post-restart no-local-key/state assertions after those assertions were added.
+
+
+The remote-only CLI negative CI check has been extended to assert that the
+binary does not expose `init` or `gen-validator` commands and that these
+attempts cannot create validator key/state files. This verifies the narrowed
+command surface behavior rather than relying on source inspection alone.
+Fresh CI is pending.
