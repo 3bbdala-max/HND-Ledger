@@ -9,9 +9,12 @@ IPC server over a Unix-domain socket. The Go adapter uses the matching
 Implemented application methods:
 
 - `Info` reports the committed height and application hash.
-- `InitChain` accepts only the fixed `HND-LOCAL-V2` chain ID, an empty
-  height-zero ledger, and empty `app_state_bytes`. It records a persistent
-  genesis marker and rejects a conflicting marker.
+- `InitChain` accepts only the fixed `HND-LOCAL-V2` chain ID and a
+  pristine height-zero ledger. Its optional allocation payload is a canonical
+  JSON envelope (version 2) containing a Base64 canonical-CBOR payload with
+  the supply cap and strictly sorted, unique account allocations. It records
+  a persistent genesis marker and rejects a conflicting marker. Empty app
+  state remains a zero-allocation development genesis.
 - `CheckTx` performs signature/encoding admission only.
 - `InsertTx` and `ReapTxs` maintain a bounded, in-memory, disposable
   mempool queue. The queue is not consensus state.
@@ -32,22 +35,41 @@ listener.
 
 ## Verified CometBFT integration
 
-GitHub Actions run `42353445733` completed successfully on commit
-`137fcb2b1c1e8abb590cff5aafeb6944cbda4ba4`. The pinned CometBFT v0.40.0
-node, Go ABCI socket adapter, and Python engine ran together and the node
-produced blocks through height 2.
+The pinned CometBFT v0.40.0 node, Go ABCI socket adapter, and Python engine
+have passed both one-validator and three-validator GitHub Actions integration
+runs.
 
-The stronger restart/recovery run `42356867365` completed successfully on
-commit `2bd78fa355680b6da5e857d1c91cbecf32c4f54f`. It produced blocks to
-height 2, stopped the CometBFT node and both application processes, retained
-the CometBFT home and SQLite database, restarted the Python engine without
-the development-genesis flag, restarted the adapter and node, and observed
-the node advance from height 2 to height 3. The corresponding Python test
-workflow `42356867366` also passed on the same commit.
+- One-validator smoke and restart recovery: run `42358936782`, commit
+  `02a3b7f21f1b3b0d80e4b73a8952e55dfef27617`, success.
+- Three-validator funded-genesis and signed-transfer integration: run
+  `42358936778`, same commit, success.
+- Python test workflow on that commit: run `42358936848`, success.
+- Expanded replay/double-spend unit tests: run `42359102914`, commit
+  `1ebb13029516dfd053641a91c1c217cfc1b01aa7`, success (63 tests).
 
-These results demonstrate a working one-validator development integration
-and process-restart continuity in CI. They do not demonstrate multi-validator
-consensus, production readiness, or independent security certification.
+The three-validator run initialized a deterministic test-only funded genesis,
+started three independent Python SQLite applications and Go ABCI adapters,
+and waited for all CometBFT validators to reach height 3. It then submitted
+a real Ed25519-signed transfer through CometBFT RPC at block height 4.
+Each validator's local ledger contained exactly one copy of the transfer;
+the sender balance was 750,000, recipient balance 250,000, and sender nonce
+1. All three post-transfer local state commitments matched:
+
+`6d0ec53f821cb3f96333785415f991b8640e3fd64622de8317e495652eb02ba3`.
+
+The run also stopped and restarted validator 0 with its CometBFT home and
+SQLite database retained. The restarted node recovered and all three nodes
+continued to report matching CometBFT header app hashes at the height checked
+by that workflow. A subsequent workflow change now strengthens this check
+to compare the post-transfer header app hash and revalidate the restarted
+validator's balances and nonce; that strengthened workflow must pass before
+those additional properties are considered verified.
+
+These results demonstrate a working controlled CI integration and signed
+transaction agreement in the tested three-validator configuration. They do
+not demonstrate Byzantine fault tolerance under adversarial validators,
+production readiness, economic security, or independent security
+certification.
 
 ## Explicit development-genesis requirement
 
@@ -69,15 +91,17 @@ that Unix socket.
 
 ## Remaining work before broader validation
 
-- Add end-to-end signed transfer traffic to the three-validator network,
-  then verify identical committed balances and nonces on every validator.
+- Complete the strengthened post-transfer CometBFT header app-hash
+  comparison and verify the restarted validator's persisted transfer,
+  balances, and nonce on the same committed height.
 - Add crash-injection coverage around the FinalizeBlock/Commit boundary and
   verify deterministic recovery after process termination at each boundary.
 - Audit every ABCI method invoked by the exact CometBFT configuration,
   especially Query, snapshots, and vote extensions; unsupported methods must
   continue to fail closed.
-- Review mempool eviction, duplicate admission, transaction expiry/replay,
-  and resource-exhaustion behavior under adversarial load.
+- Extend replay and same-nonce double-spend unit coverage into the
+  three-validator integration, and test overspending, mempool pressure,
+  eviction, and resource-exhaustion behavior under adversarial load.
 - Perform an independent protocol, cryptographic, and implementation security
   review before considering any public-network deployment.
 
