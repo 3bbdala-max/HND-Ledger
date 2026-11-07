@@ -61,6 +61,22 @@ func NewClient(socketPath string) (*Client, error) {
 	return &Client{socketPath: socketPath, timeout: 30 * time.Second}, nil
 }
 
+func writeFull(w io.Writer, data []byte) error {
+	for len(data) > 0 {
+		n, err := w.Write(data)
+		if n > 0 {
+			data = data[n:]
+		}
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+	}
+	return nil
+}
+
 // Call opens one bounded request/response exchange. A fresh connection per
 // call avoids cross-request framing ambiguity and makes reconnect behavior
 // explicit. The Python peer remains the sole owner of ledger semantics.
@@ -99,7 +115,7 @@ func (c *Client) Call(ctx context.Context, method string, payload, result any) e
 	if err := conn.SetDeadline(deadline); err != nil {
 		return fmt.Errorf("set IPC deadline: %w", err)
 	}
-	if _, err := conn.Write(append(frame, '\n')); err != nil {
+	if err := writeFull(conn, append(frame, '\n')); err != nil {
 		return fmt.Errorf("write %s request: %w", method, err)
 	}
 	if unixConn, ok := conn.(*net.UnixConn); ok {
