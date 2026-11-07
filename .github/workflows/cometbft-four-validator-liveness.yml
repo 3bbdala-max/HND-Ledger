@@ -46,7 +46,7 @@ jobs:
           data_root.mkdir(parents=True, exist_ok=True)
           # Empty, capped development genesis; no keys or balances are issued.
           raw = cbor2.dumps([2, 1_000_000, []], canonical=True)
-          app_state = {"version": 2, "payload": base64.b64encode(raw).decode("ascii")}
+          app_state = {"payload": base64.b64encode(raw).decode("ascii"), "version": 2}
           ids = []
           for i in range(4):
               node = root / f"node{i}"
