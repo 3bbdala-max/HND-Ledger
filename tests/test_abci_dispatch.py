@@ -34,7 +34,7 @@ def test_info_and_init_chain_are_explicit(tmp_path):
     info = dispatcher("Info", {})
     assert info["version"] == "0.2.0"
     assert info["last_block_height"] == 0
-    assert len(base64.b64decode(info["last_block_app_hash"])) == 32
+    assert base64.b64decode(info["last_block_app_hash"]) == b""
 
     result = dispatcher("InitChain", {"chain_id": "HND-LOCAL-V2"})
     assert result == {"validators": []}
