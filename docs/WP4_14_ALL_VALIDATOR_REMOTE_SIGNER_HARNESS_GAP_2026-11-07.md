@@ -130,3 +130,20 @@ The workflow `.github/workflows/hnd-v02-tests.yml` builds the CometBFT executabl
 This ties the static upstream call-path finding to the actual CI artifact: the tested binary is the stock CLI whose default provider calls `LoadOrGenFilePV` before remote-signer replacement. The current CI integration can therefore pass while validator 4's original key has been moved to signer ownership and a replacement local FilePV has been generated in its node home. The test currently proves remote signing is used for the active validator interface, but does not prove the absence of an additional locally generated private key.
 
 **Next implementation constraint:** any future fix must change the actual binary/provider path used by CI, not only Python setup assertions. Prefer a small, explicit CometBFT-side provider/CLI integration change or a dedicated test executable that invokes a reviewed custom `node.Provider`; retain the stock CLI test separately as an upstream behavior regression check. Then assert before and after node startup that no local consensus key file is created for any externally signed validator, and verify remote `GetPubKey` against the Genesis identity. Do not label the existing green remote-signer tests as no-fallback coverage.
+
+
+### Feasible fail-closed provider boundary confirmed in pinned upstream API
+
+The pinned source also exposes a supported extension point that avoids modifying CometBFT internals:
+
+- `cmd/cometbft/main.go` explicitly documents copying the CLI main and replacing `node.DefaultNewNode` for external signer use; it wires the selected provider into `commands.NewRunNodeCmd(nodeFunc)`.
+- `node.Provider` is an exported function type: `func(*config.Config, log.Logger) (*node.Node, error)`.
+- `commands.NewRunNodeCmd` accepts a `node.Provider` and calls it for the `start` command.
+- The exported `node.NewNode` accepts any `types.PrivValidator`. In `NewNodeWithContext`, when `PrivValidatorListenAddr` is non-empty, the supplied object is replaced by the external signer client before CometBFT calls `GetPubKey()` on the selected validator.
+- The `types.PrivValidator` interface consists of `GetPubKey`, `SignVote`, and `SignProposal`.
+
+**Candidate implementation (not yet coded or approved):** build a dedicated HND remote-only CometBFT CLI from the exact pinned upstream source. Its custom provider must reject an empty/unapproved `PrivValidatorListenAddr` before constructing the node; load/generate only the P2P node key; pass a deliberately non-signing in-memory `PrivValidator` placeholder to `node.NewNode`; and rely on the already configured external signer client replacing that placeholder. The placeholder's `GetPubKey`, `SignVote`, and `SignProposal` should all return explicit errors, so an unexpected code path cannot sign. It must never call `LoadOrGenFilePV`, `GenFilePV`, or `LoadFilePV` for the node's consensus key.
+
+The custom CLI should be a separate CI artifact used only by external-signer scenarios; keep the stock CometBFT CLI for ordinary private-FilePV regression tests. First validate the custom provider with a one-validator negative startup test (missing endpoint rejected; remote endpoint succeeds; no local key/state files appear before or after startup; remote public key equals Genesis identity). Only after that passes should the four-validator harness be parameterized to use four isolated signer records and the custom binary.
+
+**Important caveat:** this is a viable upstream-supported design path established by static API inspection, not an implementation or executed test. The all-validator lifecycle refactor, signer-mode policy authentication, and distributed single-writer/fencing controls remain separate required work.
