@@ -1,6 +1,7 @@
 import json
 import socket
 import threading
+import time
 
 import pytest
 
@@ -89,5 +90,35 @@ def test_unknown_method_fails_closed_over_socket(tmp_path):
         assert response["error"]["code"] == "UNSUPPORTED_METHOD"
         client.close()
     finally:
+        server.close()
+        thread.join(timeout=2)
+
+
+def test_incomplete_client_cannot_block_following_ipc_request(tmp_path, monkeypatch):
+    import hnd_ledger.ipc_server as ipc_module
+
+    monkeypatch.setattr(ipc_module, "REQUEST_READ_TIMEOUT_SECONDS", 0.1)
+    path = tmp_path / "hnd.sock"
+    server = IPCServer(path, lambda method, payload: {"method": method, "ok": True})
+    server.start()
+    thread = threading.Thread(target=server._server.serve_forever, daemon=True)
+    thread.start()
+    stalled = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        stalled.connect(str(path))
+        stalled.sendall(b'{"protocol":"hnd-ipc/1"')
+        time.sleep(0.02)
+
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(2)
+        client.connect(str(path))
+        client.sendall(frame())
+        client.shutdown(socket.SHUT_WR)
+        response = json.loads(client.makefile("rb").readline())
+        assert response["ok"] is True
+        assert response["result"] == {"method": "Info", "ok": True}
+        client.close()
+    finally:
+        stalled.close()
         server.close()
         thread.join(timeout=2)
