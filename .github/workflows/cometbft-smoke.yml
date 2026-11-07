@@ -1,0 +1,104 @@
+name: CometBFT one-node smoke
+
+on:
+  push:
+    branches:
+      - implementation/v0.2-local-ledger
+  pull_request:
+    branches:
+      - implementation/v0.2-local-ledger
+
+jobs:
+  one-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+          cache-dependency-path: |
+            abci-adapter/go.sum
+            abci-adapter/go.mod
+
+      - name: Install HND Python application
+        run: python -m pip install -e .
+
+      - name: Install pinned CometBFT node
+        run: go install github.com/cometbft/cometbft/cmd/cometbft@v0.40.0
+
+      - name: Build HND ABCI socket adapter
+        run: |
+          cd abci-adapter
+          go build -o "$RUNNER_TEMP/hnd-abci" ./cmd/hnd-abci
+
+      - name: Generate a single-validator development network
+        run: |
+          cometbft testnet --v 1 --o "$RUNNER_TEMP/hnd-net" --populate-persistent-peers=false
+          python - "$RUNNER_TEMP/hnd-net/node0/config/genesis.json" <<'PY'
+          import json
+          import sys
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as stream:
+              genesis = json.load(stream)
+          genesis["chain_id"] = "HND-LOCAL-V2"
+          with open(path, "w", encoding="utf-8") as stream:
+              json.dump(genesis, stream, separators=(",", ":"))
+          PY
+
+      - name: Start Python engine, Go adapter, and CometBFT node
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOCKET="$RUNNER_TEMP/hnd-python.sock"
+          DB="$RUNNER_TEMP/hnd-ledger.sqlite"
+          NET="$RUNNER_TEMP/hnd-net/node0"
+
+          hnd-abci-python --chain-db "$DB" --socket "$SOCKET" --init-empty-dev-genesis             >"$RUNNER_TEMP/python-engine.log" 2>&1 &
+          PY_PID=$!
+
+          for _ in $(seq 1 30); do
+            [[ -S "$SOCKET" ]] && break
+            sleep 1
+          done
+          [[ -S "$SOCKET" ]]
+
+          HND_IPC_SOCKET="$SOCKET" HND_ABCI_LISTEN="tcp://127.0.0.1:26658"             "$RUNNER_TEMP/hnd-abci" >"$RUNNER_TEMP/go-adapter.log" 2>&1 &
+          GO_PID=$!
+
+          cometbft start --home "$NET" >"$RUNNER_TEMP/cometbft.log" 2>&1 &
+          NODE_PID=$!
+
+          cleanup() {
+            kill "$NODE_PID" "$GO_PID" "$PY_PID" 2>/dev/null || true
+            wait "$NODE_PID" "$GO_PID" "$PY_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          reached_height=0
+          for _ in $(seq 1 90); do
+            if curl --silent --fail http://127.0.0.1:26657/status -o "$RUNNER_TEMP/status.json"; then
+              reached_height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status.json")
+              if [[ "$reached_height" -ge 1 ]]; then
+                echo "CometBFT reached height $reached_height"
+                exit 0
+              fi
+            fi
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              echo "CometBFT process exited before producing a block"
+              break
+            fi
+            sleep 1
+          done
+
+          echo "One-node smoke test did not reach height 1"
+          cat "$RUNNER_TEMP/python-engine.log" || true
+          cat "$RUNNER_TEMP/go-adapter.log" || true
+          cat "$RUNNER_TEMP/cometbft.log" || true
+          exit 1
