@@ -148,3 +148,19 @@ def test_check_tx_rejects_wrong_chain_id(tmp_path):
         app.check_tx(wrong_chain_tx)
     assert app.height == 0
     app.chain.close()
+
+
+def test_duplicate_transaction_in_one_proposal_is_rejected_atomically(tmp_path):
+    app, alice, bob_id, alice_id = _app(tmp_path)
+    raw = encode_transaction(create_transaction(alice, bob_id, 25, 0))
+    before_hash = app.app_hash
+
+    assert not app.process_proposal([raw, raw])
+    with pytest.raises(ChainError, match="incorrect nonce"):
+        app.finalize_block([raw, raw])
+
+    assert app.height == 0
+    assert app.app_hash == before_hash
+    assert app.chain.state.balances[alice_id] == 100
+    assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    app.chain.close()
