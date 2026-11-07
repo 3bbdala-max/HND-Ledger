@@ -103,3 +103,29 @@ def test_block_table_hash_must_match_payload_commitment(tmp_path):
     db.close()
     with pytest.raises(ChainError, match="commitment"):
         LocalChain(path)
+
+
+
+def test_recovery_rejects_noncanonical_block_payload(tmp_path):
+    import cbor2
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "hnd.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 20}, supply_cap=20))
+    chain.append([create_transaction(alice, bob_id, 5, 0)])
+    chain.close()
+
+    db = sqlite3.connect(path)
+    payload = db.execute("SELECT payload FROM blocks").fetchone()[0]
+    decoded = cbor2.loads(payload)
+    # Encode an equivalent value with a deliberately non-canonical array header.
+    noncanonical = bytes([0x98, 0x06]) + payload[1:]
+    assert cbor2.loads(noncanonical) == decoded
+    db.execute("UPDATE blocks SET payload=?", (noncanonical,))
+    db.commit()
+    db.close()
+
+    with pytest.raises(ChainError, match="non-canonical"):
+        LocalChain(path)
