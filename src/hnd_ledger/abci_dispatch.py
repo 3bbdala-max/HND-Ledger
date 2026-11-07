@@ -246,8 +246,24 @@ class ABCIDispatcher:
 
     def _handle_CheckTx(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw = _bytes(payload, "tx")
+        check_type = payload.get("type", 0)
+        if isinstance(check_type, bool) or not isinstance(check_type, int) or check_type not in (0, 1):
+            return {"code": 1, "log": "unsupported CheckTx type", "codespace": "hnd"}
         try:
-            self.application.check_tx(raw)
+            if check_type == 1:
+                # CometBFT rechecks transactions left in its mempool after a
+                # block commits. Revalidate against the newly committed state
+                # so stale nonce/overspend entries cannot occupy capacity forever.
+                if not self.application.prepare_proposal((raw,)):
+                    return {
+                        "code": 1,
+                        "log": "transaction is no longer valid against committed state",
+                        "codespace": "hnd",
+                    }
+            else:
+                # New submissions use weak admission: ordering-dependent
+                # balance and nonce checks happen during proposal execution.
+                self.application.check_tx(raw)
             return {"code": 0, "codespace": ""}
         except (ValueError, TypeError) as exc:
             return {"code": 1, "log": str(exc), "codespace": "hnd"}
