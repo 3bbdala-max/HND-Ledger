@@ -103,3 +103,24 @@ def test_invalid_proposal_is_rejected_and_unsupported_methods_fail_closed(tmp_pa
     except NotImplementedError:
         pass
     chain.close()
+
+
+def test_check_tx_rejects_tampered_signature_and_invalid_base64(tmp_path):
+    import cbor2
+    from dataclasses import replace
+    from hnd_ledger.protocol import transaction_array
+
+    dispatcher, chain, alice, bob, _ = _dispatcher(tmp_path)
+    tx = create_transaction(alice, _key_account(bob), 10, 0)
+    tampered = replace(tx, signature=bytes([0xA5]) * 64)
+    raw = cbor2.dumps(transaction_array(tampered), canonical=True)
+
+    assert dispatcher("CheckTx", {"tx": _b64(raw)})["code"] == 1
+    assert dispatcher("InsertTx", {"tx": _b64(raw)}) == {"code": 1}
+    try:
+        dispatcher("CheckTx", {"tx": "not base64!"})
+        assert False, "invalid base64 must fail"
+    except ValueError:
+        pass
+    assert dispatcher("ReapTxs", {"max_bytes": 65_536}) == {"txs": []}
+    chain.close()
