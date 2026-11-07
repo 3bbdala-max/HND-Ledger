@@ -79,12 +79,12 @@ jobs:
               node = root / f"node{i}"
               cfg = node / "config" / "config.toml"
               text = cfg.read_text()
-              text = re.sub(r'(?m)^proxy_app\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{26658+i}"', text, count=1)
+              text = re.sub(r'(?m)^proxy_app\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{28658+i}"', text, count=1)
               text = set_key(text, "rpc", "laddr", f"tcp://127.0.0.1:{26657+i}")
-              text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{26656+i}")
+              text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{27656+i}")
               text = set_key(text, "p2p", "allow_duplicate_ip", "true", quoted=False)
               peers = ",".join(
-                  f"{ids[j]}@127.0.0.1:{26656+j}" for j in range(3) if j != i
+                  f"{ids[j]}@127.0.0.1:{27656+j}" for j in range(3) if j != i
               )
               text = set_key(text, "p2p", "persistent_peers", peers)
               cfg.write_text(text)
@@ -128,7 +128,7 @@ jobs:
             done
             [[ -S "$SOCKET" ]]
 
-            HND_IPC_SOCKET="$SOCKET" HND_ABCI_LISTEN="tcp://127.0.0.1:$((26658+i))" \
+            HND_IPC_SOCKET="$SOCKET" HND_ABCI_LISTEN="tcp://127.0.0.1:$((28658+i))" \
               "$RUNNER_TEMP/hnd-abci" >"$GO_LOG" 2>&1 &
             GO_PID=$!
             PIDS+=("$GO_PID")
