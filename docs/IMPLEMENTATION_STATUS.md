@@ -1,6 +1,6 @@
 # HND v0.2 implementation status
 
-**Status:** initial local prototype implementation; not production-ready.
+**Status:** initial local prototype implementation and validator design documents; not production-ready.
 
 ## Implemented in this branch
 
@@ -14,6 +14,12 @@
 - SQLite persistence and restart recovery by replaying every stored block from the genesis snapshot.
 - Tests for protocol validation, ledger invariants, block restoration, rejected-block atomicity, and persisted-block tampering.
 - GitHub Actions workflow definition.
+
+## Design documents added
+
+- Threat model with assets, trust boundaries, threats, controls, and release gates.
+- Validator and consensus design gate. CometBFT is an evaluation candidate only, not a selected or integrated dependency.
+- Distributed-consensus test matrix. All entries are planned tests, not executed results.
 
 ## Not yet implemented
 
