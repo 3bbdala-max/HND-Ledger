@@ -143,14 +143,6 @@ jobs:
             if [[ "$count" -eq 4 ]]; then ready=true; break; fi
             sleep 1
           done
-          # Prove the full P2P mesh exists before any isolation rule is applied.
-          for i in 0 1 2 3; do
-            curl --silent --fail "http://127.0.0.1:$((26657+i))/net_info" -o "$DATA/net-before-$i.json"
-            peers=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["n_peers"]))' "$DATA/net-before-$i.json")
-            echo "Validator $i connected P2P peers before partition: $peers"
-            [[ "$peers" -ge 3 ]] || { echo "Validator $i did not establish all three expected P2P peers"; exit 1; }
-          done
-
           [[ "$ready" == true ]] || {
             echo "Four validators did not reach startup height; diagnostic logs follow"
             for i in 0 1 2 3; do
@@ -165,6 +157,14 @@ jobs:
             done
             exit 1
           }
+
+          # Prove the full P2P mesh exists before any isolation rule is applied.
+          for i in 0 1 2 3; do
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/net_info" -o "$DATA/net-before-$i.json"
+            peers=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["n_peers"]))' "$DATA/net-before-$i.json")
+            echo "Validator $i connected P2P peers before partition: $peers"
+            [[ "$peers" -ge 3 ]] || { echo "Validator $i did not establish all three expected P2P peers"; exit 1; }
+          done
 
           baseline=0
           for i in 1 2 3; do
