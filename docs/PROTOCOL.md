@@ -1,105 +1,99 @@
-# HND Protocol Specification — Draft
+# HND Protocol Specification — Version 0.2 Design Baseline
 
-**Status:** Draft for design review; not an implemented protocol  
-**Target:** HND-Ledger version 0.2  
-**Updated:** 2026-11-03
+**Status:** Selected engineering baseline for the local prototype; implementation and security review are still pending.
+**Target:** HND-Ledger version 0.2
+**Updated:** 2026-11-07
 
-## 1. Purpose
+## 1. Scope and evidence
 
-This document records the protocol decisions that must be settled before implementing version 0.2. It deliberately distinguishes requirements supported by the version 0.1 archive from decisions that remain open.
+This specification turns the prior open design questions into a conservative baseline for a deterministic local ledger. It does not select or claim a production consensus protocol, network deployment, wallet product, or authorization to issue or trade a token.
 
-## 2. Baseline facts from the version 0.1 archive
+The version 0.1 archive reports a displayed supply of 1,000,000 units and 3,000 sequential transfers. Those archive-reported results have not been independently reproduced from this repository.
 
-The archive describes:
-- a local educational prototype;
-- digitally signed transactions;
-- rejection of repeated transactions;
-- rejection of conflicting transactions for the same inputs;
-- ordered transaction groups under a deterministic adaptive consensus simulation;
-- a displayed total supply of 1,000,000 units after a run of 3,000 sequential transfers.
+## 2. Version 0.2 baseline decisions
 
-The archive does not specify enough detail to reconstruct the exact wire format, cryptographic suite, account model, block format, validator protocol, quorum, finality, or network behavior.
-
-## 3. Required protocol decisions
-
-No values below should be treated as selected until explicitly approved and tested.
-
-| Topic | Required decision |
+| Topic | Version 0.2 baseline |
 |---|---|
-| Account model | Account/balance model or UTXO model |
-| Address format | Public-key derivation, encoding, checksum, versioning |
-| Signature scheme | Established, maintained cryptographic scheme and library |
-| Hash function | Standard hash function and domain-separation rules |
-| Serialization | Canonical binary or textual encoding; field ordering and versioning |
-| Amounts | Integer smallest-unit representation and decimal precision |
-| Nonce | Per-account sequence and replay rejection behavior |
-| Transaction ID | Exact derivation from canonical signed transaction bytes |
-| Block format | Header fields, transaction commitment, parent reference, height |
-| Genesis | Initial state, allocations, parameters, and reproducible genesis identifier |
-| Supply policy | Fixed genesis allocation, maximum cap, or issuance schedule |
-| Fees | Whether fees exist and how they are calculated/distributed |
-| Consensus | Validator model, quorum, safety/liveness assumptions, finality |
-| Fork handling | Fork-choice rule and recovery from conflicting histories |
-| Networking | Peer identity, transport, message format, sync, rate limits |
+| State model | Account/balance model |
+| Account identifier | 32-byte SHA-256 digest of domain prefix plus 32-byte Ed25519 public key |
+| Signature | Ed25519 using a maintained, reviewed cryptographic library; no custom cryptography |
+| Hash | SHA-256 with explicit domain separation for account, transaction, block, and genesis identifiers |
+| Serialization | Deterministic CBOR under RFC 8949; reject non-canonical encodings |
+| Protocol version | Integer version 2 in every signed transaction and block header |
+| Network separation | Explicit immutable chain ID included in every signed transaction |
+| Amounts | Unsigned integer smallest units; 8 decimal places for display; no floating-point arithmetic |
+| Nonce | Per-account unsigned 64-bit sequence, starting at 0; next accepted transaction must use the exact next nonce |
+| Transaction ID | SHA-256 over a domain prefix and deterministic CBOR encoding of the complete signed transaction |
+| Block linkage | Each block commits to parent block ID, height, chain ID, ordered transaction IDs, and state commitment |
+| Supply | Maximum supply cap of 1,000,000 HND; no discretionary minting. Genesis allocation must sum to the cap before any public network is considered |
+| Fees | Zero fees in the isolated v0.2 local prototype; fee economics are deferred |
+| Consensus | None selected for v0.2 local ledger. A single local sequencer is not decentralization |
+| Networking | Out of scope until consensus and threat model are independently reviewed |
 
-## 4. Minimum transaction validation requirements
+## 3. Canonical transaction data
 
-A node must reject a transaction if:
-- its encoding or protocol version is invalid;
-- the network identifier is wrong;
-- its signature does not verify against the canonical payload;
-- its sender does not correspond to the signing key;
-- the amount is zero, negative, malformed, or overflows the permitted integer range;
-- its nonce is stale, repeated, or skips a value where sequential nonces are required;
-- the sender lacks sufficient available balance;
-- the transaction identifier has already been accepted;
-- applying it would violate the supply or state invariants.
+The signed transaction payload consists of exactly these fields, encoded using deterministic CBOR:
+- protocol_version: unsigned integer, exactly 2;
+- chain_id: fixed byte string identifying the network;
+- sender: 32-byte account identifier;
+- recipient: 32-byte account identifier;
+- amount: positive unsigned integer in smallest units;
+- nonce: unsigned 64-bit integer.
 
-The exact nonce and fee rules depend on the account model and must be fixed in the protocol.
+The Ed25519 signature is computed over a domain-separated byte sequence containing the canonical encoding of the six fields above. The public key is supplied as a 32-byte value and must derive the stated sender identifier. The signature is 64 bytes. Unknown fields, duplicate map keys, non-canonical encodings, invalid lengths, and unsupported versions are rejected.
 
-## 5. Minimum block validation requirements
+The exact byte-level domain prefixes and deterministic CBOR library behavior must be frozen in implementation fixtures before the first compatibility release. They must not be improvised independently by different implementations.
 
-A node must reject a block if:
-- its encoding, version, height, or parent reference is invalid;
-- its identifier does not match its canonical contents;
-- its transaction commitment is invalid;
-- it contains duplicate or invalid transactions;
-- deterministic execution produces an invalid state transition;
-- it violates issuance, supply, or other genesis-defined invariants;
-- its proposer/validator authorization is invalid under the selected consensus protocol.
+## 4. Account and balance rules
 
-## 6. Supply invariant
+- Account IDs are derived from the public key using the account domain prefix and SHA-256.
+- Balances and amounts are integers only.
+- Amount must be greater than zero.
+- Sender and recipient must be distinct in v0.2.
+- A transaction is valid only when its sender has sufficient balance and its nonce equals the account's next expected nonce.
+- A successful transfer debits and credits the same amount atomically.
+- A rejected transaction changes neither balances nor nonce.
+- All arithmetic is checked; overflow or underflow causes rejection.
+- The local prototype has no implicit account creation through arbitrary malformed input; recipient account creation occurs only as part of a valid transfer.
 
-The version 0.1 archive reports a total displayed supply of 1,000,000 units after a test run. It does not establish whether that value is a hard cap, initial allocation, or merely the displayed total for that test.
+## 5. Supply and genesis
 
-Version 0.2 must define the genesis distribution and all permitted issuance/burning operations. The implementation must calculate supply from ledger state and verify the invariant after every committed block.
+The design target is a hard maximum of 1,000,000 HND, represented as 100000000000000 smallest units at 8 decimal places. The genesis allocation table must be explicit, reproducible, and sum exactly to that amount. No allocation addresses are invented in this document. Until the allocation table and genesis identifier are committed, genesis is a test fixture only and the supply policy is not ready for public deployment.
 
-## 7. Consensus safety gate
+Version 0.2 does not implement minting. Burning is also deferred; therefore the local prototype's total supply remains constant. Any later change requires a protocol-version change and new invariant tests.
 
-A deterministic local simulation is not proof of decentralized consensus. Before a network implementation, the project must document:
-- validator identities and admission/removal;
-- assumed number or proportion of Byzantine validators;
-- quorum intersection and safety argument;
-- liveness assumptions and timeout behavior;
-- proposal and vote message formats;
-- finality definition;
-- equivocation and double-sign handling;
-- partition recovery and conflicting-chain behavior.
+## 6. Block format and deterministic execution
 
-Consensus code must not be implemented from an informal description alone.
+A local block header contains:
+- protocol version;
+- chain ID;
+- height;
+- parent block ID;
+- ordered transaction IDs;
+- deterministic state commitment.
 
-## 8. Open design review checklist
+The block ID is a domain-separated SHA-256 digest of the deterministic CBOR header and body. The implementation must define the state commitment precisely and publish golden test vectors before compatibility is claimed. Transactions execute in block order. A block is committed atomically only after every transaction and the resulting state commitment validate.
 
-- [ ] Select account model.
-- [ ] Select and document cryptographic algorithms and vetted libraries.
-- [ ] Define canonical serialization and protocol versioning.
-- [ ] Define address derivation and transaction identifier.
-- [ ] Define nonce, fee, and balance semantics.
-- [ ] Define genesis allocation and supply policy.
-- [ ] Define block header and transaction commitment.
-- [ ] Specify consensus assumptions and finality before implementation.
-- [ ] Define adversarial test cases and reproducible fixtures.
+## 7. Consensus and validator safety gate
 
-## 9. Release warning
+Version 0.2 does not claim Byzantine fault tolerance, distributed finality, or independent validators. No validator quorum or fork-choice rule is selected in this baseline.
 
-This draft is not a production specification and does not authorize issuance, marketing, listing, or trading of an HND token. Do not use it to handle real funds.
+Before consensus implementation, a separate specification must define validator admission/removal, fault assumptions, quorum intersection, safety and liveness arguments, proposal/vote messages, timeouts, finality, double-sign evidence, partition recovery, and fork choice. Independent multi-operator tests are required before any decentralization claim.
+
+## 8. Required rejection cases
+
+Reject malformed or non-canonical encoding; unsupported protocol version; wrong chain ID; invalid public-key or signature length; invalid signature; sender/public-key mismatch; zero amount; integer overflow/underflow; self-transfer; insufficient balance; stale, repeated, or skipped nonce; duplicate transaction ID; invalid parent/height; invalid block commitment; duplicate transaction in a block; and any state transition violating the supply invariant.
+
+## 9. Implementation and compatibility gates
+
+1. Freeze byte-level domain prefixes, CBOR schema, and golden vectors.
+2. Implement the local transaction and account state machine using maintained libraries.
+3. Add unit, integration, negative, property-based, and deterministic replay tests.
+4. Verify atomic persistence and recovery.
+5. Reproduce all test results in clean CI and attach commit-specific artifacts.
+6. Design consensus separately; do not treat local simulation as a validator network.
+7. Obtain independent security and jurisdiction-specific legal review before public deployment or token-related activity.
+
+## 10. Release warning
+
+This is an engineering design baseline, not an audit, production implementation, financial product, or authorization to issue, market, list, or trade an HND token. Do not use it to handle real funds.
