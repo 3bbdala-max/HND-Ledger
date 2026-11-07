@@ -80,7 +80,9 @@ class ABCIDispatcher:
             "version": "0.2.0",
             "app_version": 2,
             "last_block_height": info["last_block_height"],
-            "last_block_app_hash": base64.b64encode(\n                b"" if info["last_block_height"] == 0 else info["last_block_app_hash"]\n            ).decode("ascii"),
+            "last_block_app_hash": base64.b64encode(
+                b"" if info["last_block_height"] == 0 else info["last_block_app_hash"]
+            ).decode("ascii"),
         }
 
     def _handle_InitChain(self, payload: dict[str, Any]) -> dict[str, Any]:
