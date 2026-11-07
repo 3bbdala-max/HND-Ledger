@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	cmd "github.com/cometbft/cometbft/cmd/cometbft/commands"
@@ -42,7 +43,12 @@ func validateRemoteSignerEndpoint(addr string) error {
 	if err != nil || parsed.Scheme != "noise" || parsed.User == nil || parsed.User.Username() == "" {
 		return errUnsupportedSignerTransport
 	}
-	if _, _, err := net.SplitHostPort(parsed.Host); err != nil {
+	host, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil || host == "" {
+		return errUnsupportedSignerTransport
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
 		return errUnsupportedSignerTransport
 	}
 	return nil
