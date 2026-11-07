@@ -149,3 +149,9 @@ All four workflows passed on this exact code commit:
 - CometBFT four-validator liveness/recovery run `42401439030`: PASS.
 
 These are targeted in-process metadata-tampering regressions plus the listed CI integration paths. They do not protect against coordinated deletion or replacement of both metadata markers in the same SQLite database; an independently stored checkpoint remains necessary for that threat model.
+
+## External rollback protection — design only
+
+The design and trust boundary are recorded in `docs/ROLLBACK_PROTECTION_DESIGN.md`. An older internally consistent SQLite snapshot can still pass the current in-database chain-tip checks. A local sidecar or key stored beside SQLite is not an independent anti-rollback authority. The proposed strict design requires an independently administered monotonic checkpoint authority, binds chain ID/genesis hash/height/block hash/state commitment/sequence, and fails closed across the SQLite-to-authority crash window. Required adversarial cases are listed in the design document. No provider or key custody has been configured; external rollback protection remains NOT IMPLEMENTED and NOT VERIFIED.
+
+All four workflows passed on code commit `166231c251dbcb181e52dd65af0cdda191f3fb64`: Python `42401814429`, one-node `42401814447`, three-validator `42401814426`, four-validator `42401814441`.

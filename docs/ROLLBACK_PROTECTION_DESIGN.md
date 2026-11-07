@@ -1,0 +1,73 @@
+# Rollback protection design — HND-Ledger v0.2
+
+Status: design decision; implementation and adversarial verification are NOT complete.
+
+## Problem
+
+The SQLite chain replays and validates its stored blocks and checks a chain-tip commitment. That commitment and its version marker are stored in the same SQLite database. Restoring an older, internally consistent database snapshot can therefore restore a valid older chain and its matching older tip metadata. The current in-database checks cannot distinguish that rollback from a legitimate historical database.
+
+## Security objective
+
+When an operator configures an independent trusted checkpoint authority, reopening a database whose height or block hash is older than the latest accepted checkpoint must fail closed. A checkpoint must bind at least:
+
+- protocol/domain identifier: `HND-ROLLBACK-CHECKPOINT-V1`
+- chain ID
+- genesis hash
+- committed block height
+- committed block hash
+- application state commitment
+- monotonically increasing checkpoint sequence
+- checkpoint format version
+
+All integer fields use strict unsigned-integer validation (booleans are not integers for this protocol). Hashes and identifiers have fixed lengths. The signed payload uses one canonical encoding and domain separation.
+
+## Trust boundary
+
+The trusted checkpoint authority MUST be outside the rollback domain of the SQLite database and its ordinary backups. Examples of acceptable future integrations are a separately administered append-only checkpoint service, a remote service with enforced monotonic compare-and-swap/versioning, or a hardware-backed monotonic counter with a separately protected signing key.
+
+A sidecar file on the same disk, a second table in SQLite, or a signing key stored beside the database is NOT an independent anti-rollback authority. Such mechanisms may detect accidental mismatch but cannot protect against an attacker restoring all local files together.
+
+The checkpoint signing private key must never be stored in the chain database, repository, CI logs, or ordinary application configuration. Validators should verify checkpoints using a pinned public key or authenticated authority identity. Key rotation requires an explicit, auditable transition signed by the old authority and accepted by policy; silent key replacement is rejected.
+
+## Commit ordering and crash semantics
+
+SQLite and an independent checkpoint authority do not share an atomic transaction. The implementation must not hide this distributed-commit boundary.
+
+The initial strict mode will:
+1. Validate the currently accepted external checkpoint against the database's genesis and tip before serving consensus or accepting writes.
+2. Commit a block to SQLite using the existing transaction.
+3. Submit the new checkpoint with a monotonic compare-and-swap against the prior sequence and prior checkpoint hash.
+4. Mark the chain operational only after the external authority confirms acceptance.
+
+If the process crashes or the authority is unavailable between steps 2 and 3, the local database may be ahead of the external checkpoint. On restart, the system must enter a recovery-required state and refuse consensus writes. It may advance the external checkpoint only through an explicit recovery procedure that verifies the entire database suffix from the last accepted checkpoint, validates all blocks and state commitments, and records an auditable recovery event. It must never silently lower the checkpoint to match an older database.
+
+If the external checkpoint is ahead of the local database, the database is rolled back or incomplete. Normal startup must refuse service. Recovery must restore a database containing the checkpointed block or perform a separately designed trusted state-sync process; it must not accept the older local tip.
+
+## Multi-validator rules
+
+All validators must agree on the same chain ID, genesis hash, checkpoint authority identity, and checkpoint policy. A validator must not independently advance a shared checkpoint unless the authority protocol explicitly supports consensus-safe compare-and-swap. The preferred model is an independently operated checkpoint service that accepts only a checkpoint already committed by the consensus network and verifies the relevant CometBFT commit evidence, rather than trusting an arbitrary single validator's request.
+
+Checkpoint cadence, finality depth, and whether the authority anchors every block or periodic finalized heights must be explicit policy. Periodic checkpoints permit rollback within the unanchored interval and must not be described as zero-window protection.
+
+## Required adversarial tests before implementation can be called verified
+
+- Restore an older but internally consistent SQLite snapshot while retaining the latest external checkpoint: startup must fail closed.
+- Restore both SQLite and its local sidecar while retaining the independent checkpoint: startup must fail closed.
+- Submit a checkpoint with a lower sequence: authority rejects it.
+- Submit same sequence with a different payload/hash: authority rejects it.
+- Submit wrong chain ID or genesis hash: verifier rejects it.
+- Tamper with signature, canonical encoding, state commitment, or checkpoint domain: verifier rejects it.
+- Crash after SQLite commit but before external checkpoint acknowledgement: startup enters recovery-required state, never silently accepts or rewinds.
+- Crash after external acknowledgement but before local acknowledgement: retry is idempotent and cannot create a second conflicting checkpoint.
+- Concurrent checkpoint attempts: compare-and-swap permits one successor only.
+- Authority outage: node fails closed for writes and reports an explicit degraded/recovery state.
+- Key rotation and revoked/unknown key: rejected unless the explicit transition policy validates.
+- Two independent operators restore backups and verify the same accepted checkpoint and chain tip.
+
+## Scope decision
+
+No checkpoint provider, credential, remote endpoint, or hardware trust anchor is currently configured. Therefore no external anti-rollback guarantee is claimed and no local sidecar will be misrepresented as protection. The next implementation step is a provider-neutral checkpoint interface plus a deterministic test authority; production integration remains blocked until an independent authority and key custody model are selected and configured.
+
+## Current verified boundary
+
+The latest verified code commit before this design note is `166231c251dbcb181e52dd65af0cdda191f3fb64`. Four exact-commit workflows passed: HND Python tests `42401814429`, one-node CometBFT `42401814447`, three-validator CometBFT `42401814426`, and four-validator liveness/recovery `42401814441`. This evidence does not include external rollback protection.
