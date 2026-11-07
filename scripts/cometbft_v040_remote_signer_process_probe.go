@@ -8,7 +8,6 @@ package main
 
 import (
 	"bytes"
-	"sync"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -250,22 +249,17 @@ func runConcurrentSharedFilePVProbe() {
 		}).ToProto()
 	}
 	votes := []*cmtproto.Vote{makeVote("shared-state-conflict-A"), makeVote("shared-state-conflict-B")}
-	start := make(chan struct{})
-	errs := make([]error, 2)
-	var wg sync.WaitGroup
-	for i := range signers {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			<-start
-			errs[i] = signers[i].client.SignVote(chainID, votes[i])
-		}(i)
+	// Both processes loaded the same empty state before either request. Sign
+	// through process 0 first, then process 1 using its stale in-memory state.
+	// Sequential requests avoid conflating the ownership defect with an
+	// incidental simultaneous filesystem-write race.
+	if err := signers[0].client.SignVote(chainID, votes[0]); err != nil {
+		fail("shared FilePV signer 0 rejected its vote: %v", err)
 	}
-	close(start)
-	wg.Wait()
-
+	if err := signers[1].client.SignVote(chainID, votes[1]); err != nil {
+		fail("shared FilePV signer 1 rejected conflicting vote from stale loaded state: %v", err)
+	}
 	for i := range votes {
-		if errs[i] != nil { fail("shared FilePV signer %d rejected concurrent vote: %v", i, errs[i]) }
 		if len(votes[i].Signature) == 0 || !pubKey0.VerifySignature(cmttypes.VoteSignBytes(chainID, votes[i]), votes[i].Signature) {
 			fail("shared FilePV signer %d did not return a valid conflicting signature", i)
 		}
