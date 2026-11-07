@@ -88,7 +88,7 @@ def encode_response(request_id: str, *, result: Any = None,
     return raw
 
 
-class _UnixServer(socketserver.ThreadingUnixStreamServer):
+class _UnixServer(socketserver.UnixStreamServer):
     daemon_threads = True
     allow_reuse_address = False
 
