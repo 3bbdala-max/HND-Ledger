@@ -181,9 +181,7 @@ class HNDABCIApplication:
             payload = _decode_canonical_object(app_state_bytes, label="application Genesis")
             if set(payload) != {"genesis_hash", "manifest"}:
                 raise ABCIApplicationError("application Genesis schema")
-            if type(payload["max_amount"]) is not int or payload["max_amount"] != self.config.max_amount:
-            raise ABCIApplicationError("application state max_amount mismatch")
-        if payload["genesis_hash"] != self.expected_genesis_hash:
+            if payload["genesis_hash"] != self.expected_genesis_hash:
                 raise ABCIApplicationError("application Genesis hash mismatch")
             if canonical_json(payload["manifest"]) != canonical_json(self.manifest):
                 raise ABCIApplicationError("application Genesis manifest mismatch")
@@ -480,6 +478,8 @@ class HNDABCIApplication:
             raise ABCIApplicationError("application state network mismatch")
         if type(payload["protocol_version"]) is not int or payload["protocol_version"] != self.config.protocol_version:
             raise ABCIApplicationError("application state protocol mismatch")
+        if type(payload["max_amount"]) is not int or payload["max_amount"] != self.config.max_amount:
+            raise ABCIApplicationError("application state max_amount mismatch")
         if payload["genesis_hash"] != self.expected_genesis_hash:
             raise ABCIApplicationError("application state Genesis mismatch")
         height = payload["last_committed_height"]
