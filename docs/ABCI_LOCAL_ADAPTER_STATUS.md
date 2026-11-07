@@ -25,12 +25,12 @@ Unsupported snapshot, state-sync, and vote-extension methods fail closed.
 
 ## Verified integration
 
-On commit a6c5250905d0861c5d3a62dd766d957742080b1c:
-- One-node CometBFT block production and restart recovery: run 42360521260, success.
-- Three-validator funded-genesis, signed-transfer, RPC Query, post-transfer app-hash comparison, and restart recovery: run 42360521298, success.
-- Python test workflow: run 42360521258, success.
+On commit 90f49448e553a0fae386b7dfc18c14e8f082d2a7:
+- One-node block production and restart recovery: run 42360867084, success.
+- Three-validator funded genesis, signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42360867085, success.
+- Python tests: run 42360867069, success.
 
-The three-validator run committed a signed transfer at height 4. All three local ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. The account and ledger-info queries returned the committed state on all three validators. All CometBFT header app hashes matched at height 5. After validator 0 restarted, its database retained the transfer, balances, nonce, and matching app hash.
+The three-validator run committed a signed transfer at height 4. All ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. Account and ledger-info queries returned committed state on all three nodes. A correctly signed 800,000-unit spend from an account holding 750,000 passed weak CheckTx admission but was excluded by PrepareProposal; no validator committed it and balances/nonces remained unchanged. All CometBFT header app hashes matched at height 5. After validator 0 restarted, it retained the valid transfer and matching app hash.
 
 ## Compatibility and remaining work
 

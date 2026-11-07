@@ -4,9 +4,9 @@ HND-Ledger is an experimental educational ledger and consensus-integration proje
 
 ## Current implementation
 
-The implementation/v0.2-local-ledger branch contains a deterministic Python ledger, Ed25519-signed transfers, canonical CBOR, account nonces, supply-cap checks, SQLite replay/recovery, a Python ABCI++ application, a private Unix IPC service, and a Go ABCI adapter pinned to CometBFT v0.40.0.
+The implementation/v0.2-local-ledger branch contains a deterministic Python ledger, Ed25519-signed transfers, canonical CBOR, account nonces, supply-cap checks, SQLite replay/recovery, a Python ABCI++ application, private Unix IPC, and a Go ABCI adapter pinned to CometBFT v0.40.0.
 
-The project has passing one-node restart and three-validator signed-transfer integrations. The three-validator workflow also exercises read-only account and ledger-info queries through the CometBFT RPC on all three nodes.
+The project has passing one-node restart and three-validator integrations. The three-validator workflow exercises a signed transfer, read-only account and ledger-info queries, a signed overspend that is admitted by weak CheckTx but filtered by PrepareProposal, and restart recovery.
 
 ## Verified CI evidence
 
@@ -16,12 +16,12 @@ Baseline workflows passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af:
 - One-node CometBFT restart: run 42359852690.
 - Three-validator signed-transfer integration: run 42359852656.
 
-The strengthened Query and integration suite passed on commit a6c5250905d0861c5d3a62dd766d957742080b1c:
-- Python tests: run 42360521258.
-- One-node CometBFT restart: run 42360521260.
-- Three-validator signed-transfer, RPC Query, and restart recovery: run 42360521298.
+The latest strengthened suite passed on commit 90f49448e553a0fae386b7dfc18c14e8f082d2a7:
+- Python tests: run 42360867069.
+- One-node CometBFT restart: run 42360867084.
+- Three-validator transfer, query, overspend-filtering, and restart integration: run 42360867085.
 
-In the three-validator run, a signed transfer was committed at height 4. All local ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. Account and ledger-info queries succeeded on all three validators. All CometBFT header app hashes matched at height 5. After validator 0 restarted, it retained the committed transfer, balances, nonce, and matching app hash.
+The three-validator run committed a signed transfer at height 4. All ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. Account and ledger-info queries succeeded on all three nodes. A correctly signed 800,000-unit spend from an account holding 750,000 passed weak CheckTx admission but was excluded by PrepareProposal; no validator committed it and balances/nonces remained unchanged. All CometBFT header app hashes matched at height 5. After validator 0 restarted, it retained the valid transfer and matching app hash.
 
 The validators ran as separate processes and data directories on one CI runner. This is not independent multi-operator deployment or an adversarial Byzantine test.
 

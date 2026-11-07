@@ -14,16 +14,18 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 - Query paths /hnd/v1/info and /hnd/v1/account, latest-state only, no proofs or historical reads.
 - Bounded JSONL IPC over Unix socket; strict envelope checks, duplicate-key rejection, 1 MiB frame limit, socket mode 0600.
 - Go CometBFT v0.40.0 adapter; partial-write handling; loopback-only ABCI listener.
-- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/recovery.
+- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/overspend/recovery.
 
 ## Verified evidence
 
-- Python tests: run 42360521258 on commit a6c5250905d0861c5d3a62dd766d957742080b1c, success.
-- One-node CometBFT restart: run 42360521260 on the same commit, success.
-- Three-validator signed transfer, Query RPC on all validators, post-transfer app-hash comparison, and validator restart recovery: run 42360521298 on the same commit, success.
-- Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
+On commit 90f49448e553a0fae386b7dfc18c14e8f082d2a7:
+- Python tests: run 42360867069, success.
+- One-node CometBFT restart: run 42360867084, success.
+- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42360867085, success.
 
-The three-validator integration checked sender balance 750,000, recipient balance 250,000, sender next nonce 1, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. The RPC account and ledger-info queries returned committed values on all three nodes. After restarting validator 0, its database retained the transfer, balances, nonce, and matching app hash.
+The three-validator integration checked sender balance 750,000, recipient balance 250,000, sender next nonce 1, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. It then submitted a validly signed 800,000-unit spend from the sender using nonce 1. CheckTx admitted its encoding/signature; PrepareProposal excluded it because the committed balance was only 750,000. All three ledgers retained the original balances and nonce and did not include the invalid transaction in any committed block. RPC queries confirmed state on all three nodes. Validator 0 restarted and retained the valid transfer and app hash.
+
+Go adapter tests/static analysis passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, run 42359852685. No Go adapter code changed in the subsequent Python/query integration work.
 
 ## Remaining work
 
