@@ -185,6 +185,39 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertEqual(height.value, b'{"height":0}')
         self.assertNotEqual(proof.code, 0)
 
+    def test_evidence_query_is_bounded_and_paginated(self):
+        self.app._evidence_journal = [
+            {"evidence_id": f"{index:064x}", "type": 1}
+            for index in range(3)
+        ]
+        request = canonical_json({"offset": 1, "limit": 1})
+        response = self.servicer.Query(
+            types_pb2.RequestQuery(path="/evidence", data=request),
+            self.context,
+        )
+        self.assertEqual(response.code, 0)
+        import json
+        value = json.loads(response.value)
+        self.assertEqual(len(value["evidence"]), 1)
+        self.assertEqual(value["evidence"][0]["evidence_id"], f"{1:064x}")
+        self.assertEqual(value["offset"], 1)
+        self.assertEqual(value["limit"], 1)
+        self.assertEqual(value["total_count"], 3)
+        self.assertEqual(value["next_offset"], 2)
+
+    def test_evidence_query_rejects_noncanonical_or_invalid_page_requests(self):
+        for raw in (
+            b'{"limit": 1, "offset": 0}',
+            canonical_json({"offset": True, "limit": 1}),
+            canonical_json({"offset": 0, "limit": 101}),
+            canonical_json({"offset": 0, "limit": 1, "extra": 1}),
+        ):
+            response = self.servicer.Query(
+                types_pb2.RequestQuery(path="/evidence", data=raw),
+                self.context,
+            )
+            self.assertNotEqual(response.code, 0)
+
     def test_vote_extensions_are_explicitly_disabled(self):
         extended = self.servicer.ExtendVote(types_pb2.RequestExtendVote(), self.context)
         accepted = self.servicer.VerifyVoteExtension(
