@@ -13,7 +13,7 @@
 - Deterministic blocks with sequential heights, parent hashes, transaction bytes, and state roots.
 - SQLite persistence and restart recovery by replaying every stored block from the genesis snapshot.
 - Tests for protocol validation, ledger invariants, block restoration, rejected-block atomicity, and persisted-block tampering.
-- GitHub Actions workflow definition.
+- GitHub Actions workflow definition.\n- ABCI++-style application lifecycle facade with isolated proposal/finalized candidate state; see `ABCI_APPLICATION_BOUNDARY.md`. This is not yet an ABCI transport or CometBFT integration.
 
 ## Design documents added
 
@@ -24,7 +24,7 @@
 
 ## Not yet implemented
 
-- Independent validators, validator registration, voting, consensus, fork choice, or peer-to-peer networking.
+- ABCI protobuf/socket transport and CometBFT process integration.\n- Independent validators, validator registration, voting, consensus, fork choice, or peer-to-peer networking.
 - Block production across multiple nodes or multi-writer coordination.
 - Wallet, RPC/API, explorer, public network, or production genesis allocation.
 - Crash fault-injection, backup/restore procedures, schema migrations, or external security audit.
