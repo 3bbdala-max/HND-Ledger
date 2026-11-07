@@ -58,3 +58,19 @@ def test_supply_cap_cannot_be_exceeded_at_initialization():
     key = Ed25519PrivateKey.generate()
     with pytest.raises(LedgerError, match="supply"):
         LedgerState(balances={identity(key): 101}, supply_cap=100)
+
+
+def test_nonce_overflow_is_rejected_without_mutation():
+    from hnd_ledger.protocol import MAX_U64
+
+    alice, bob, alice_id, bob_id, state = setup_state()
+    state.next_nonces[alice_id] = MAX_U64
+    tx = create_transaction(alice, bob_id, 1, MAX_U64)
+    before_balances = dict(state.balances)
+    before_nonces = dict(state.next_nonces)
+
+    with pytest.raises(LedgerError, match="nonce overflow"):
+        state.apply(tx)
+
+    assert state.balances == before_balances
+    assert state.next_nonces == before_nonces
