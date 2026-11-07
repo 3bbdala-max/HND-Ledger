@@ -91,6 +91,10 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
           go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go"
+      - name: Reproduce shared FilePV multi-process dual-sign risk (expected unsafe behavior)
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go" --shared-filepv-dual-writer-probe
       - name: Run authenticated Noise remote-signer integration and unauthorized-peer rejection probe
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
