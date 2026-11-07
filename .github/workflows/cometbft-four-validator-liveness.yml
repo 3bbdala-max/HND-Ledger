@@ -217,14 +217,14 @@ jobs:
           done
           partition_target=$((partition_baseline + 5))
           echo "Partitioning validator 0 at height $partition_baseline; target for remaining quorum: $partition_target"
-          sudo iptables -I INPUT 1 -s 127.0.0.0/8 -d 127.0.0.2/32 -j DROP
-          sudo iptables -I OUTPUT 1 -s 127.0.0.2/32 -d 127.0.0.0/8 -j DROP
+          sudo iptables -I INPUT 1 -i lo -p tcp --dport 27656 -j DROP
+          sudo iptables -I OUTPUT 1 -o lo -p tcp --dport 27657:27659 -j DROP
           sudo iptables -vnL INPUT
           sudo iptables -vnL OUTPUT
           partitioned=true
           remove_partition() {
-            sudo iptables -D INPUT -s 127.0.0.0/8 -d 127.0.0.2/32 -j DROP 2>/dev/null || true
-            sudo iptables -D OUTPUT -s 127.0.0.2/32 -d 127.0.0.0/8 -j DROP 2>/dev/null || true
+            sudo iptables -D INPUT -i lo -p tcp --dport 27656 -j DROP 2>/dev/null || true
+            sudo iptables -D OUTPUT -o lo -p tcp --dport 27657:27659 -j DROP 2>/dev/null || true
             partitioned=false
           }
           trap 'if [[ "$partitioned" == true ]]; then remove_partition; fi; cleanup' EXIT
