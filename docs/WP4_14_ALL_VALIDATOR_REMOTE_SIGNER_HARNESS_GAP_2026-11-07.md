@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-07  
 **Branch:** `phase-0.2-planning`  
-**Current status:** All-four remote-signer test harness implemented and CI-validated over Unix and authenticated Noise; production signer operations and distributed fencing remain OPEN  
+**Current status:** All-four remote-signer test harness and same-host helper lock CI-validated over Unix and authenticated Noise; production signer operations and distributed fencing remain OPEN  
 **Scope:** Disposable four-validator CometBFT integration harness
 
 ## Current acceptance status (latest evidence, 2026-11-07)
@@ -22,6 +22,9 @@ initial discovery and intermediate implementation stages.
   the all-four signer runs: **CI PASS**.
 - Remote-only CLI rejects missing signer, key-generation commands, and
   unauthenticated TCP endpoints: **CI PASS**.
+- Same-host advisory single-writer lock in Unix and Noise test helpers,
+  including duplicate-process contention rejection and safe state-digest
+  handoff: **CI PASS** (run `42336661940`).
 - Multi-host exclusive ownership, durable distributed fencing, stale-leader
   rejection, and production-grade failover: **OPEN**.
 - Production key custody/HSM, operational approval, signed releases,
