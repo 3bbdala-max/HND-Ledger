@@ -454,8 +454,13 @@ def main():
             set_partition(relays,partition_groups_31)
             wait(lambda:partition_ready(urls,nodeids,partition_groups_31),"3/1 peer isolation")
             baseline31=[rpc_status(u) for u in urls]
+            # Capture quorum and isolated baselines independently. The isolated
+            # validator may already be one block behind when the relay cut completes;
+            # partition safety means it must not advance beyond its own baseline.
             baseheight31=int(baseline31[0]["sync_info"]["latest_block_height"])
+            baseheight31_isolated=int(baseline31[3]["sync_info"]["latest_block_height"])
             baseblock31=baseline31[0]["sync_info"]["latest_block_hash"]
+            baseblock31_isolated=baseline31[3]["sync_info"]["latest_block_hash"]
             baseapp31=[app_hash(u) for u in urls]
             basealice31=account(urls[3],aid)["balance"]
             part_tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=77,nonce=(2 if signer_binary else 1)))
@@ -480,7 +485,7 @@ def main():
                 quorum_bob=[account(u,bid)["balance"] for u in urls[:3]]
                 partition_probe.update({
                     "baseline_height":baseheight31,
-                    "baseline_isolated_block_hash":baseblock31,
+                    "baseline_isolated_block_hash":baseblock31_isolated,
                     "baseline_isolated_app_hash":baseapp31[3],
                     "baseline_isolated_alice":basealice31,
                     "isolated_height":isolated_height,
@@ -492,8 +497,8 @@ def main():
                     "expected_quorum_alice":expected_alice_partition,
                     "expected_quorum_bob":expected_bob_partition,
                 })
-                if isolated_height != baseheight31: return None
-                if isolated_hash != baseblock31: return None
+                if isolated_height != baseheight31_isolated: return None
+                if isolated_hash != baseblock31_isolated: return None
                 if isolated_alice != basealice31: return None
                 if isolated_app_hash != baseapp31[3]: return None
                 if any(x != expected_alice_partition for x in quorum_alice): return None
