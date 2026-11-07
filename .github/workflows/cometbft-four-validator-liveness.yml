@@ -124,7 +124,11 @@ jobs:
             sleep 1
             kill -0 "${GO_PIDS[$i]}"
             if [[ "$i" -eq 0 ]]; then
-              sudo -u hnd-validator0 cometbft start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
+              # sudo resets PATH on the hosted runner; resolve the pinned
+              # Go-installed binary before changing user and pass its absolute path.
+              local cometbft_bin
+              cometbft_bin="$(command -v cometbft)"
+              sudo -u hnd-validator0 "$cometbft_bin" start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
             else
               cometbft start --home "$ROOT/node$i" >"$DATA/node-$i.log" 2>&1 &
             fi
