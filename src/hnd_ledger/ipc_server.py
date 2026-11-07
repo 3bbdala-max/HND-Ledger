@@ -47,7 +47,7 @@ def decode_request(raw: bytes) -> tuple[str, str, dict[str, Any]]:
     """Validate one complete request frame and return id, method, payload."""
     if not isinstance(raw, bytes) or not raw or len(raw) > MAX_FRAME_BYTES:
         raise IPCError("request frame is empty or exceeds the size limit")
-    if not raw.endswith(b"\\n") or raw.count(b"\\n") != 1:
+    if not raw.endswith(b"\n") or raw.count(b"\n") != 1:
         raise IPCError("request must contain exactly one newline-terminated frame")
     envelope = _loads_object(raw[:-1])
     if set(envelope) != {"protocol", "id", "method", "payload"}:
@@ -79,7 +79,7 @@ def encode_response(request_id: str, *, result: Any = None,
         response["error"] = error
     try:
         raw = json.dumps(response, separators=(",", ":"), sort_keys=True,
-                         ensure_ascii=True, allow_nan=False).encode("utf-8") + b"\\n"
+                         ensure_ascii=True, allow_nan=False).encode("utf-8") + b"\n"
     except (TypeError, ValueError) as exc:
         raise IPCError("dispatcher returned a non-JSON result") from exc
     if len(raw) > MAX_FRAME_BYTES:
