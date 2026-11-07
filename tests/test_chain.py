@@ -583,3 +583,34 @@ def test_duplicate_signed_transaction_is_rejected_within_and_across_blocks(tmp_p
     assert restored.state.balances == committed_state
     assert restored.state.next_nonces == committed_nonces
     restored.close()
+
+@pytest.mark.parametrize("tamper", ["stored_height", "previous_hash"])
+def test_recovery_rejects_tampered_block_position_or_parent(tmp_path, tamper):
+    import cbor2
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / f"tampered-{tamper}.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 20}, supply_cap=20))
+    chain.append([create_transaction(alice, bob_id, 5, 0)])
+    chain.close()
+
+    db = sqlite3.connect(path)
+    if tamper == "stored_height":
+        db.execute("UPDATE blocks SET height=2 WHERE height=1")
+    else:
+        payload = db.execute(
+            "SELECT payload FROM blocks WHERE height=1"
+        ).fetchone()[0]
+        decoded = cbor2.loads(payload)
+        decoded[2] = bytes([7]) * 32
+        db.execute(
+            "UPDATE blocks SET payload=? WHERE height=1",
+            (cbor2.dumps(decoded, canonical=True),),
+        )
+    db.commit()
+    db.close()
+
+    with pytest.raises(ChainError):
+        LocalChain(path)
