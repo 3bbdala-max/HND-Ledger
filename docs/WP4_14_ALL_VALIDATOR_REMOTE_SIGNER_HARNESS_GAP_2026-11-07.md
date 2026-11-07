@@ -89,3 +89,19 @@ The exact CometBFT source revision pinned by CI, `0880b4d378f347ab16e54ec677ff50
 - In `privval/file.go`, `LoadFilePV` exits if either the key or state file cannot be read. `LoadOrGenFilePV` generates a new local FilePV if the key file is absent. This is a material reason to test the actual CLI/startup path with missing local key files, rather than assuming absence is safe or assuming it causes fallback. The node's external-listener branch and the CLI's construction of the initial validator object must be exercised together.
 
 **Evidence boundary:** this is source inspection of the pinned revision, not an executed negative startup test. It confirms the external-client replacement branch and the dangerous local load-or-generate behavior as separate code paths. The all-validator harness must prove that the exact node command, config, and startup sequence select the external client for every validator and never create or retain a local private key. The proposed downgrade matrix remains open until executed.
+
+
+## CLI default-provider local FilePV generation confirmed (2026-11-07)
+
+A further source trace closed the ambiguity left by the previous section. In the same CI-pinned CometBFT revision `0880b4d378f347ab16e54ec677ff50d803f37d62`:
+
+- `cmd/cometbft/main.go` assigns `nodeFunc := nm.DefaultNewNode` and passes it to `NewRunNodeCmd`.
+- `cmd/cometbft/commands/run_node.go` invokes that provider directly in the `start` command: `n, err := nodeProvider(config, logger)`.
+- `node/setup.go`, in `DefaultNewNode`, evaluates `privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())` as an argument to `NewNode(...)`.
+- Only after that provider has created/loaded the local FilePV does `node/node.go`'s `NewNodeWithContext` replace the supplied `privValidator` with the external socket client when `PrivValidatorListenAddr` is non-empty.
+
+**Conclusion:** the standard CometBFT CLI `start` path does invoke local FilePV load-or-generate before the remote-signer replacement. With a missing local key file, `LoadOrGenFilePV` generates and saves a new local consensus key/state pair, even though the subsequently constructed node uses the remote signer client. This is stronger than the prior source-level warning: it establishes a concrete local-key-provisioning hazard in the default CLI provider path.
+
+**Required engineering response:** do not treat deletion of the local key file as a safe configuration for the stock CLI provider. The all-validator harness must either use a deliberately constructed custom `node.Provider` that supplies a non-local placeholder/appropriate validator object without invoking `LoadOrGenFilePV`, or use a patched/approved upstream startup path whose behavior is explicitly tested. Any custom provider must be reviewed against all call sites that may dereference the initially supplied validator before the remote-client substitution. Tests must assert that no local `priv_validator_key.json` is created and that the remote signer public key is the only validator identity used by consensus.
+
+**Evidence boundary:** this conclusion is a static call-path trace across the pinned source files, not yet an executed CLI negative test. The harness refactor and negative startup test remain OPEN. It does not establish that the current HND harness invokes the stock CLI provider; that must be checked in the HND test runner itself before applying this finding to its runtime behavior.
