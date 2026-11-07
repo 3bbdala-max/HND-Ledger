@@ -14,7 +14,7 @@ Status: local CometBFT integration subset passed, including a live four-validato
 | C-02a | One-node CometBFT restart and continued block production | Run 42360867084 | PASS |
 | C-08 | Live network partition: validator 0 remains running but isolated; validators 1–3 retain quorum and advance | Commit `747560b396344d89d3fb223fe12ee29c95684a0c`, run `42377936382`; validator 0 peers=0, validators 1–3 peers=2 each; heights 7 vs 12 | PASS (single CI host) |
 | C-09 | Heal partition; isolated validator catches up and all four app hashes converge | Same commit/run; all four agree at height 12, app hash `2FA595F9328078EB77A6EE62BDAD3743D619B1371BB82DD78AD0D98FAECC03A9` | PASS (single CI host) |
-| C-10a | FilePV reload after persisted Prevote: same H/R/S vote reuses identical signature; conflicting block vote is rejected | Commit `54229259b05ed322f94deaaf87abf532c788c5b3`, Go adapter workflow run `42378294015`, job `128420347444`; `go test ./...` passed, including `internal/consensusguard` | PASS (targeted FilePV reload unit test only; not a process-crash integration test) |
+
 | C-12 | Wrong chain ID and conflicting genesis retry rejected | Python tests, run 42360867069 | PASS |
 | C-14 | Malformed and oversized IPC frames rejected | Python/Go tests | PASS |
 | C-15 | Deterministic state replay and commitment agreement | Runs 42360867084 and 42360867085 | PASS |
@@ -31,7 +31,8 @@ The three-validator test used separate processes and data directories on one CI 
 | C-05 | Vote from wrong chain ID | Message rejected |
 | C-06 | Byzantine voting power below one-third | Safety maintained within protocol fault assumptions |
 | C-07 | Byzantine voting power at or above one-third | No unsupported safety/liveness guarantee claimed |
-| C-10 | Validator process crashes after signing, then restarts in a live CometBFT integration | Restart cannot produce conflicting signature |
+| C-10a | FilePV reload after persisted Prevote: same H/R/S vote reuses identical signature; conflicting block vote is rejected | Commit `54229259b05ed322f94deaaf87abf532c788c5b3`, Go adapter workflow run `42378294015`, job `128420347444`; `go test ./...` passed | PASS (reload unit test) |
+| C-10b | Signing helper process exits immediately after FilePV signs and persists; parent process reloads state and retries/conflicts | Commit `95f6ffb996e77661c809f536981461558d56640a`; test added, CI evidence not yet available | PENDING CI; not a CometBFT node crash integration |
 | C-11 | Validator-set update | Old/new set boundary follows protocol rules |
 | C-13 | State sync from trusted checkpoint | Replayed state commitment matches checkpoint |
 | C-16 | Sustained adversarial mempool load | Bounded resource use and deterministic rejection |
