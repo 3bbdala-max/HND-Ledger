@@ -699,3 +699,51 @@ def test_recovery_rejects_missing_chain_tip_anchor(tmp_path):
 
     with pytest.raises(ChainError, match="tip commitment is missing"):
         LocalChain(path)
+
+
+def test_legacy_chain_tip_metadata_migrates_once(tmp_path):
+    import cbor2
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "legacy-tip-migration.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 30}, supply_cap=30))
+    block = chain.append([create_transaction(alice, bob_id, 5, 0)])
+    chain.close()
+
+    db = sqlite3.connect(path)
+    db.execute("DELETE FROM metadata WHERE key IN ('chain_tip', 'chain_tip_version')")
+    db.commit()
+    db.close()
+
+    migrated = LocalChain(path)
+    assert migrated.height == 1
+    assert migrated.tip_hash == block.block_hash
+    anchor_raw = migrated.db.execute(
+        "SELECT value FROM metadata WHERE key='chain_tip'"
+    ).fetchone()[0]
+    version_raw = migrated.db.execute(
+        "SELECT value FROM metadata WHERE key='chain_tip_version'"
+    ).fetchone()[0]
+    assert cbor2.loads(anchor_raw) == [1, 1, block.block_hash]
+    assert cbor2.loads(version_raw) == 1
+    migrated.close()
+
+
+@pytest.mark.parametrize("key", ["chain_tip", "chain_tip_version"])
+def test_recovery_rejects_malformed_chain_tip_metadata(tmp_path, key):
+    alice = Ed25519PrivateKey.generate()
+    alice_id = account(alice)
+    path = tmp_path / f"malformed-{key}.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 10}, supply_cap=10))
+    chain.append([])
+    chain.close()
+
+    db = sqlite3.connect(path)
+    db.execute("UPDATE metadata SET value=? WHERE key=?", (b"\\xff", key))
+    db.commit()
+    db.close()
+
+    with pytest.raises(ChainError):
+        LocalChain(path)
