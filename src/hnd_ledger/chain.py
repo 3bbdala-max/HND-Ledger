@@ -182,7 +182,47 @@ class LocalChain:
     def height(self) -> int:
         return len(self.blocks)
 
+    def _assert_tip_metadata(self) -> None:
+        import cbor2
+
+        version_row = self.db.execute(
+            "SELECT value FROM metadata WHERE key='chain_tip_version'"
+        ).fetchone()
+        if version_row is None:
+            raise ChainError("chain tip metadata version is missing")
+        try:
+            version = cbor2.loads(version_row[0])
+            if (cbor2.dumps(version, canonical=True) != version_row[0]
+                    or isinstance(version, bool) or version != 1):
+                raise ChainError("unsupported chain tip metadata version")
+        except ChainError:
+            raise
+        except Exception as exc:
+            raise ChainError("invalid chain tip metadata version") from exc
+
+        tip_row = self.db.execute(
+            "SELECT value FROM metadata WHERE key='chain_tip'"
+        ).fetchone()
+        if tip_row is None:
+            raise ChainError("persisted chain tip commitment is missing")
+        try:
+            raw = tip_row[0]
+            anchor = cbor2.loads(raw)
+            if (not isinstance(raw, bytes)
+                    or cbor2.dumps(anchor, canonical=True) != raw
+                    or not isinstance(anchor, list) or len(anchor) != 3
+                    or isinstance(anchor[0], bool) or anchor[0] != 1
+                    or isinstance(anchor[1], bool) or not isinstance(anchor[1], int)
+                    or anchor[1] != self.height
+                    or not isinstance(anchor[2], bytes) or anchor[2] != self.tip_hash):
+                raise ChainError("persisted chain tip commitment mismatch")
+        except ChainError:
+            raise
+        except Exception as exc:
+            raise ChainError("invalid persisted chain tip commitment") from exc
+
     def append(self, transactions: Iterable[Transaction]) -> Block:
+        self._assert_tip_metadata()
         txs = tuple(transactions)
         candidate = LedgerState(
             balances=dict(self.state.balances),
@@ -210,10 +250,12 @@ class LocalChain:
                     "INSERT INTO blocks(height,payload,block_hash) VALUES(?,?,?)",
                     (height, payload, block_hash),
                 )
-                self.db.execute(
+                cursor = self.db.execute(
                     "UPDATE metadata SET value=? WHERE key='chain_tip'",
                     (canonical_cbor([1, height, block_hash]),),
                 )
+                if cursor.rowcount != 1:
+                    raise ChainError("chain tip commitment is missing; refusing block append")
         except sqlite3.IntegrityError as exc:
             raise ChainError("block persistence conflict") from exc
         block = Block(height, previous, encoded, root, block_hash)

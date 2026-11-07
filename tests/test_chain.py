@@ -747,3 +747,39 @@ def test_recovery_rejects_malformed_chain_tip_metadata(tmp_path, key):
 
     with pytest.raises(ChainError):
         LocalChain(path)
+
+
+def test_append_fails_closed_if_tip_anchor_is_removed_while_open(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    alice_id = account(alice)
+    path = tmp_path / "removed-tip-while-open.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 10}, supply_cap=10))
+
+    external = sqlite3.connect(path)
+    external.execute("DELETE FROM metadata WHERE key='chain_tip'")
+    external.commit()
+    external.close()
+
+    with pytest.raises(ChainError, match="tip commitment is missing"):
+        chain.append([])
+    assert chain.height == 0
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    chain.close()
+
+
+def test_append_fails_closed_if_tip_version_is_removed_while_open(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    alice_id = account(alice)
+    path = tmp_path / "removed-tip-version-while-open.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 10}, supply_cap=10))
+
+    external = sqlite3.connect(path)
+    external.execute("DELETE FROM metadata WHERE key='chain_tip_version'")
+    external.commit()
+    external.close()
+
+    with pytest.raises(ChainError, match="metadata version is missing"):
+        chain.append([])
+    assert chain.height == 0
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    chain.close()
