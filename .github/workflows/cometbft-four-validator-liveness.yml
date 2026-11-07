@@ -208,7 +208,62 @@ jobs:
             exit 1
           }
 
-          common_height=$((target))
+          # Isolate a live validator at the TCP/P2P layer without stopping its processes.
+          partition_baseline=0
+          for i in 1 2 3; do
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$DATA/partition-before-$i.json"
+            h=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/partition-before-$i.json")
+            (( h > partition_baseline )) && partition_baseline=$h
+          done
+          partition_target=$((partition_baseline + 2))
+          echo "Partitioning validator 0 at height $partition_baseline; target for remaining quorum: $partition_target"
+          sudo iptables -I INPUT 1 -p tcp --dport 27656 -j DROP
+          sudo iptables -I OUTPUT 1 -p tcp --dport 27657:27659 -j DROP
+          partitioned=true
+          remove_partition() {
+            sudo iptables -D INPUT -p tcp --dport 27656 -j DROP 2>/dev/null || true
+            sudo iptables -D OUTPUT -p tcp --dport 27657:27659 -j DROP 2>/dev/null || true
+            partitioned=false
+          }
+          trap 'if [[ "$partitioned" == true ]]; then remove_partition; fi; cleanup' EXIT
+
+          partition_progress=false
+          for _ in $(seq 1 120); do
+            count=0
+            for i in 1 2 3; do
+              if curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$DATA/partition-active-$i.json"; then
+                h=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/partition-active-$i.json")
+                [[ "$h" -ge "$partition_target" ]] && count=$((count+1))
+              fi
+            done
+            if [[ "$count" -eq 3 ]]; then partition_progress=true; break; fi
+            sleep 1
+          done
+          [[ "$partition_progress" == true ]] || { echo "Remaining quorum did not advance during live network partition"; exit 1; }
+          curl --silent --fail http://127.0.0.1:26657/status -o "$DATA/partition-isolated-0.json"
+          isolated_height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/partition-isolated-0.json")
+          [[ "$isolated_height" -lt "$partition_target" ]] || {
+            echo "Validator 0 advanced despite partition rules; isolation was not demonstrated"
+            exit 1
+          }
+          echo "PASS: active quorum reached $partition_target while live isolated validator 0 remained at $isolated_height."
+
+          remove_partition
+          healed=false
+          for _ in $(seq 1 180); do
+            curl --silent --fail http://127.0.0.1:26657/status -o "$DATA/healed-0.json" || { sleep 1; continue; }
+            h0=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/healed-0.json")
+            if [[ "$h0" -ge "$partition_target" ]]; then healed=true; break; fi
+            sleep 1
+          done
+          [[ "$healed" == true ]] || {
+            echo "Validator 0 failed to catch up after network partition healed"
+            cat "$DATA/node-0.log" || true
+            exit 1
+          }
+          echo "PASS: validator 0 caught up after network partition healing."
+
+          common_height=$((partition_target))
           for i in 0 1 2 3; do
             for _ in $(seq 1 60); do
               if curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=$common_height" -o "$DATA/commit-$i.json"; then break; fi
