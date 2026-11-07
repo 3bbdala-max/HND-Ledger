@@ -109,10 +109,56 @@ def test_invalid_proposal_is_rejected_and_unsupported_methods_fail_closed(tmp_pa
     invalid = encode_transaction(create_transaction(alice, _key_account(bob), 101, 0))
     assert dispatcher("ProcessProposal", {"txs": [_b64(invalid)]}) == {"status": 2}
     try:
-        dispatcher("Query", {})
+        dispatcher("ListSnapshots", {})
         assert False, "unsupported method should fail closed"
     except NotImplementedError:
         pass
+    chain.close()
+
+
+
+def test_query_returns_read_only_account_and_ledger_info(tmp_path):
+    dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path)
+    before_hash = chain.tip_hash
+    before_state = chain.state.total_supply
+
+    account_result = dispatcher("Query", {
+        "path": "/hnd/v1/account", "data": _b64(alice_id),
+    })
+    account_value = json.loads(base64.b64decode(account_result["value"]))
+    assert account_result["code"] == 0
+    assert base64.b64decode(account_result["key"]) == alice_id
+    assert account_value == {
+        "account_id": alice_id.hex(), "balance": 100,
+        "next_nonce": 0, "height": 0,
+    }
+
+    info_result = dispatcher("Query", {"path": "/hnd/v1/info"})
+    info_value = json.loads(base64.b64decode(info_result["value"]))
+    assert info_result["code"] == 0
+    assert info_value["chain_id"] == "HND-LOCAL-V2"
+    assert info_value["height"] == 0
+    assert info_value["supply_cap"] == 100
+    assert info_value["total_supply"] == 100
+    assert info_value["state_commitment"] == dispatcher.application.app_hash.hex()
+
+    assert chain.tip_hash == before_hash
+    assert chain.state.total_supply == before_state
+    chain.close()
+
+
+def test_query_rejects_proofs_historical_heights_and_bad_account_ids(tmp_path):
+    dispatcher, chain, *_ = _dispatcher(tmp_path)
+    assert dispatcher("Query", {
+        "path": "/hnd/v1/info", "prove": True,
+    })["code"] == 1
+    assert dispatcher("Query", {
+        "path": "/hnd/v1/info", "height": 1,
+    })["code"] == 1
+    assert dispatcher("Query", {
+        "path": "/hnd/v1/account", "data": _b64(b"short"),
+    })["code"] == 1
+    assert dispatcher("Query", {"path": "/unknown"})["code"] == 1
     chain.close()
 
 
