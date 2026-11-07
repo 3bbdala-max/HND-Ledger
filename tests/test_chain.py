@@ -614,3 +614,24 @@ def test_recovery_rejects_tampered_block_position_or_parent(tmp_path, tamper):
 
     with pytest.raises(ChainError):
         LocalChain(path)
+
+def test_recovery_rejects_missing_middle_block(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "missing-middle-block.sqlite"
+    chain = LocalChain(
+        path, LedgerState(balances={alice_id: 30}, supply_cap=30)
+    )
+    chain.append([create_transaction(alice, bob_id, 5, 0)])
+    chain.append([create_transaction(alice, bob_id, 7, 1)])
+    assert chain.height == 2
+    chain.close()
+
+    db = sqlite3.connect(path)
+    db.execute("DELETE FROM blocks WHERE height=1")
+    db.commit()
+    db.close()
+
+    with pytest.raises(ChainError, match="height sequence"):
+        LocalChain(path)
