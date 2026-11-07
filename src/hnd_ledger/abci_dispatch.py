@@ -131,6 +131,8 @@ class ABCIDispatcher:
                     cbor_payload = base64.b64decode(envelope["payload"], validate=True)
                 except (binascii.Error, ValueError) as exc:
                     raise ValueError("genesis payload is not valid base64") from exc
+                if base64.b64encode(cbor_payload).decode("ascii") != envelope["payload"]:
+                    raise ValueError("genesis payload base64 is not canonical")
                 decoded = cbor2.loads(cbor_payload)
                 if cbor2.dumps(decoded, canonical=True) != cbor_payload:
                     raise ValueError("non-canonical genesis CBOR payload")
