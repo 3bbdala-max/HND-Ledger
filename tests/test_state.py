@@ -74,3 +74,19 @@ def test_nonce_overflow_is_rejected_without_mutation():
 
     assert state.balances == before_balances
     assert state.next_nonces == before_nonces
+
+
+def test_corrupt_preexisting_supply_is_rejected_without_partial_mutation():
+    alice, bob, alice_id, bob_id, state = setup_state()
+    tx = create_transaction(alice, bob_id, 10, 0)
+
+    # Simulate out-of-band corruption of the mutable in-memory balance map.
+    state.balances[bob_id] = 1
+    before_balances = dict(state.balances)
+    before_nonces = dict(state.next_nonces)
+
+    with pytest.raises(LedgerError, match="current state exceeds supply cap"):
+        state.apply(tx)
+
+    assert state.balances == before_balances
+    assert state.next_nonces == before_nonces
