@@ -63,3 +63,18 @@ This CI run is not a production certification or independent security audit. In 
 **Production readiness: NOT APPROVED.**
 
 The successful run closes the outstanding CI execution question for commit `15157e5fbea1c0bd603f22f3a8b640f62eef82c9`; it does not close the separate architecture, governance, operational, or independent-review gates listed above.
+
+## 5. Follow-up CI execution — latest documentation commits
+
+The branch subsequently completed two additional workflow runs after the original evidence above:
+
+| Run | Tested commit | HND v0.2 job | CometBFT integration job | Overall |
+|---|---|---|---|---|
+| [42325903045](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42325903045) | `bd8c36d161836235bdfd0d5e48471722a7430b22` | SUCCESS | SUCCESS | SUCCESS |
+| [42325925671](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42325925671) | `6640133e073fd74250d995e236560c56c8ddeb26` | SUCCESS | SUCCESS | SUCCESS |
+
+Both runs completed both jobs with no failed steps. These runs validate the repository state at their respective exact commits, including the documentation updates that distinguish the reproduced shared-FilePV dual-sign behavior from the separate signer-authorization TOCTOU concern and record the validator-4-only external-signer limitation.
+
+The validator-4-only limitation remains an explicit test-coverage gap: the four-validator fixture still does not configure an external signer for validators 1–3. A successful workflow must not be interpreted as evidence that all validators are forced through remote signing, that local-signer fallback is impossible, or that cross-process/multi-host fencing exists.
+
+**Updated CI conclusion:** the latest two branch-head documentation commits both have fully successful CI. **Production readiness remains NOT APPROVED.**
