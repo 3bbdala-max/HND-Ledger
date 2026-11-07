@@ -19,7 +19,9 @@ def _b64(raw):
 
 
 def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_path):
-    # Build the largest nonce-ordered batch that fits both block limits.
+    # Reserve room for the canonical block envelope, state root, and block hash.
+    # MAX_BLOCK_BYTES also caps the complete persisted block, not just tx bytes.
+    block_tx_budget = MAX_BLOCK_BYTES - 256
     sender = Ed25519PrivateKey.generate()
     recipient = Ed25519PrivateKey.generate()
     sender_id = _account_id(sender)
@@ -29,7 +31,7 @@ def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_pa
     total_bytes = 0
     for nonce in range(min(MAX_BLOCK_TRANSACTIONS, MAX_MEMPOOL_ITEMS)):
         raw = encode_transaction(create_transaction(sender, recipient_id, 1, nonce))
-        if total_bytes + len(raw) > min(MAX_BLOCK_BYTES, MAX_MEMPOOL_BYTES):
+        if total_bytes + len(raw) > min(block_tx_budget, MAX_MEMPOOL_BYTES):
             break
         transactions.append(raw)
         total_bytes += len(raw)
@@ -37,7 +39,7 @@ def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_pa
     count = len(transactions)
     assert count > 0
     assert count <= MAX_BLOCK_TRANSACTIONS
-    assert total_bytes <= MAX_BLOCK_BYTES
+    assert total_bytes <= block_tx_budget
     assert total_bytes <= MAX_MEMPOOL_BYTES
 
     chain = LocalChain(
