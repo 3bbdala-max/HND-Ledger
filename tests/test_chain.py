@@ -1,10 +1,12 @@
 import sqlite3
+import subprocess
+import sys
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hnd_ledger.chain import ChainError, LocalChain, state_commitment
-from hnd_ledger.protocol import account_id, create_transaction
+from hnd_ledger.protocol import CHAIN_ID, account_id, create_transaction, encode_transaction
 from hnd_ledger.state import LedgerState
 
 
@@ -112,6 +114,50 @@ def test_block_persistence_failure_rolls_back_without_state_advance(tmp_path):
     assert reopened.state.next_nonces == {}
     assert reopened.blocks == []
     reopened.close()
+
+
+
+def test_process_crash_during_block_insert_recovers_genesis_state(tmp_path):
+    key = Ed25519PrivateKey.generate()
+    recipient_key = Ed25519PrivateKey.generate()
+    sender_id = account(key)
+    recipient_id = account(recipient_key)
+    initial = LedgerState(balances={sender_id: 100}, supply_cap=100)
+    path = tmp_path / "crash-during-block.sqlite"
+    chain = LocalChain(path, initial)
+    chain.close()
+    raw = encode_transaction(create_transaction(key, recipient_id, 40, 0))
+
+    child = r"""
+import os
+import sys
+from hnd_ledger.chain import LocalChain
+from hnd_ledger.protocol import CHAIN_ID, decode_transaction
+
+chain = LocalChain(sys.argv[1])
+chain.db.create_function("crash_now", 0, lambda: os._exit(73))
+chain.db.execute(
+    "CREATE TRIGGER crash_during_insert AFTER INSERT ON blocks "
+    "BEGIN SELECT crash_now(); END"
+)
+chain.db.commit()
+chain.append([decode_transaction(bytes.fromhex(sys.argv[2]), CHAIN_ID)])
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", child, str(path), raw.hex()],
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 73, result.stderr.decode(errors="replace")
+
+    recovered = LocalChain(path)
+    assert recovered.height == 0
+    assert recovered.state.balances == {sender_id: 100}
+    assert recovered.state.next_nonces == {}
+    assert recovered.blocks == []
+    assert recovered.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    recovered.close()
 
 
 def test_append_and_restore_preserves_state(tmp_path):
