@@ -173,3 +173,8 @@ Scope limitation: these tests verify record/signature primitives and an in-memor
 ## Checkpoint reconciliation assessment
 
 Added a pure fail-closed assessment for local tip versus trusted checkpoint. Tests cover unanchored, exact match, local behind, local ahead requiring explicit suffix verification, divergent commitments, wrong chain/genesis, and boolean height rejection. The assessment is not yet integrated into startup or commit paths and does not independently prove suffix ancestry.
+
+
+## Checkpoint ancestry checks for local-ahead databases
+
+The local-tip assessment accepts the replayed local block hash and app hash at the trusted checkpoint height. A mismatch is rejected as divergence; a match still leaves the suffix in recovery-required status. Tests cover both commitment mismatches and missing/partial ancestry evidence. No writes are enabled merely because the checkpoint is an ancestor.

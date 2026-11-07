@@ -265,3 +265,68 @@ def test_assess_local_tip_rejects_wrong_chain_genesis_and_malformed_local_values
         assess_local_tip(checkpoint, **{**args, "genesis_hash": b"X" * 32})
     with pytest.raises(CheckpointError, match="local height must be an integer"):
         assess_local_tip(checkpoint, **{**args, "height": True})
+
+
+
+def test_ahead_local_chain_must_match_checkpoint_ancestor_before_recovery():
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        assess_local_tip,
+    )
+
+    checkpoint = make_checkpoint(sequence=4, height=9)
+    args = {
+        "chain_id": checkpoint.chain_id,
+        "genesis_hash": checkpoint.genesis_hash,
+        "height": 12,
+        "block_hash": b"L" * 32,
+        "app_hash": b"M" * 32,
+    }
+
+    without_ancestor = assess_local_tip(checkpoint, **args)
+    assert without_ancestor.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
+    assert not without_ancestor.writes_allowed
+
+    matching_ancestor = assess_local_tip(
+        checkpoint,
+        **args,
+        checkpoint_ancestor_block_hash=checkpoint.block_hash,
+        checkpoint_ancestor_app_hash=checkpoint.app_hash,
+    )
+    assert matching_ancestor.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
+    assert "ancestry matches" in matching_ancestor.reason
+    assert not matching_ancestor.writes_allowed
+
+    wrong_block_ancestor = assess_local_tip(
+        checkpoint,
+        **args,
+        checkpoint_ancestor_block_hash=b"X" * 32,
+        checkpoint_ancestor_app_hash=checkpoint.app_hash,
+    )
+    assert wrong_block_ancestor.relation is CheckpointRelation.DIVERGED
+    assert not wrong_block_ancestor.writes_allowed
+
+    wrong_app_ancestor = assess_local_tip(
+        checkpoint,
+        **args,
+        checkpoint_ancestor_block_hash=checkpoint.block_hash,
+        checkpoint_ancestor_app_hash=b"Y" * 32,
+    )
+    assert wrong_app_ancestor.relation is CheckpointRelation.DIVERGED
+    assert not wrong_app_ancestor.writes_allowed
+
+
+def test_checkpoint_ancestor_commitments_must_be_supplied_as_a_pair():
+    from hnd_ledger.rollback_checkpoint import assess_local_tip
+
+    checkpoint = make_checkpoint()
+    with pytest.raises(CheckpointError, match="supplied together"):
+        assess_local_tip(
+            checkpoint,
+            chain_id=checkpoint.chain_id,
+            genesis_hash=checkpoint.genesis_hash,
+            height=2,
+            block_hash=b"B" * 32,
+            app_hash=b"A" * 32,
+            checkpoint_ancestor_block_hash=checkpoint.block_hash,
+        )

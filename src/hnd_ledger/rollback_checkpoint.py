@@ -253,19 +253,28 @@ def assess_local_tip(
     height: int,
     block_hash: bytes,
     app_hash: bytes,
+    checkpoint_ancestor_block_hash: bytes | None = None,
+    checkpoint_ancestor_app_hash: bytes | None = None,
 ) -> CheckpointAssessment:
     """Compare local replay result with the latest independently trusted anchor.
 
-    A local-ahead result is deliberately NOT accepted: the suffix after the
-    trusted checkpoint must be separately verified and explicitly recovered.
-    This function only compares tips; it does not prove ancestry or commit
-    evidence for an unanchored suffix.
+    When the local database is ahead, callers may provide the locally replayed
+    block and application commitments at the checkpoint height. A mismatch
+    proves divergence. A match proves that the trusted checkpoint is an
+    ancestor of the replayed local chain, but the suffix still requires an
+    explicit recovery decision before writes are enabled.
     """
     _hash(chain_id, "local chain_id")
     _hash(genesis_hash, "local genesis_hash")
     _uint(height, "local height")
     _hash(block_hash, "local block_hash")
     _hash(app_hash, "local app_hash")
+
+    if (checkpoint_ancestor_block_hash is None) != (checkpoint_ancestor_app_hash is None):
+        raise CheckpointError("both checkpoint ancestor commitments must be supplied together")
+    if checkpoint_ancestor_block_hash is not None:
+        _hash(checkpoint_ancestor_block_hash, "checkpoint ancestor block hash")
+        _hash(checkpoint_ancestor_app_hash, "checkpoint ancestor app hash")
 
     if checkpoint is None:
         return CheckpointAssessment(
@@ -285,9 +294,27 @@ def assess_local_tip(
             "local database is behind the independently trusted checkpoint",
         )
     if height > checkpoint.height:
+        if checkpoint_ancestor_block_hash is not None and (
+            checkpoint_ancestor_block_hash != checkpoint.block_hash
+            or checkpoint_ancestor_app_hash != checkpoint.app_hash
+        ):
+            return CheckpointAssessment(
+                CheckpointRelation.DIVERGED,
+                "local chain does not contain the trusted checkpoint at its height",
+            )
+        if checkpoint_ancestor_block_hash is None:
+            reason = (
+                "local suffix and checkpoint ancestry have not been verified; "
+                "explicit recovery is required"
+            )
+        else:
+            reason = (
+                "trusted checkpoint ancestry matches, but the local suffix "
+                "still requires explicit verification and recovery"
+            )
         return CheckpointAssessment(
             CheckpointRelation.LOCAL_AHEAD_UNVERIFIED,
-            "local suffix beyond the trusted checkpoint requires explicit verification and recovery",
+            reason,
         )
     if block_hash != checkpoint.block_hash or app_hash != checkpoint.app_hash:
         return CheckpointAssessment(

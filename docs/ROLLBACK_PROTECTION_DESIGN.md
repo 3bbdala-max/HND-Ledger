@@ -102,3 +102,13 @@ On commit `6f093fc69a899244eb3f840f13eae3efb008c6a1`, the checkpoint primitives 
 The signing domain separator is also corrected to use a literal zero byte rather than the printable characters backslash-x-zero-zero.
 
 This is a comparison primitive only. It is not yet wired into `LocalChain`, CometBFT startup, or block commit. It does not establish that an ahead suffix descends from the checkpoint; a future recovery procedure must replay and verify that suffix and require explicit authorization. No production anti-rollback guarantee is claimed.
+
+
+## Checkpoint ancestry assessment
+
+The local-tip assessment now accepts optional local block and application commitments at the trusted checkpoint height. For a local database ahead of the trusted checkpoint:
+- Missing ancestor commitments remain unverified and fail closed.
+- A mismatch in either ancestor commitment is classified as divergence.
+- Matching ancestor commitments establish that the checkpoint appears in the locally replayed chain, but do not authorize writes: the suffix still requires explicit verification and recovery.
+
+New tests cover missing ancestry evidence, matching ancestry, block-hash mismatch, application-hash mismatch, and partial ancestor input. This remains a pure assessment API, not an integrated startup/recovery implementation.
