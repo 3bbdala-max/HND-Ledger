@@ -207,9 +207,12 @@ class LocalChain:
     def _restore(self) -> None:
         import cbor2
         previous = self.tip_hash
-        for expected_height, (stored_payload, stored_hash) in enumerate(
-            self.db.execute("SELECT payload, block_hash FROM blocks ORDER BY height"), start=1
+        for expected_height, (stored_height, stored_payload, stored_hash) in enumerate(
+            self.db.execute("SELECT height, payload, block_hash FROM blocks ORDER BY height"), start=1
         ):
+            if (isinstance(stored_height, bool) or not isinstance(stored_height, int)
+                    or stored_height != expected_height):
+                raise ChainError("stored block height sequence is invalid")
             payload = stored_payload
             try:
                 if not isinstance(payload, bytes) or len(payload) > MAX_BLOCK_BYTES:
