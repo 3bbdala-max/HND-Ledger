@@ -216,3 +216,17 @@ Added `publish_local_chain_checkpoint` on the implementation branch. It verifies
 ## Startup-gate authority race tests
 
 On test commit `39d52b861fbeb2fb9e843500b8a222bd64a9bf1a`, two regression cases verify that the exact-match gate rejects (1) an authority checkpoint that advances between the assessment read and the final read, and (2) an authority outage on that final read. These tests prove rejection of those two simulated races only. They do not prove safety against an authority advancing after the gate returns; runtime leases/fencing and provider-side coordination remain open.
+
+
+## Go IPC cancellation regression — exact-commit evidence
+
+The Go IPC client now closes its active Unix socket when the request context is canceled, interrupting a blocked response read instead of waiting for the 30-second socket timeout. The regression test holds the server response, cancels the client context, and verifies prompt client return and peer-side connection closure.
+
+All five workflows passed on exact test commit `66b95a2162cbd45c39d2635d9e7405b3d4dc7835`:
+- HND Python tests: run `42414469908`.
+- Go adapter tests/static analysis: run `42414469898`.
+- One-node CometBFT: run `42414469758`.
+- Three-validator CometBFT: run `42414469747`.
+- Four-validator CometBFT: run `42414469752`.
+
+The preceding implementation commit `e7f804754cde282d92f061b5c231ae770e55b31a` also passed its Python, Go, one-node, three-validator, and four-validator workflows: `42414454992`, `42414455028`, `42414455000`, `42414454994`, and `42414454998`, respectively. This is a bounded cancellation regression, not a sustained-load or production resilience claim.
