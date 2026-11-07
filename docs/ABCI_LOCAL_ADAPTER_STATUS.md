@@ -69,17 +69,17 @@ that Unix socket.
 
 ## Remaining work before broader validation
 
-- Exercise a three-validator CometBFT network with independent application
-  processes, SQLite databases, IPC sockets, and validator identities.
-- Verify that all validators commit the same block height and application
-  hash, including after one validator is restarted.
-- Add explicit tests for every ABCI method that the chosen CometBFT
-  configuration invokes, especially Query and vote-extension/snapshot
-  behavior; unsupported methods must continue to fail closed.
-- Test crash points between FinalizeBlock and Commit, duplicate/replayed
-  requests, and application-hash agreement.
-- Perform an independent protocol and cryptographic security review before
-  considering any public-network deployment.
+- Add end-to-end signed transfer traffic to the three-validator network,
+  then verify identical committed balances and nonces on every validator.
+- Add crash-injection coverage around the FinalizeBlock/Commit boundary and
+  verify deterministic recovery after process termination at each boundary.
+- Audit every ABCI method invoked by the exact CometBFT configuration,
+  especially Query, snapshots, and vote extensions; unsupported methods must
+  continue to fail closed.
+- Review mempool eviction, duplicate admission, transaction expiry/replay,
+  and resource-exhaustion behavior under adversarial load.
+- Perform an independent protocol, cryptographic, and implementation security
+  review before considering any public-network deployment.
 
 The current genesis handler intentionally refuses non-empty app state. A
 reviewed allocation schema and validator/key-management procedure must be
