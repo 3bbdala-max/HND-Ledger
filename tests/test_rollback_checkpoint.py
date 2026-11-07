@@ -675,3 +675,134 @@ def test_publish_checkpoint_resolves_false_cas_when_candidate_is_already_stored(
         authority.read(b"C" * 32, b"G" * 32)
     ).checkpoint
     assert stored == accepted
+
+
+
+def test_assess_local_chain_accepts_exact_trusted_genesis_match(tmp_path):
+    from hnd_ledger.chain import LocalChain, state_commitment
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        RollbackCheckpoint,
+        assess_local_chain,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    chain = LocalChain(tmp_path / "assess-local-genesis.sqlite", LedgerState(supply_cap=100))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=0,
+        block_hash=genesis_hash,
+        app_hash=state_commitment(chain.state),
+        sequence=1,
+    )
+    raw = sign_checkpoint(checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=raw
+    )
+
+    assessment = assess_local_chain(authority, public_key, chain)
+    assert assessment.relation is CheckpointRelation.MATCH
+    assert assessment.writes_allowed
+    chain.close()
+
+
+def test_assess_local_chain_detects_behind_and_ahead_states(tmp_path):
+    from hnd_ledger.chain import LocalChain
+    from hnd_ledger.protocol import create_transaction
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        RollbackCheckpoint,
+        assess_local_chain,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id = account_id(alice.public_key().public_bytes_raw())
+    bob_id = account_id(bob.public_key().public_bytes_raw())
+    initial = LedgerState(balances={alice_id: 20}, supply_cap=20)
+
+    source_chain = LocalChain(tmp_path / "source-ahead.sqlite", initial)
+    genesis_hash, _ = source_chain.checkpoint_ancestor_commitments(0)
+    block = source_chain.append([create_transaction(alice, bob_id, 5, 0)])
+    checkpoint = RollbackCheckpoint(
+        chain_id=source_chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=block.height,
+        block_hash=block.block_hash,
+        app_hash=block.state_root,
+        sequence=1,
+    )
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    raw = sign_checkpoint(checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=raw
+    )
+
+    behind_chain = LocalChain(tmp_path / "local-behind.sqlite", initial)
+    behind = assess_local_chain(authority, public_key, behind_chain)
+    assert behind.relation is CheckpointRelation.LOCAL_BEHIND
+    assert not behind.writes_allowed
+    behind_chain.close()
+
+    source_chain.append([create_transaction(alice, bob_id, 2, 1)])
+    ahead = assess_local_chain(authority, public_key, source_chain)
+    assert ahead.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
+    assert "ancestry matches" in ahead.reason
+    assert not ahead.writes_allowed
+    source_chain.close()
+
+
+def test_assess_local_chain_rejects_divergent_checkpoint_ancestor(tmp_path):
+    from hnd_ledger.chain import LocalChain
+    from hnd_ledger.protocol import create_transaction
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        RollbackCheckpoint,
+        assess_local_chain,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id = account_id(alice.public_key().public_bytes_raw())
+    bob_id = account_id(bob.public_key().public_bytes_raw())
+    initial = LedgerState(balances={alice_id: 30}, supply_cap=30)
+
+    trusted_chain = LocalChain(tmp_path / "trusted-fork.sqlite", initial)
+    genesis_hash, _ = trusted_chain.checkpoint_ancestor_commitments(0)
+    trusted_block = trusted_chain.append([create_transaction(alice, bob_id, 5, 0)])
+    checkpoint = RollbackCheckpoint(
+        chain_id=trusted_chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=1,
+        block_hash=trusted_block.block_hash,
+        app_hash=trusted_block.state_root,
+        sequence=1,
+    )
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    raw = sign_checkpoint(checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=raw
+    )
+
+    divergent_chain = LocalChain(tmp_path / "divergent-fork.sqlite", initial)
+    divergent_chain.append([create_transaction(alice, bob_id, 6, 0)])
+    divergent_chain.append([create_transaction(alice, bob_id, 1, 1)])
+    assessment = assess_local_chain(authority, public_key, divergent_chain)
+    assert assessment.relation is CheckpointRelation.DIVERGED
+    assert not assessment.writes_allowed
+    trusted_chain.close()
+    divergent_chain.close()

@@ -145,3 +145,16 @@ Important boundary: the helper cannot make a local SQLite block commit and a rem
 
 
 Additional reconciliation coverage: a test authority now commits a candidate but reports a false CAS result. The publisher rereads the authority, finds the exact signed candidate, and resolves the result as success. This covers an ambiguous response distinct from an exception/timeout.
+
+
+## LocalChain authority assessment integration
+
+A new `assess_local_chain` helper composes the verified local chain commitments, independent authority read, pinned-key signature verification, and checkpoint ancestry lookup. It is an explicit helper only; it is not automatically invoked by the CometBFT process.
+
+Integration tests cover:
+- Exact genesis checkpoint match.
+- A local database behind the accepted checkpoint.
+- A local database ahead of the checkpoint whose replayed ancestry matches (still recovery-required).
+- A locally valid but divergent history whose block/state commitment at the trusted height differs (rejected).
+
+Authority outages, invalid signatures, missing checkpoints, and wrong response types remain fail-closed. No production authority provider or startup enforcement is configured.

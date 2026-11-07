@@ -450,3 +450,67 @@ def publish_checkpoint(
             "checkpoint CAS outcome is unknown; authority contains a different record"
         ) from cas_error
     raise CheckpointError("checkpoint compare-and-swap conflict")
+
+
+
+def assess_local_chain(
+    authority: CheckpointAuthority,
+    trusted_public_key: bytes,
+    chain: object,
+) -> CheckpointAssessment:
+    """Authenticate the external anchor and assess a replay-verified LocalChain.
+
+    This is an explicit integration helper, not an automatic startup hook.
+    The supplied LocalChain must already have completed its normal replay and
+    integrity checks. It never enables writes for an unanchored, behind,
+    ahead, or divergent database.
+    """
+    from .chain import LocalChain, state_commitment
+
+    if not isinstance(chain, LocalChain):
+        raise CheckpointError("local chain object has an invalid type")
+    try:
+        chain_id = chain.state.chain_id
+        genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+        height = chain.height
+        block_hash = chain.tip_hash
+        app_hash = state_commitment(chain.state)
+    except Exception as exc:
+        raise CheckpointError("unable to obtain verified local chain commitments") from exc
+
+    try:
+        raw_checkpoint = authority.read(chain_id, genesis_hash)
+    except Exception as exc:
+        raise CheckpointError(
+            "checkpoint authority read failed; refusing local chain startup"
+        ) from exc
+
+    if raw_checkpoint is None:
+        checkpoint = None
+    elif isinstance(raw_checkpoint, bytes):
+        checkpoint = verify_signed_checkpoint(raw_checkpoint, trusted_public_key)
+    else:
+        raise CheckpointError("checkpoint authority returned an invalid record type")
+
+    ancestor_block_hash = None
+    ancestor_app_hash = None
+    if checkpoint is not None and checkpoint.height <= height:
+        try:
+            ancestor_block_hash, ancestor_app_hash = (
+                chain.checkpoint_ancestor_commitments(checkpoint.height)
+            )
+        except Exception as exc:
+            raise CheckpointError(
+                "unable to verify trusted checkpoint ancestry in local chain"
+            ) from exc
+
+    return assess_local_tip(
+        checkpoint,
+        chain_id=chain_id,
+        genesis_hash=genesis_hash,
+        height=height,
+        block_hash=block_hash,
+        app_hash=app_hash,
+        checkpoint_ancestor_block_hash=ancestor_block_hash,
+        checkpoint_ancestor_app_hash=ancestor_app_hash,
+    )

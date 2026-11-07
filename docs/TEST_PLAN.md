@@ -201,3 +201,8 @@ Tests cover first publication, monotonic successor publication, exact retry, ski
 
 
 Additional test: simulated authority durably stores a candidate but returns false from CAS; publisher rereads and resolves the exact stored candidate as success without creating another sequence.
+
+
+## LocalChain authority assessment integration
+
+Added end-to-end unit tests for `assess_local_chain`: exact genesis match, local-behind, local-ahead with matching ancestry (writes remain disabled), and divergent ancestor rejection. This helper combines LocalChain replay commitments with authenticated authority reads, but it is not wired into the running CometBFT startup or commit lifecycle.
