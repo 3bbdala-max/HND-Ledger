@@ -320,6 +320,104 @@ jobs:
           print("ABCI account and ledger-info queries returned the committed state on all three validators")
           PY
 
+          # A correctly signed but state-invalid spend should pass weak CheckTx
+          # admission and then be filtered by PrepareProposal on the live network.
+          python - "$RUNNER_TEMP" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+          from hnd_ledger.protocol import account_id, create_transaction, encode_transaction
+
+          root = pathlib.Path(sys.argv[1])
+          seed = (root / "hnd-data" / "alice.seed").read_bytes()
+          alice = Ed25519PrivateKey.from_private_bytes(seed)
+          carol_seed = hashlib.sha256(b"HND-LOCAL-V2 integration Carol").digest()
+          carol = Ed25519PrivateKey.from_private_bytes(carol_seed)
+          carol_public = carol.public_key().public_bytes(
+              serialization.Encoding.Raw, serialization.PublicFormat.Raw
+          )
+          carol_id = account_id(carol_public)
+          # Alice has 750,000 after the valid transfer; this signed spend is 800,000.
+          raw = encode_transaction(create_transaction(alice, carol_id, 800_000, 1))
+          (root / "hnd-data" / "overspend.json").write_text(json.dumps({
+              "raw": raw.hex(), "carol": carol_id.hex(),
+          }))
+          PY
+
+          overspend_hex=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["raw"])' "$RUNNER_TEMP/hnd-data/overspend.json")
+          curl --silent --fail --get "http://127.0.0.1:26657/broadcast_tx_sync" \
+            --data-urlencode "tx=0x$overspend_hex" -o "$RUNNER_TEMP/overspend-check.json"
+          python - "$RUNNER_TEMP/overspend-check.json" <<'PY'
+          import json
+          import sys
+          result = json.load(open(sys.argv[1]))["result"]["check_tx"]
+          if result["code"] != 0:
+              raise SystemExit(f"well-formed signed transaction failed weak CheckTx admission: {result}")
+          print("Overspend passed signature/encoding CheckTx admission as designed")
+          PY
+
+          # Give the proposer enough time to produce blocks while filtering the
+          # overspend, then verify no validator committed it or changed state.
+          invalid_target_height=$((tx_height + 2))
+          invalid_ready=false
+          for _ in $(seq 1 120); do
+            ready=0
+            for i in 0 1 2; do
+              curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/invalid-status-$i.json" || continue
+              height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/invalid-status-$i.json")
+              [[ "$height" -ge "$invalid_target_height" ]] && ready=$((ready+1))
+            done
+            if [[ "$ready" -eq 3 ]]; then invalid_ready=true; break; fi
+            sleep 1
+          done
+          [[ "$invalid_ready" == true ]] || { echo "Validators did not advance after filtering overspend"; exit 1; }
+
+          python - "$RUNNER_TEMP" <<'PY'
+          import base64
+          import json
+          import pathlib
+          import sys
+          import urllib.parse
+          import urllib.request
+          from hnd_ledger.chain import LocalChain
+
+          root = pathlib.Path(sys.argv[1])
+          meta = json.loads((root / "hnd-data" / "transfer.json").read_text())
+          invalid = json.loads((root / "hnd-data" / "overspend.json").read_text())
+          alice = bytes.fromhex(meta["alice"])
+          carol = bytes.fromhex(invalid["carol"])
+          invalid_raw = bytes.fromhex(invalid["raw"])
+          for i in range(3):
+              base = f"http://127.0.0.1:{26657+i}/abci_query"
+              for account in (alice, carol):
+                  params = {
+                      "path": json.dumps("/hnd/v1/account"),
+                      "data": "0x" + account.hex(),
+                      "height": "0",
+                      "prove": "false",
+                  }
+                  url = base + "?" + urllib.parse.urlencode(params)
+                  with urllib.request.urlopen(url, timeout=15) as response:
+                      result = json.loads(response.read())["result"]["response"]
+                  if result["code"] != 0:
+                      raise SystemExit(f"validator {i} account query failed: {result}")
+                  value = json.loads(base64.b64decode(result["value"]))
+                  expected = 750_000 if account == alice else 0
+                  expected_nonce = 1 if account == alice else 0
+                  if value["balance"] != expected or value["next_nonce"] != expected_nonce:
+                      raise SystemExit(f"validator {i} state changed after rejected overspend: {value}")
+              chain = LocalChain(root / "hnd-data" / f"ledger-{i}.sqlite")
+              try:
+                  if any(invalid_raw in block.transactions for block in chain.blocks):
+                      raise SystemExit(f"validator {i} committed the overspend transaction")
+              finally:
+                  chain.close()
+          print("All validators filtered the signed overspend; balances, nonces, and committed blocks remain correct")
+          PY
+
           # CometBFT publishes the app hash committed at H in header H+1.
           target_header_height=$((tx_height + 1))
           header_ready=false
