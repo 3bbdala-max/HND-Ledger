@@ -33,7 +33,7 @@ def _reject_constant(value):
 def parse_strict(raw: bytes):
     if type(raw) is not bytes:
         raise TypeError("input must be bytes")
-    if raw.startswith(b"\\xef\\xbb\\xbf"):
+    if raw.startswith(b"\xef\xbb\xbf"):
         raise ValueError("UTF-8 BOM is forbidden")
     text = raw.decode("utf-8", errors="strict")
     value = json.loads(
@@ -68,9 +68,9 @@ class VSPJCSCompatibilitySpikeTests(unittest.TestCase):
         )
 
     def test_utf16_property_order_differs_from_python_codepoint_order(self):
-        value = {"\\ue000": 1, "\\U00010000": 2}
+        value = {"\ue000": 1, "\U00010000": 2}
         # JCS sorts property names by UTF-16 code units: D800 precedes E000.
-        self.assertEqual(rfc8785.dumps(value), '{"\\U00010000":2,"\\ue000":1}'.encode())
+        self.assertEqual(rfc8785.dumps(value), '{"\U00010000":2,"\ue000":1}'.encode())
 
     def test_reject_duplicate_members_at_every_depth(self):
         for raw in (
@@ -82,8 +82,8 @@ class VSPJCSCompatibilitySpikeTests(unittest.TestCase):
 
     def test_reject_bom_invalid_utf8_nonstandard_constants_and_surrogates(self):
         invalid = (
-            b"\\xef\\xbb\\xbf{}",
-            b'{"x":"\\xff"}',
+            b"\xef\xbb\xbf{}",
+            b'{"x":"\xff"}',
             b'{"x":NaN}',
             b'{"x":Infinity}',
             b'{"x":"\\ud800"}',
