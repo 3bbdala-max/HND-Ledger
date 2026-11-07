@@ -1,3 +1,4 @@
+import base64
 from concurrent.futures import ThreadPoolExecutor
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -14,7 +15,6 @@ def _account_id(key):
 
 
 def _b64(raw):
-    import base64
     return base64.b64encode(raw).decode("ascii")
 
 
@@ -65,7 +65,7 @@ def test_mempool_admits_and_commits_maximum_block_sized_concurrent_batch(tmp_pat
         })
         assert len(proposal["txs"]) == count
         assert [
-            decode_transaction(__import__("base64").b64decode(raw), chain.state.chain_id).nonce
+            decode_transaction(base64.b64decode(raw), chain.state.chain_id).nonce
             for raw in proposal["txs"]
         ] == list(range(count))
 
