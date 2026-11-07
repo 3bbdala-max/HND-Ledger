@@ -161,3 +161,17 @@ This CI run is not evidence that any VSP parser, JCS library, golden vector or s
 
 ---
 This is an engineering dependency/input-pipeline review, not a security certification or launch authorization.
+
+
+## Test-only Node comparator supply-chain pin update (2026-11-07)
+
+The isolated JavaScript comparator now has a committed minimal
+`tools/vsp-jcs-node/package.json` and npm lockfile. The lock pins
+`canonicalize@2.1.0` to the registry tarball URL and SHA-512 integrity
+`sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==`.
+CI compares the registry's `npm view canonicalize@2.1.0 dist.integrity`
+value with that exact value and installs via `npm ci --ignore-scripts`.
+
+This remains an isolated test-only tool, not a production VSP dependency.
+The new integrity check and lockfile installation require a fresh successful
+CI run before being treated as verified.
