@@ -166,8 +166,9 @@ def test_init_chain_installs_canonical_genesis_allocations_once(tmp_path):
 def test_init_chain_rejects_unsorted_duplicate_and_over_cap_allocations(tmp_path):
     dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path, funded=False)
     bob_id = _key_account(bob)
+    reverse_sorted = sorted([[alice_id, 1], [bob_id, 1]], key=lambda row: row[0], reverse=True)
     bad_payloads = [
-        [2, 1_000, [[bob_id, 1], [alice_id, 1]]],
+        [2, 1_000, reverse_sorted],
         [2, 1_000, [[alice_id, 1], [alice_id, 2]]],
         [2, 1_000, [[alice_id, 1_001]]],
     ]
