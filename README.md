@@ -8,7 +8,8 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - **Version 0.2 design:** protocol and cryptographic serialization specifications are maintained under `docs/`.
 - **Local implementation branch:** `implementation/v0.2-local-ledger` contains an initial Python implementation of Ed25519-signed transactions, canonical CBOR encoding, an atomic account ledger, deterministic block commitments, and SQLite-backed replay on restart.
 - **Automated tests:** pytest tests and a GitHub Actions workflow are included. A passing CI result has not yet been confirmed; test presence is not proof of passing behavior.
-- **Not implemented:** distributed validators, consensus, peer-to-peer networking, wallet, public RPC, production genesis allocation, or public network.
+- **Consensus design:** threat model, validator design gate, and distributed test matrix are documented; no consensus engine or independent validators are implemented.
+- **Not implemented:** peer-to-peer networking, wallet, public RPC, production genesis allocation, or public network.
 
 ## Protocol parameters
 
@@ -28,6 +29,9 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - [Test plan](docs/TEST_PLAN.md)
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Local block and storage design](docs/CHAIN_STORAGE.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Validator and consensus design gate](docs/VALIDATOR_CONSENSUS_DESIGN.md)
+- [Consensus test matrix](docs/CONSENSUS_TEST_MATRIX.md)
 
 ## Safety and launch status
 
