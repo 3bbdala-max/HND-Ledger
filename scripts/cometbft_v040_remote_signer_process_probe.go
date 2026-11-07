@@ -215,6 +215,20 @@ func runRemoteAntiDoubleSignProbe() {
 // processes with the same key/state files. It is a negative security probe:
 // if both processes emit valid signatures for conflicting blocks at the same
 // H/R/type, cross-process single-writer ownership is not enforced.
+func stopSignerProcess(cmd *exec.Cmd, label string) {
+	if cmd == nil || cmd.Process == nil || cmd.ProcessState != nil { return }
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		fail("signal %s: %v", label, err)
+	}
+	waitErr := cmd.Wait()
+	if waitErr != nil {
+		status, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
+		if !ok || !status.Signaled() || status.Signal() != syscall.SIGTERM {
+			fail("wait for %s exit: %v", label, waitErr)
+		}
+	}
+}
+
 func runConcurrentSharedFilePVProbe() {
 	root, err := os.MkdirTemp("", "hnd-shared-filepv-owner-lock-")
 	if err != nil { fail("create shared FilePV ownership probe directory: %v", err) }
@@ -248,7 +262,7 @@ func runConcurrentSharedFilePVProbe() {
 		for i := range signers {
 			_ = signers[i].client.Close()
 			_ = signers[i].listener.Close()
-			if signers[i].child != nil && signers[i].child.Process != nil {
+			if signers[i].child != nil && signers[i].child.ProcessState == nil {
 				_ = signers[i].child.Process.Signal(syscall.SIGTERM)
 				_ = signers[i].child.Wait()
 			}
@@ -297,8 +311,7 @@ func runConcurrentSharedFilePVProbe() {
 	if len(accepted.Signature) == 0 || !pubKey.VerifySignature(cmttypes.VoteSignBytes(chainID, accepted), accepted.Signature) {
 		fail("active signer returned an invalid vote signature")
 	}
-	if err := first.Process.Signal(syscall.SIGTERM); err != nil { fail("stop first shared FilePV owner: %v", err) }
-	if err := first.Wait(); err != nil { fail("wait for first shared FilePV owner exit: %v", err) }
+	stopSignerProcess(first, "first shared FilePV owner")
 	deadline := time.Now().Add(5 * time.Second)
 	for signers[0].client.IsConnected() && time.Now().Before(deadline) { time.Sleep(25 * time.Millisecond) }
 
@@ -320,8 +333,7 @@ func runConcurrentSharedFilePVProbe() {
 	if len(conflicting.Signature) != 0 {
 		fail("second owner returned a signature for a conflicting vote")
 	}
-	if err := second.Process.Signal(syscall.SIGTERM); err != nil { fail("stop second shared FilePV owner: %v", err) }
-	if err := second.Wait(); err != nil { fail("wait for second shared FilePV owner exit: %v", err) }
+	stopSignerProcess(second, "second shared FilePV owner")
 	fmt.Println("HND_REMOTE_SIGNER_SAME_HOST_SINGLE_WRITER_LOCK_ENFORCED_OK")
 }
 
