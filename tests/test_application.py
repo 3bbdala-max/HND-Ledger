@@ -101,3 +101,18 @@ def test_commit_requires_finalize_and_finalize_is_single_pending(tmp_path):
     app.commit()
     assert app.info()["last_block_height"] == 1
     app.chain.close()
+
+
+
+def test_commit_rejects_candidate_if_committed_state_changed(tmp_path):
+    app, alice, bob_id, alice_id = _app(tmp_path)
+    raw = encode_transaction(create_transaction(alice, bob_id, 25, 0))
+    app.finalize_block([raw])
+
+    # Simulate an out-of-band state advance while a candidate is pending.
+    app.chain.state.balances[alice_id] = 99
+
+    with pytest.raises(ChainError, match="state changed after finalization"):
+        app.commit()
+    assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    app.chain.close()
