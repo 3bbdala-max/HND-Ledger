@@ -14,16 +14,17 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 - Query paths /hnd/v1/info and /hnd/v1/account, latest-state only, no proofs or historical reads.
 - Bounded JSONL IPC over Unix socket; strict envelope checks, duplicate-key rejection, 1 MiB frame limit, socket mode 0600.
 - Go CometBFT v0.40.0 adapter; partial-write handling; loopback-only ABCI listener.
-- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/overspend/recovery.
+- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/overspend/recovery; bounded mempool capacity and committed-entry eviction are covered by unit tests.
 
 ## Verified evidence
 
-- Python tests: run 42362574022 on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf, success (75 tests). Includes funded-genesis retry/conflict after restart, rejection of non-canonical base64 payloads, and atomic rejection when pre-existing state exceeds the supply cap.
-- One-node CometBFT restart: run 42362573986 on the same commit, success.
-- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42362574012 on the same commit, success.
+- Python tests: run 42365173568 on commit 294c27db92655adbced5eac65fc9c813f216020a, success (76 tests). Adds mempool item/byte-cap, duplicate-accounting, and post-commit capacity-release coverage.
+- One-node CometBFT restart: run 42365173534 on the same commit, success.
+- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42365173545 on the same commit, success.
+- Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success; CometBFT workflows above also rebuilt and exercised the adapter.
 - Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
 
-The test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
+The test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. The mempool tests additionally verify item/byte caps, duplicate submissions not inflating byte accounting, and capacity reuse after committed transactions are evicted. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
 
 ## Remaining work
 
