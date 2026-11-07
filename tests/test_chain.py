@@ -682,3 +682,20 @@ def test_chain_tip_anchor_advances_atomically_with_each_block(tmp_path):
     assert restored.height == 1
     assert restored.tip_hash == block.block_hash
     restored.close()
+
+
+def test_recovery_rejects_missing_chain_tip_anchor(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    alice_id = account(alice)
+    path = tmp_path / "missing-chain-tip-anchor.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 30}, supply_cap=30))
+    chain.append([])
+    chain.close()
+
+    db = sqlite3.connect(path)
+    db.execute("DELETE FROM metadata WHERE key='chain_tip'")
+    db.commit()
+    db.close()
+
+    with pytest.raises(ChainError, match="tip commitment is missing"):
+        LocalChain(path)

@@ -95,6 +95,10 @@ class LocalChain:
                     "INSERT INTO metadata(key,value) VALUES('chain_tip',?)",
                     (canonical_cbor([1, 0, genesis_hash]),),
                 )
+                self.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('chain_tip_version',?)",
+                    (canonical_cbor(1),),
+                )
                 self.db.commit()
             else:
                 if initial_state is not None:
@@ -277,15 +281,38 @@ class LocalChain:
         ).fetchone()
         actual_height = len(self.blocks)
         actual_hash = previous
-        if tip_row is None:
-            # Compatibility migration for databases created before tip anchors.
-            # Truncation predating this migration cannot be detected retroactively.
+        version_row = self.db.execute(
+            "SELECT value FROM metadata WHERE key='chain_tip_version'"
+        ).fetchone()
+        if version_row is None:
+            # One-time compatibility migration for pre-anchor databases. The
+            # version marker makes deletion of the anchor detectable thereafter.
             with self.db:
+                if tip_row is None:
+                    self.db.execute(
+                        "INSERT INTO metadata(key,value) VALUES('chain_tip',?)",
+                        (canonical_cbor([1, actual_height, actual_hash]),),
+                    )
                 self.db.execute(
-                    "INSERT INTO metadata(key,value) VALUES('chain_tip',?)",
-                    (canonical_cbor([1, actual_height, actual_hash]),),
+                    "INSERT INTO metadata(key,value) VALUES('chain_tip_version',?)",
+                    (canonical_cbor(1),),
                 )
+            tip_row = self.db.execute(
+                "SELECT value FROM metadata WHERE key='chain_tip'"
+            ).fetchone()
         else:
+            try:
+                version_value = cbor2.loads(version_row[0])
+                if (cbor2.dumps(version_value, canonical=True) != version_row[0]
+                        or isinstance(version_value, bool) or version_value != 1):
+                    raise ChainError("unsupported chain tip metadata version")
+            except ChainError:
+                raise
+            except Exception as exc:
+                raise ChainError("invalid chain tip metadata version") from exc
+            if tip_row is None:
+                raise ChainError("persisted chain tip commitment is missing")
+        if tip_row is not None:
             try:
                 anchor_value = tip_row[0]
                 anchor = cbor2.loads(anchor_value)
