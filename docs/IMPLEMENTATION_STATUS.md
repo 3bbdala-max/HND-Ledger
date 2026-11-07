@@ -110,3 +110,8 @@ All five workflows passed on the exact test commit `66b95a2162cbd45c39d2635d9e74
 - CometBFT four-validator liveness/recovery: run `42414469752`.
 
 These results validate the cancellation regression and existing testnet scenarios on the same SHA. They do not establish external checkpoint authority, production rollback protection, multi-host operation, or independent security review.
+
+
+The documentation refresh commit `8541841dbb9bfdc24906d6ba3d09852ba0c04f3a` also passed all four exact-SHA workflows: HND Python `42414341615`, one-node `42414341651`, three-validator `42414341633`, and four-validator `42414341666`.
+
+The subsequent Go IPC cancellation implementation/test commits `e7f804754cde282d92f061b5c231ae770e55b31a` and `66b95a2162cbd45c39d2635d9e7405b3d4dc7835` are verified by all five workflows on each exact SHA. On `66b95a2`, the runs are HND Python `42414469908`, Go adapter `42414469898`, one-node `42414469758`, three-validator `42414469747`, and four-validator `42414469752`; all completed successfully. The cancellation test proves that a blocked IPC response read is interrupted by context cancellation and the peer observes socket closure. It does not establish production anti-rollback enforcement or general load/flood resistance.
