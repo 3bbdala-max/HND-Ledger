@@ -399,3 +399,129 @@ def test_signed_checkpoint_rejects_invalid_direct_payload_type():
             public_key=b"K" * 32,
             signature=b"S" * 64,
         )
+
+
+
+def test_read_and_assess_checkpoint_authenticates_authority_record():
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        read_and_assess_checkpoint,
+    )
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    checkpoint = make_checkpoint(height=5)
+    authority = MemoryAuthorityForTest(public_key)
+    raw = sign_checkpoint(checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=raw
+    )
+
+    assessment = read_and_assess_checkpoint(
+        authority,
+        public_key,
+        chain_id=checkpoint.chain_id,
+        genesis_hash=checkpoint.genesis_hash,
+        height=checkpoint.height,
+        block_hash=checkpoint.block_hash,
+        app_hash=checkpoint.app_hash,
+    )
+    assert assessment.relation is CheckpointRelation.MATCH
+    assert assessment.writes_allowed
+
+
+def test_read_and_assess_checkpoint_missing_record_is_unanchored_and_fails_closed():
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        read_and_assess_checkpoint,
+    )
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    checkpoint = make_checkpoint(height=0)
+    authority = MemoryAuthorityForTest(public_key)
+
+    assessment = read_and_assess_checkpoint(
+        authority,
+        public_key,
+        chain_id=checkpoint.chain_id,
+        genesis_hash=checkpoint.genesis_hash,
+        height=checkpoint.height,
+        block_hash=checkpoint.block_hash,
+        app_hash=checkpoint.app_hash,
+    )
+    assert assessment.relation is CheckpointRelation.UNANCHORED
+    assert not assessment.writes_allowed
+
+
+def test_read_and_assess_checkpoint_rejects_untrusted_authority_signature():
+    from hnd_ledger.rollback_checkpoint import read_and_assess_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    wrong_key = Ed25519PrivateKey.generate()
+    trusted_public_key = wrong_key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(
+        key.public_key().public_bytes_raw()
+    )
+    checkpoint = make_checkpoint(height=0)
+    raw = sign_checkpoint(checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=raw
+    )
+
+    with pytest.raises(CheckpointError, match="not trusted"):
+        read_and_assess_checkpoint(
+            authority,
+            trusted_public_key,
+            chain_id=checkpoint.chain_id,
+            genesis_hash=checkpoint.genesis_hash,
+            height=checkpoint.height,
+            block_hash=checkpoint.block_hash,
+            app_hash=checkpoint.app_hash,
+        )
+
+
+def test_read_and_assess_checkpoint_authority_outage_never_falls_back():
+    from hnd_ledger.rollback_checkpoint import read_and_assess_checkpoint
+
+    class UnavailableAuthority:
+        def read(self, chain_id, genesis_hash):
+            raise OSError("simulated authority outage")
+
+        def compare_and_swap(self, **kwargs):
+            raise AssertionError("read-only assessment must not write")
+
+    checkpoint = make_checkpoint(height=0)
+    with pytest.raises(CheckpointError, match="refusing unanchored fallback"):
+        read_and_assess_checkpoint(
+            UnavailableAuthority(),
+            b"K" * 32,
+            chain_id=checkpoint.chain_id,
+            genesis_hash=checkpoint.genesis_hash,
+            height=checkpoint.height,
+            block_hash=checkpoint.block_hash,
+            app_hash=checkpoint.app_hash,
+        )
+
+
+def test_read_and_assess_checkpoint_rejects_invalid_authority_record_type():
+    from hnd_ledger.rollback_checkpoint import read_and_assess_checkpoint
+
+    class InvalidRecordAuthority:
+        def read(self, chain_id, genesis_hash):
+            return "not-bytes"
+
+        def compare_and_swap(self, **kwargs):
+            return False
+
+    checkpoint = make_checkpoint(height=0)
+    with pytest.raises(CheckpointError, match="invalid record type"):
+        read_and_assess_checkpoint(
+            InvalidRecordAuthority(),
+            b"K" * 32,
+            chain_id=checkpoint.chain_id,
+            genesis_hash=checkpoint.genesis_hash,
+            height=checkpoint.height,
+            block_hash=checkpoint.block_hash,
+            app_hash=checkpoint.app_hash,
+        )

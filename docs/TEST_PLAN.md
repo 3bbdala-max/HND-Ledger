@@ -188,3 +188,8 @@ Added a cross-module regression test that creates a signed checkpoint at an earl
 ## Idempotent checkpoint acknowledgement retry
 
 Added tests proving that an exact signed checkpoint retry after a simulated lost acknowledgement succeeds without creating another sequence, while a different candidate with the stale expected sequence/digest is rejected. These tests run against the volatile in-memory authority test double and do not prove remote durability.
+
+
+## Authenticated authority read and fail-closed assessment
+
+Tests cover a valid pinned-key checkpoint, missing record, untrusted signature, authority outage, and invalid response type. The read/verify/assess helper is a composition layer only and is not wired into node startup or write admission.

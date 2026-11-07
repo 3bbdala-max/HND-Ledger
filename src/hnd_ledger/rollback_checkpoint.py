@@ -327,3 +327,48 @@ def assess_local_tip(
         CheckpointRelation.MATCH,
         "local chain tip exactly matches the independently trusted checkpoint",
     )
+
+
+
+def read_and_assess_checkpoint(
+    authority: CheckpointAuthority,
+    trusted_public_key: bytes,
+    *,
+    chain_id: bytes,
+    genesis_hash: bytes,
+    height: int,
+    block_hash: bytes,
+    app_hash: bytes,
+    checkpoint_ancestor_block_hash: bytes | None = None,
+    checkpoint_ancestor_app_hash: bytes | None = None,
+) -> CheckpointAssessment:
+    """Read, authenticate, and compare an independent checkpoint.
+
+    Authority read failures are surfaced as CheckpointError. They must never
+    be converted into an unanchored/allow-writes fallback. A missing record is
+    explicitly classified as UNANCHORED, which is not write-eligible.
+    """
+    try:
+        raw_checkpoint = authority.read(chain_id, genesis_hash)
+    except Exception as exc:
+        raise CheckpointError(
+            "checkpoint authority read failed; refusing unanchored fallback"
+        ) from exc
+
+    if raw_checkpoint is None:
+        checkpoint = None
+    elif isinstance(raw_checkpoint, bytes):
+        checkpoint = verify_signed_checkpoint(raw_checkpoint, trusted_public_key)
+    else:
+        raise CheckpointError("checkpoint authority returned an invalid record type")
+
+    return assess_local_tip(
+        checkpoint,
+        chain_id=chain_id,
+        genesis_hash=genesis_hash,
+        height=height,
+        block_hash=block_hash,
+        app_hash=app_hash,
+        checkpoint_ancestor_block_hash=checkpoint_ancestor_block_hash,
+        checkpoint_ancestor_app_hash=checkpoint_ancestor_app_hash,
+    )

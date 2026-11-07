@@ -124,3 +124,14 @@ A cross-module test now feeds those actual locally replayed ancestor commitments
 ## Idempotent compare-and-swap retry semantics
 
 The authority contract and in-memory test double now treat an exact retry of a checkpoint already accepted as success. This models a lost acknowledgement after durable acceptance: retrying the same signed payload with the original compare-and-swap expectation returns success without advancing sequence again. A different candidate using that stale expectation remains rejected. This is a test-double contract guarantee only; durable provider behavior must be independently implemented and verified.
+
+
+## Authenticated authority read and local assessment
+
+A composition helper now reads the checkpoint through the provider-neutral authority interface, verifies the signed record against the pinned public key, and assesses the local chain tip. Its fail-closed rules are explicit:
+- A valid exact match can be write-eligible at the assessment layer.
+- A missing record is UNANCHORED and not write-eligible.
+- A malformed record or untrusted signature raises a checkpoint error.
+- An authority outage raises a checkpoint error and is never converted into an unanchored fallback.
+
+The helper is not yet called by CometBFT startup or block commit. The current authority implementation remains a volatile test double; this is not production anti-rollback protection.
