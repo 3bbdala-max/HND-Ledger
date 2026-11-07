@@ -121,3 +121,12 @@ The HND harness was then traced against the same finding. In `scripts/cometbft_v
 This is now a concrete, HND-harness-specific coverage gap, not merely a generic upstream concern. Before changing the test to assert absence, the harness must adopt a reviewed startup provider/path that does not call `LoadOrGenFilePV` for externally signed validators, and prove it against the exact pinned binary. Do not paper over this by deleting the regenerated key after startup: the private key has already been created and its presence would invalidate the security assertion.
 
 **Status:** current external signer routing for validator 4 remains exercised; no-local-private-key guarantee for validator 4 is **NOT SATISFIED** by the present stock-CLI test path. All-validator remote signing remains **NOT IMPLEMENTED**.
+
+
+### CI binary provenance closes the runtime-path ambiguity
+
+The workflow `.github/workflows/hnd-v02-tests.yml` builds the CometBFT executable directly from the pinned upstream checkout at `0880b4d378f347ab16e54ec677ff50d803f37d62` using `go build ./cmd/cometbft`, without applying a custom provider patch. It passes that exact binary to both the private four-validator harness and the external-signer/Noise variants. Those harnesses start nodes through the CLI `node --home` command.
+
+This ties the static upstream call-path finding to the actual CI artifact: the tested binary is the stock CLI whose default provider calls `LoadOrGenFilePV` before remote-signer replacement. The current CI integration can therefore pass while validator 4's original key has been moved to signer ownership and a replacement local FilePV has been generated in its node home. The test currently proves remote signing is used for the active validator interface, but does not prove the absence of an additional locally generated private key.
+
+**Next implementation constraint:** any future fix must change the actual binary/provider path used by CI, not only Python setup assertions. Prefer a small, explicit CometBFT-side provider/CLI integration change or a dedicated test executable that invokes a reviewed custom `node.Provider`; retain the stock CLI test separately as an upstream behavior regression check. Then assert before and after node startup that no local consensus key file is created for any externally signed validator, and verify remote `GetPubKey` against the Genesis identity. Do not label the existing green remote-signer tests as no-fallback coverage.
