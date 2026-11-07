@@ -10,14 +10,14 @@ The project has passing one-node restart and three-validator integrations. The t
 
 ## Verified CI evidence
 
-- Python tests: run 42361314253 on commit d0832723ee533e7c27f47e62bcdedc7c5d1e3149, success (70 tests).
-- One-node CometBFT restart: run 42361234790 on commit f08e0e053920a989b8b7b200c4ee856d6cefee54, success.
-- Three-validator transfer, query, overspend filtering, and restart integration: run 42361234762 on the same commit, success.
-- Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
+- Python tests: run 42362574022 on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf, success (75 tests).
+- One-node CometBFT restart: run 42362573986 on the same commit, success.
+- Three-validator transfer, query, overspend filtering, app-hash comparison, and restart integration: run 42362574012 on the same commit, success.
+- Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success; subsequent integration runs also rebuilt and exercised the adapter.
 
-The three-validator run committed a signed transfer at height 4. All ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. Account and ledger-info queries succeeded on all three nodes. A correctly signed 800,000-unit spend from an account holding 750,000 passed weak CheckTx admission but was excluded by PrepareProposal; no validator committed it and balances/nonces remained unchanged. All CometBFT header app hashes matched at height 5. After validator 0 restarted, it retained the valid transfer and matching app hash.
+The three-validator run verifies a funded development genesis, a real signed transfer, matching local state commitments and CometBFT app hashes, and recovery after validator restart. A correctly signed overspend is admitted by weak CheckTx but filtered before commit by proposal preparation. The funded-genesis tests also verify idempotent retry after restart, rejection of a conflicting genesis, and rejection of non-canonical base64 without partial state changes.
 
-The 70-test Python suite includes a SQLite trigger failure and a real child-process termination during block insertion. After the process exits inside the uncommitted SQLite transaction, reopening the database recovers the original genesis state with no partially committed block.
+The 75-test Python suite includes SQLite rollback and child-process crash injection during block insertion and both sides of genesis-marker insertion. It verifies that rejected transactions do not partially mutate balances or nonces, including when a pre-existing in-memory state violates the supply cap.
 
 The validators ran as separate processes and data directories on one CI runner. This is not independent multi-operator deployment or an adversarial Byzantine test.
 
