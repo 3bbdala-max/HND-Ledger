@@ -19,32 +19,33 @@ def _b64(raw):
 
 
 def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_path):
-    # Exercise the largest batch that fits both the transaction-count and
-    # serialized-byte block limits, then verify deterministic execution and
-    # complete mempool accounting after Commit.
+    # Build the largest nonce-ordered batch that fits both block limits.
     sender = Ed25519PrivateKey.generate()
     recipient = Ed25519PrivateKey.generate()
     sender_id = _account_id(sender)
     recipient_id = _account_id(recipient)
-    sample = encode_transaction(create_transaction(sender, recipient_id, 1, 0))
-    count = min(MAX_BLOCK_TRANSACTIONS, MAX_BLOCK_BYTES // len(sample))
-    assert 0 < count <= MAX_MEMPOOL_ITEMS
+
+    transactions = []
+    total_bytes = 0
+    for nonce in range(min(MAX_BLOCK_TRANSACTIONS, MAX_MEMPOOL_ITEMS)):
+        raw = encode_transaction(create_transaction(sender, recipient_id, 1, nonce))
+        if total_bytes + len(raw) > min(MAX_BLOCK_BYTES, MAX_MEMPOOL_BYTES):
+            break
+        transactions.append(raw)
+        total_bytes += len(raw)
+
+    count = len(transactions)
+    assert count > 0
+    assert count <= MAX_BLOCK_TRANSACTIONS
+    assert total_bytes <= MAX_BLOCK_BYTES
+    assert total_bytes <= MAX_MEMPOOL_BYTES
 
     chain = LocalChain(
         tmp_path / "mempool-maximum-batch.sqlite",
         LedgerState(balances={sender_id: count}, supply_cap=count),
     )
     dispatcher = ABCIDispatcher(LedgerApplication(chain))
-    transactions = [
-        encode_transaction(create_transaction(sender, recipient_id, 1, nonce))
-        for nonce in range(count)
-    ]
     try:
-        total_bytes = sum(map(len, transactions))
-        assert count <= MAX_BLOCK_TRANSACTIONS
-        assert total_bytes <= MAX_BLOCK_BYTES
-        assert total_bytes <= MAX_MEMPOOL_BYTES
-
         with ThreadPoolExecutor(max_workers=32) as pool:
             responses = list(pool.map(
                 lambda raw: dispatcher("InsertTx", {"tx": _b64(raw)}),
@@ -58,13 +59,9 @@ def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_pa
         assert dispatcher._mempool_bytes == total_bytes
         assert dispatcher._mempool_bytes <= MAX_MEMPOOL_BYTES
 
-        ordered = sorted(
-            transactions,
-            key=lambda raw: decode_transaction(raw, chain.state.chain_id).nonce,
-        )
         proposal = dispatcher("PrepareProposal", {
             "max_tx_bytes": total_bytes,
-            "txs": [_b64(raw) for raw in ordered],
+            "txs": [_b64(raw) for raw in transactions],
         })
         assert len(proposal["txs"]) == count
         assert [
