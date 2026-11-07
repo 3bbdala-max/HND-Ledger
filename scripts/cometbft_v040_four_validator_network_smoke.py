@@ -268,6 +268,19 @@ def main():
                 wait(lambda: ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in (root/"signer4.log").read_text(errors="replace"),"external signer connection marker",30)
                 if (homes[3]/"config"/"priv_validator_key.json").exists() or (homes[3]/"data"/"priv_validator_state.json").exists():
                     raise AssertionError("remote-only validator created local consensus key/state files after RPC startup")
+            if all_signers_mode:
+                genesis_validators=json.loads((homes[0]/"config"/"genesis.json").read_text())["validators"]
+                for i in range(N):
+                    log_path=root/f"signer{i+1}.log"
+                    wait(lambda lp=log_path: "HND_REMOTE_SIGNER_CONNECTED" in lp.read_text(errors="replace"),f"validator {i+1} external signer connection",30)
+                    local_key=homes[i]/"config"/"priv_validator_key.json"
+                    local_state=homes[i]/"data"/"priv_validator_state.json"
+                    if local_key.exists() or local_state.exists():
+                        raise AssertionError(f"remote-only validator {i+1} created local consensus key/state files after RPC startup")
+                    signer_key=json.loads(signer_records[i]["key"].read_text())
+                    genesis_validator=next(v for v in genesis_validators if v["address"]==signer_key["address"])
+                    if genesis_validator["pub_key"] != signer_key["pub_key"]:
+                        raise AssertionError(f"validator {i+1} signer public key does not match Genesis identity")
             if noise_mode:
                 wait(lambda: "HND_NOISE_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text(errors="replace"),"authenticated Noise signer connection marker",30)
                 rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",noise_addr,str(homes[3]/"config/node_key.json")])
@@ -646,6 +659,8 @@ def main():
             for p in nodes: stop(p)
             for p in apps: stop(p)
             stop(signer)
+            for process in other_signers: stop(process)
+            for handle in other_signer_logs: handle.close()
             for relay in relays.values(): relay.close()
             for f in ah+nh: f.close()
             if signer_log: signer_log.close()
