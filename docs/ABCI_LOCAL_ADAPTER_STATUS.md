@@ -2,8 +2,8 @@
 
 ## Implemented in v0.2
 
-The Python application can now be exposed through a bounded, newline-delimited
-JSON IPC server over a Unix-domain socket. The Go adapter uses the matching
+The Python application is exposed through a bounded, newline-delimited JSON
+IPC server over a Unix-domain socket. The Go adapter uses the matching
 `hnd-ipc/1` envelope and delegates ABCI requests to that Python process.
 
 Implemented application methods:
@@ -21,10 +21,33 @@ Implemented application methods:
 - `Commit` persists the finalized block and removes included transactions
   from the mempool.
 
-The Python IPC server handles one request at a time on the SQLite-owning thread. This deliberately serializes application access while the local prototype uses a single SQLite connection; it favors deterministic correctness over concurrent throughput. The IPC server rejects malformed JSON, duplicate JSON fields, unsupported
-protocol versions, unknown envelope fields, oversized frames, invalid request
-IDs, and unsupported ABCI methods. The Unix socket is created with mode 0600.
-It does not expose a Python TCP listener.
+The Python IPC server handles one request at a time on the SQLite-owning
+thread. This deliberately serializes application access while the local
+prototype uses a single SQLite connection; it favors deterministic
+correctness over concurrent throughput. The IPC server rejects malformed
+JSON, duplicate JSON fields, unsupported protocol versions, unknown envelope
+fields, oversized frames, invalid request IDs, and unsupported ABCI methods.
+The Unix socket is created with mode 0600. It does not expose a Python TCP
+listener.
+
+## Verified CometBFT integration
+
+GitHub Actions run `42353445733` completed successfully on commit
+`137fcb2b1c1e8abb590cff5aafeb6944cbda4ba4`. The pinned CometBFT v0.40.0
+node, Go ABCI socket adapter, and Python engine ran together and the node
+produced blocks through height 2.
+
+The stronger restart/recovery run `42356867365` completed successfully on
+commit `2bd78fa355680b6da5e857d1c91cbecf32c4f54f`. It produced blocks to
+height 2, stopped the CometBFT node and both application processes, retained
+the CometBFT home and SQLite database, restarted the Python engine without
+the development-genesis flag, restarted the adapter and node, and observed
+the node advance from height 2 to height 3. The corresponding Python test
+workflow `42356867366` also passed on the same commit.
+
+These results demonstrate a working one-validator development integration
+and process-restart continuity in CI. They do not demonstrate multi-validator
+consensus, production readiness, or independent security certification.
 
 ## Explicit development-genesis requirement
 
@@ -44,22 +67,19 @@ On later restarts, omit `--init-empty-dev-genesis` and reuse the same
 database and socket path. The Go ABCI adapter must be configured to connect to
 that Unix socket.
 
-## Not yet demonstrated
+## Remaining work before broader validation
 
-This is not yet a completed CometBFT node integration. The following remain
-before a one-node end-to-end claim is justified:
-
-- Run the Python application and Go ABCI socket adapter together against a
-  pinned CometBFT v0.40.0 node.
-- Verify the exact protobuf JSON representations and every lifecycle call
-  against the real node, including restart after Commit.
-- Add and test the remaining ABCI methods required by the selected node
-  configuration (including Query and vote-extension/snapshot behavior where
-  enabled).
-- Test crash points between FinalizeBlock and Commit, process restarts,
-  duplicate/replayed requests, and application-hash agreement.
-- Add a reproducible one-node CI smoke test, then a three-node deterministic
-  validator test.
+- Exercise a three-validator CometBFT network with independent application
+  processes, SQLite databases, IPC sockets, and validator identities.
+- Verify that all validators commit the same block height and application
+  hash, including after one validator is restarted.
+- Add explicit tests for every ABCI method that the chosen CometBFT
+  configuration invokes, especially Query and vote-extension/snapshot
+  behavior; unsupported methods must continue to fail closed.
+- Test crash points between FinalizeBlock and Commit, duplicate/replayed
+  requests, and application-hash agreement.
+- Perform an independent protocol and cryptographic security review before
+  considering any public-network deployment.
 
 The current genesis handler intentionally refuses non-empty app state. A
 reviewed allocation schema and validator/key-management procedure must be
