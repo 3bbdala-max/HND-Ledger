@@ -140,6 +140,11 @@ class MemoryAuthorityForTest:
                 if expected_sequence is not None or expected_digest is not None:
                     return False
             else:
+                # The authority may have committed the candidate while the
+                # acknowledgement was lost. An exact retry is idempotent;
+                # a different candidate with stale CAS values is rejected.
+                if candidate.digest == current.digest:
+                    return True
                 if expected_sequence != current.sequence or expected_digest != current.digest:
                     return False
             validate_successor(current, candidate)
