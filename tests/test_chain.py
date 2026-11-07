@@ -635,3 +635,50 @@ def test_recovery_rejects_missing_middle_block(tmp_path):
 
     with pytest.raises(ChainError, match="height sequence"):
         LocalChain(path)
+
+
+def test_recovery_rejects_deleted_final_block_using_persisted_tip(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "missing-final-block.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 30}, supply_cap=30))
+    chain.append([create_transaction(alice, bob_id, 5, 0)])
+    chain.append([create_transaction(alice, bob_id, 7, 1)])
+    assert chain.height == 2
+    chain.close()
+
+    db = sqlite3.connect(path)
+    db.execute("DELETE FROM blocks WHERE height=2")
+    db.commit()
+    db.close()
+
+    with pytest.raises(ChainError, match="tip commitment"):
+        LocalChain(path)
+
+
+def test_chain_tip_anchor_advances_atomically_with_each_block(tmp_path):
+    import cbor2
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "tip-anchor.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 30}, supply_cap=30))
+    genesis_hash = chain.tip_hash
+    anchor = cbor2.loads(chain.db.execute(
+        "SELECT value FROM metadata WHERE key='chain_tip'"
+    ).fetchone()[0])
+    assert anchor == [1, 0, genesis_hash]
+
+    block = chain.append([create_transaction(alice, bob_id, 5, 0)])
+    anchor = cbor2.loads(chain.db.execute(
+        "SELECT value FROM metadata WHERE key='chain_tip'"
+    ).fetchone()[0])
+    assert anchor == [1, 1, block.block_hash]
+    chain.close()
+
+    restored = LocalChain(path)
+    assert restored.height == 1
+    assert restored.tip_hash == block.block_hash
+    restored.close()

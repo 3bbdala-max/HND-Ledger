@@ -89,7 +89,12 @@ class LocalChain:
                      for a in sorted(set(self.state.balances) | set(self.state.next_nonces))]
                 ])
                 self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_state',?)", (snapshot,))
-                self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_hash',?)", (_genesis_hash(self.state.chain_id, self.state),))
+                genesis_hash = _genesis_hash(self.state.chain_id, self.state)
+                self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_hash',?)", (genesis_hash,))
+                self.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('chain_tip',?)",
+                    (canonical_cbor([1, 0, genesis_hash]),),
+                )
                 self.db.commit()
             else:
                 if initial_state is not None:
@@ -151,6 +156,10 @@ class LocalChain:
             self.db.execute(
                 "UPDATE metadata SET value=? WHERE key='genesis_hash'", (genesis_hash,)
             )
+            self.db.execute(
+                "UPDATE metadata SET value=? WHERE key='chain_tip'",
+                (canonical_cbor([1, 0, genesis_hash]),),
+            )
             if marker is not None:
                 self.db.execute(
                     "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
@@ -196,6 +205,10 @@ class LocalChain:
                 self.db.execute(
                     "INSERT INTO blocks(height,payload,block_hash) VALUES(?,?,?)",
                     (height, payload, block_hash),
+                )
+                self.db.execute(
+                    "UPDATE metadata SET value=? WHERE key='chain_tip'",
+                    (canonical_cbor([1, height, block_hash]),),
                 )
         except sqlite3.IntegrityError as exc:
             raise ChainError("block persistence conflict") from exc
@@ -256,6 +269,38 @@ class LocalChain:
                 # CBOR decoder errors are not consistently ValueError subclasses
                 # across cbor2 versions; normalize all malformed-storage failures.
                 raise ChainError("unable to restore persisted chain") from exc
+
+        # A separate durable tip commitment detects deletion of the final
+        # block, which replaying the remaining prefix alone cannot detect.
+        tip_row = self.db.execute(
+            "SELECT value FROM metadata WHERE key='chain_tip'"
+        ).fetchone()
+        actual_height = len(self.blocks)
+        actual_hash = previous
+        if tip_row is None:
+            # Compatibility migration for databases created before tip anchors.
+            # Truncation predating this migration cannot be detected retroactively.
+            with self.db:
+                self.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('chain_tip',?)",
+                    (canonical_cbor([1, actual_height, actual_hash]),),
+                )
+        else:
+            try:
+                anchor_value = tip_row[0]
+                anchor = cbor2.loads(anchor_value)
+                if (not isinstance(anchor_value, bytes)
+                        or cbor2.dumps(anchor, canonical=True) != anchor_value
+                        or not isinstance(anchor, list) or len(anchor) != 3
+                        or isinstance(anchor[0], bool) or anchor[0] != 1
+                        or isinstance(anchor[1], bool) or not isinstance(anchor[1], int)
+                        or anchor[1] != actual_height
+                        or not isinstance(anchor[2], bytes) or anchor[2] != actual_hash):
+                    raise ChainError("persisted chain tip commitment mismatch")
+            except ChainError:
+                raise
+            except Exception as exc:
+                raise ChainError("invalid persisted chain tip commitment") from exc
 
     def close(self) -> None:
         self.db.close()
