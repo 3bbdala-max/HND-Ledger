@@ -1,7 +1,7 @@
 # WP4.14 — Remote signer concurrency and crash test execution matrix
 
 Date: 2026-11-07  
-Status: **partial negative probe implemented and executed; full concurrency/crash matrix remains open**  
+Status: **same-host advisory lock contention probes CI-passed; full concurrency/crash and distributed-fencing matrix remains open**  
 Target branch: `phase-0.2-planning`  
 Scope: documentation only. No source, test, workflow, key, or production configuration changes are authorized by this document.
 
@@ -150,3 +150,29 @@ restarting the signer, and to use the controlled SIGTERM shutdown helper.
 Those corrections await fresh CI. The Unix same-host lock step itself is
 recorded as **PASS**; overall CI for the commit is **FAIL** due to the separate
 restart probe.
+
+
+### Successful Unix and Noise lock probes (2026-11-07)
+
+Workflow run `42336661940` on commit
+`d952ba745e5b2950efb55621cd45e2b6dff19c3a` completed both workflow jobs
+successfully. In that run:
+
+- `Enforce same-host single-writer lock for shared FilePV signer processes`:
+  **PASS**. A second independent signer process was rejected while the
+  first held the state-path lock; after clean release, the next owner acquired
+  the lock using the updated persisted-state digest and rejected a conflicting
+  H/R/type vote.
+- `Verify Noise signer same-host state-lock contention rejection`:
+  **PASS**. The Noise helper's lock rejected a second process attempting to
+  acquire the same state-path lock.
+- `Run remote signer anti-double-sign persistence across restart`:
+  **PASS** after recreating the node-side listener/client during restart.
+- Four-validator all-four signer integration over Unix and authenticated
+  Noise: **PASS**.
+
+These results establish only the behavior of the cooperating HND test helpers
+on the same CI host/local filesystem. They do not establish distributed
+ownership, network-filesystem lock semantics, durable host fencing, stale
+leader rejection, or signer-side authorization linearization. The full
+RS-CON-01..05 and RS-CRASH-01..06 matrices remain open.
