@@ -216,3 +216,18 @@ post-state-save/pre-response boundary. This does not test a power loss, crash
 during the temporary-file write/rename, directory metadata persistence, or
 the pre-save interval; those cases remain open. It is not a distributed
 fencing test or production durability certification.
+
+
+### Consolidated full-green execution
+
+Workflow run `42337449661` on commit
+`22249843cf3a65ac6dd55bda9328f96261f579ff` completed successfully. It
+passed the same-host Unix and Noise lock probes, the anti-double-sign restart
+probe, the injected post-state-save/pre-response vote crash recovery probe,
+and the all-four independent signer integrations over Unix and authenticated
+Noise. The full four-validator outage/recovery and network partition checks
+also passed.
+
+The same-host lock and crash-boundary tests are therefore CI-verified for
+the HND test helpers. The distributed multi-host fencing and remaining crash
+matrix cases remain OPEN.
