@@ -1084,9 +1084,10 @@ def test_startup_gate_rejects_authority_failure_on_final_read(tmp_path):
 
 
 def test_restart_after_local_commit_before_checkpoint_publish_requires_recovery(tmp_path):
-    from hnd_ledger.chain import LocalChain
+    from hnd_ledger.chain import LocalChain, state_commitment
     from hnd_ledger.protocol import account_id, create_transaction
     from hnd_ledger.rollback_checkpoint import (
+        CheckpointError,
         CheckpointRelation,
         RollbackCheckpoint,
         assess_local_chain,
@@ -1111,7 +1112,7 @@ def test_restart_after_local_commit_before_checkpoint_publish_requires_recovery(
         genesis_hash=genesis_hash,
         height=0,
         block_hash=genesis_hash,
-        app_hash=__import__("hnd_ledger.chain", fromlist=["state_commitment"]).state_commitment(chain.state),
+        app_hash=state_commitment(chain.state),
         sequence=1,
     )
     genesis_raw = sign_checkpoint(genesis_checkpoint, key).encode()
