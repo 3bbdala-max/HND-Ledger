@@ -452,3 +452,44 @@ chain.initialize_genesis(
         "SELECT COUNT(*) FROM metadata WHERE key='cometbft_genesis_marker'"
     ).fetchone()[0] == 0
     recovered.close()
+
+
+def test_failed_reopen_closes_sqlite_connection(tmp_path, monkeypatch):
+    import hnd_ledger.chain as chain_module
+
+    key = Ed25519PrivateKey.generate()
+    account_id_value = account(key)
+    path = tmp_path / "failed-reopen.sqlite"
+    chain = LocalChain(
+        path, LedgerState(balances={account_id_value: 10}, supply_cap=10)
+    )
+    chain.close()
+
+    real_connect = sqlite3.connect
+    tamper = real_connect(path)
+    tamper.execute(
+        "UPDATE metadata SET value=? WHERE key='genesis_hash'", (b"X" * 32,)
+    )
+    tamper.commit()
+    tamper.close()
+
+    tracked = {"closed": False}
+
+    class TrackedConnection:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+        def close(self):
+            tracked["closed"] = True
+            return self._connection.close()
+
+    monkeypatch.setattr(
+        chain_module.sqlite3, "connect",
+        lambda *args, **kwargs: TrackedConnection(real_connect(*args, **kwargs)),
+    )
+    with pytest.raises(ChainError, match="genesis commitment"):
+        LocalChain(path)
+    assert tracked["closed"] is True
