@@ -28,6 +28,22 @@ import (
 
 func die(f string, a ...any) { fmt.Fprintf(os.Stderr,"HND_NOISE_SIGNER_FAILED: "+f+"\n",a...); os.Exit(1) }
 
+// acquireSignerStateLock enforces one active Noise signer process per
+// state path on the same host and local filesystem. This advisory lock is not
+// distributed fencing and must not be treated as a multi-host lease.
+func acquireSignerStateLock(statePath string) *os.File {
+ lockPath:=statePath+".owner.lock"
+ fd,err:=syscall.Open(lockPath,syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW,0600)
+ if err!=nil { die("open signer ownership lock %q: %v",lockPath,err) }
+ lockFile:=os.NewFile(uintptr(fd),lockPath)
+ if err:=lockFile.Chmod(0600); err!=nil { _=lockFile.Close(); die("restrict signer ownership lock %q: %v",lockPath,err) }
+ info,err:=lockFile.Stat()
+ if err!=nil || !info.Mode().IsRegular() { _=lockFile.Close(); die("signer ownership lock %q is not a regular file",lockPath) }
+ if stat,ok:=info.Sys().(*syscall.Stat_t); ok && stat.Uid!=uint32(os.Getuid()) { _=lockFile.Close(); die("signer ownership lock %q is not owned by current UID",lockPath) }
+ if err:=syscall.Flock(fd,syscall.LOCK_EX|syscall.LOCK_NB); err!=nil { _=lockFile.Close(); die("signer ownership lock already held for state path %q: %v",statePath,err) }
+ return lockFile
+}
+
 func checkStateDigest(path, expected string) error {
  if expected == "" { return fmt.Errorf("recovery mode requires expected anti-double-sign state SHA-256") }
  data,err:=os.ReadFile(path); if err!=nil { return err }
@@ -128,6 +144,8 @@ func main(){
  }
  requireExistingState:=os.Args[1]=="--serve-noise-recovery"
  listenAddr,nodeKeyPath,identityPath,pvKeyPath,pvStatePath,chainID:=os.Args[2],os.Args[3],os.Args[4],os.Args[5],os.Args[6],os.Args[7]
+ lockFile:=acquireSignerStateLock(pvStatePath)
+ defer lockFile.Close()
  if requireExistingState {
   info,statErr:=os.Stat(pvStatePath)
   if statErr!=nil { die("recovery mode requires existing anti-double-sign state file: %v",statErr) }
