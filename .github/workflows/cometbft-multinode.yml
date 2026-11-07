@@ -71,8 +71,13 @@ jobs:
           alice_id = account_id(alice_public)
           (data_root / "alice.seed").write_bytes(alice_seed)
           (data_root / "alice.seed").chmod(0o600)
-          genesis_app_state = cbor2.dumps(
+          genesis_cbor = cbor2.dumps(
               [2, 1_000_000, [[alice_id, 1_000_000]]], canonical=True
+          )
+          # CometBFT app_state is JSON raw data, not arbitrary CBOR bytes.
+          genesis_app_state = json.dumps(
+              {"version": 2, "payload": base64.b64encode(genesis_cbor).decode("ascii")},
+              sort_keys=True, separators=(",", ":"),
           )
           ids = []
           for i in range(3):
@@ -114,7 +119,7 @@ jobs:
               genesis = node / "config" / "genesis.json"
               data = json.loads(genesis.read_text())
               data["chain_id"] = "HND-LOCAL-V2"
-              data["app_state"] = base64.b64encode(genesis_app_state).decode("ascii")
+              data["app_state"] = json.loads(genesis_app_state)
               genesis.write_text(json.dumps(data, separators=(",", ":")))
 
           print("Configured three validators with separate RPC, P2P, ABCI, DB, and IPC endpoints.")
