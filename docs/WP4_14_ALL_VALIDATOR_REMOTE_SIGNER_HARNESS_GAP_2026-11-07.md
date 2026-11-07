@@ -395,3 +395,16 @@ reconfirms the four independent signer records, signer-to-Genesis identity
 checks, absence of local consensus key/state files, validator-4 signer
 outage/recovery, and four-node network behavior. The all-four Unix test path
 is now green on two separate workflow revisions.
+
+
+## All-four Unix signers and transport allowlist CI confirmation
+
+Workflow run `42335387643` on commit
+`76062ef988c5ea9f127d82bcd3841a4611945235` passed the four-independent-
+signer Unix integration step with the remote-only provider's Unix/Noise
+allowlist enabled. Its negative startup step also passed the checks that the
+remote-only CLI does not expose `init` or `gen-validator`, rejects an
+unauthenticated `tcp://` signer endpoint, and leaves no local consensus
+key/state files after rejection. The authenticated Noise single-validator
+variant was still running at this checkpoint; all-four Noise remains a
+separate pending validation.
