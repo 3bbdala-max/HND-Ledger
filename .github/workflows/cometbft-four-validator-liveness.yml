@@ -96,6 +96,7 @@ jobs:
           VALIDATOR0_UID=$(id -u hnd-validator0)
           declare -a PY_PIDS GO_PIDS NODE_PIDS
           cleanup() {
+            sudo pkill -TERM -u "$VALIDATOR0_UID" -x cometbft 2>/dev/null || true
             for pid in "${NODE_PIDS[@]:-}" "${GO_PIDS[@]:-}" "${PY_PIDS[@]:-}"; do
               [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
             done
@@ -173,6 +174,7 @@ jobs:
             (( h > baseline )) && baseline=$h
           done
           echo "Stopping validator 0 at peer height $baseline"
+          sudo pkill -TERM -u "$VALIDATOR0_UID" -x cometbft 2>/dev/null || true
           kill "${NODE_PIDS[0]}" "${GO_PIDS[0]}" "${PY_PIDS[0]}"
           wait "${NODE_PIDS[0]}" "${GO_PIDS[0]}" "${PY_PIDS[0]}" 2>/dev/null || true
           rm -f "$DATA/python-0.sock"
