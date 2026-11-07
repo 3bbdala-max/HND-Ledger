@@ -546,3 +546,40 @@ def test_sqlite_backup_restores_verified_independent_chain(tmp_path):
     assert source.state.next_nonces == source_nonces
     restored.close()
     source.close()
+
+def test_duplicate_signed_transaction_is_rejected_within_and_across_blocks(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "duplicate-replay.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 20}, supply_cap=20))
+    transaction = create_transaction(alice, bob_id, 5, 0)
+
+    # A duplicate in one candidate block must reject the entire append.
+    with pytest.raises(ValueError):
+        chain.append([transaction, transaction])
+    assert chain.height == 0
+    assert chain.state.balances == {alice_id: 20}
+    assert chain.state.next_nonces == {}
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+
+    # The transaction can then be committed once, but never replayed in a
+    # later block with the already-consumed account nonce.
+    first_block = chain.append([transaction])
+    committed_state = dict(chain.state.balances)
+    committed_nonces = dict(chain.state.next_nonces)
+    with pytest.raises(ValueError):
+        chain.append([transaction])
+    assert chain.height == 1
+    assert chain.tip_hash == first_block.block_hash
+    assert chain.state.balances == committed_state
+    assert chain.state.next_nonces == committed_nonces
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 1
+    chain.close()
+
+    restored = LocalChain(path)
+    assert restored.height == 1
+    assert restored.tip_hash == first_block.block_hash
+    assert restored.state.balances == committed_state
+    assert restored.state.next_nonces == committed_nonces
+    restored.close()
