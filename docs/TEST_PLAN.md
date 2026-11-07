@@ -193,3 +193,8 @@ Added tests proving that an exact signed checkpoint retry after a simulated lost
 ## Authenticated authority read and fail-closed assessment
 
 Tests cover a valid pinned-key checkpoint, missing record, untrusted signature, authority outage, and invalid response type. The read/verify/assess helper is a composition layer only and is not wired into node startup or write admission.
+
+
+## Provider-neutral checkpoint publication helper
+
+Tests cover first publication, monotonic successor publication, exact retry, skipped sequence rejection, CAS conflict, and authority outage. The helper verifies the signed candidate and current authority state before CAS, then rereads to resolve an ambiguous false CAS result. It does not close the SQLite/remote distributed-commit crash window and is not integrated into the live consensus commit path.

@@ -372,3 +372,69 @@ def read_and_assess_checkpoint(
         checkpoint_ancestor_block_hash=checkpoint_ancestor_block_hash,
         checkpoint_ancestor_app_hash=checkpoint_ancestor_app_hash,
     )
+
+
+
+def publish_checkpoint(
+    authority: CheckpointAuthority,
+    trusted_public_key: bytes,
+    signed_candidate: bytes,
+) -> RollbackCheckpoint:
+    """Publish one signed successor using CAS and safe idempotent retry.
+
+    The caller must invoke this only after the corresponding consensus block
+    has been durably committed locally. A false CAS result is reconciled by
+    rereading the authority: an exact already-accepted candidate is success;
+    any different latest checkpoint is a conflict. This helper does not make
+    the local SQLite commit and remote authority update atomic.
+    """
+    candidate = verify_signed_checkpoint(signed_candidate, trusted_public_key)
+
+    try:
+        current_raw = authority.read(candidate.chain_id, candidate.genesis_hash)
+    except Exception as exc:
+        raise CheckpointError("checkpoint authority read failed before publish") from exc
+
+    if current_raw is None:
+        current = None
+    elif isinstance(current_raw, bytes):
+        current = verify_signed_checkpoint(current_raw, trusted_public_key)
+        if (current.chain_id != candidate.chain_id
+                or current.genesis_hash != candidate.genesis_hash):
+            raise CheckpointError("authority returned a checkpoint for another chain")
+    else:
+        raise CheckpointError("checkpoint authority returned an invalid record type")
+
+    if current is not None and candidate.digest == current.digest:
+        return candidate
+    validate_successor(current, candidate)
+
+    try:
+        accepted = authority.compare_and_swap(
+            expected_sequence=None if current is None else current.sequence,
+            expected_digest=None if current is None else current.digest,
+            new_checkpoint=signed_candidate,
+        )
+    except Exception as exc:
+        raise CheckpointError("checkpoint authority compare-and-swap failed") from exc
+    if not isinstance(accepted, bool):
+        raise CheckpointError("checkpoint authority returned an invalid CAS result")
+    if accepted:
+        return candidate
+
+    # The request may have succeeded remotely while its acknowledgement was
+    # lost, or a competing writer may have advanced the authority.
+    try:
+        latest_raw = authority.read(candidate.chain_id, candidate.genesis_hash)
+    except Exception as exc:
+        raise CheckpointError(
+            "checkpoint CAS outcome is unknown; authority reread failed"
+        ) from exc
+    if not isinstance(latest_raw, bytes):
+        raise CheckpointError("checkpoint CAS conflict; no matching accepted record")
+    latest = verify_signed_checkpoint(latest_raw, trusted_public_key)
+    if (latest.chain_id == candidate.chain_id
+            and latest.genesis_hash == candidate.genesis_hash
+            and latest.digest == candidate.digest):
+        return candidate
+    raise CheckpointError("checkpoint compare-and-swap conflict")

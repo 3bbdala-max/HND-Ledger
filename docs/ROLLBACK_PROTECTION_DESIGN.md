@@ -135,3 +135,10 @@ A composition helper now reads the checkpoint through the provider-neutral autho
 - An authority outage raises a checkpoint error and is never converted into an unanchored fallback.
 
 The helper is not yet called by CometBFT startup or block commit. The current authority implementation remains a volatile test double; this is not production anti-rollback protection.
+
+
+## Checkpoint publication helper — provider-neutral, not atomic with SQLite
+
+A publication helper now verifies the candidate signature, reads and authenticates the current authority record, validates strict successor monotonicity, and performs compare-and-swap. If CAS reports false, it rereads the authority: an exact candidate already present is treated as an idempotent success; a different latest record is a conflict. Read/CAS failures and unknown outcomes fail closed.
+
+Important boundary: the helper cannot make a local SQLite block commit and a remote authority update atomic. It must be called only after the local consensus commit, and a crash/outage in between still leaves a recovery-required state. It is not wired into CometBFT commit or startup and has only been exercised against the volatile test authority.

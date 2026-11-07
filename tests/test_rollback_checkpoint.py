@@ -525,3 +525,83 @@ def test_read_and_assess_checkpoint_rejects_invalid_authority_record_type():
             block_hash=checkpoint.block_hash,
             app_hash=checkpoint.app_hash,
         )
+
+
+
+def test_publish_checkpoint_advances_authority_with_monotonic_cas():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    first = sign_checkpoint(make_checkpoint(), key).encode()
+    accepted_first = publish_checkpoint(authority, public_key, first)
+    assert accepted_first.sequence == 1
+
+    second = sign_checkpoint(make_checkpoint(sequence=2, height=1), key).encode()
+    accepted_second = publish_checkpoint(authority, public_key, second)
+    assert accepted_second.sequence == 2
+    stored = SignedRollbackCheckpoint.decode(
+        authority.read(b"C" * 32, b"G" * 32)
+    ).checkpoint
+    assert stored == accepted_second
+
+
+def test_publish_checkpoint_exact_retry_is_idempotent():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    first = sign_checkpoint(make_checkpoint(), key).encode()
+    publish_checkpoint(authority, public_key, first)
+    second = sign_checkpoint(make_checkpoint(sequence=2, height=1), key).encode()
+
+    assert publish_checkpoint(authority, public_key, second).sequence == 2
+    # A lost local acknowledgement followed by the same publish call is safe.
+    assert publish_checkpoint(authority, public_key, second).sequence == 2
+    stored = SignedRollbackCheckpoint.decode(
+        authority.read(b"C" * 32, b"G" * 32)
+    ).checkpoint
+    assert stored.sequence == 2
+
+
+def test_publish_checkpoint_rejects_non_successor_and_conflicting_cas():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    first = sign_checkpoint(make_checkpoint(), key).encode()
+    publish_checkpoint(authority, public_key, first)
+
+    skipped = sign_checkpoint(make_checkpoint(sequence=3, height=2), key).encode()
+    with pytest.raises(CheckpointError, match="next value"):
+        publish_checkpoint(authority, public_key, skipped)
+
+    class ConflictingAuthority(MemoryAuthorityForTest):
+        def compare_and_swap(self, **kwargs):
+            return False
+
+    conflict_authority = ConflictingAuthority(public_key)
+    publish_checkpoint(conflict_authority, public_key, first)
+    conflicting = sign_checkpoint(make_checkpoint(sequence=2, height=2), key).encode()
+    with pytest.raises(CheckpointError, match="compare-and-swap conflict"):
+        publish_checkpoint(conflict_authority, public_key, conflicting)
+
+
+def test_publish_checkpoint_fails_closed_when_authority_is_unavailable():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    class UnavailableAuthority:
+        def read(self, chain_id, genesis_hash):
+            raise OSError("simulated outage")
+
+        def compare_and_swap(self, **kwargs):
+            raise AssertionError("must not write without a successful read")
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    candidate = sign_checkpoint(make_checkpoint(), key).encode()
+    with pytest.raises(CheckpointError, match="read failed before publish"):
+        publish_checkpoint(UnavailableAuthority(), public_key, candidate)
