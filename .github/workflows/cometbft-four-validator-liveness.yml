@@ -242,10 +242,12 @@ jobs:
           done
           partition_target=$((partition_baseline + 5))
           echo "Partitioning validator 0 at height $partition_baseline; target for remaining quorum: $partition_target"
+          # Block both directions of validator 0's P2P links. Its inbound
+          # listener is unique (27656); the outbound rule is scoped to its UID.
           sudo iptables -I OUTPUT 1 -p tcp --dport 27657:27659 -m owner --uid-owner "$VALIDATOR0_UID" -j DROP
-          # Drop already-established outbound TCP sockets for validator 0.
-          # The firewall rule alone prevents new packets but Linux can retain
-          # the peer objects until their existing TCP sessions are closed.
+          sudo iptables -I INPUT 1 -p tcp --dport 27656 -j DROP
+          # Close established outbound and inbound TCP sessions; otherwise
+          # CometBFT can retain peer objects on already-open connections.
           validator0_pids=$(pgrep -u "$VALIDATOR0_UID" || true)
           [[ -n "$validator0_pids" ]] || { echo "No validator-0 process found for socket isolation"; exit 1; }
           printf 'Validator 0 process IDs: %s\n' "$validator0_pids"
@@ -279,11 +281,14 @@ jobs:
           if matched == 0:
               raise SystemExit("No validator-0 established P2P sockets were found to isolate")
           PY
+          # Close the accepted side of all existing connections to validator 0.
+          sudo ss -K src 127.0.0.1 sport = :27656 || true
           sudo iptables -vnL INPUT
           sudo iptables -vnL OUTPUT
           partitioned=true
           remove_partition() {
             sudo iptables -D OUTPUT -p tcp --dport 27657:27659 -m owner --uid-owner "$VALIDATOR0_UID" -j DROP 2>/dev/null || true
+            sudo iptables -D INPUT -p tcp --dport 27656 -j DROP 2>/dev/null || true
             partitioned=false
           }
           trap 'if [[ "$partitioned" == true ]]; then remove_partition; fi; cleanup' EXIT
@@ -304,7 +309,13 @@ jobs:
           sudo iptables -vnxL INPUT
           sudo iptables -nvxL OUTPUT
           output_drops=$(sudo iptables -nvxL OUTPUT | grep -F "owner UID match $VALIDATOR0_UID" | awk 'NR==1 {print $1}')
+          input_drops=$(sudo iptables -nvxL INPUT | awk '/dpt:27656/ {print $1; exit}')
           echo "Validator-0 outbound P2P drops: ${output_drops:-0}"
+          echo "Validator-0 inbound P2P drops: ${input_drops:-0}"
+          [[ "${input_drops:-0}" -gt 0 ]] || {
+            echo "Firewall did not demonstrably drop inbound P2P traffic to validator 0"
+            exit 1
+          }
           [[ "${output_drops:-0}" -gt 0 ]] || {
             echo "Firewall did not demonstrably drop validator-0 outbound P2P traffic"
             exit 1
