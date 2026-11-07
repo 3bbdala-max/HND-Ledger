@@ -72,7 +72,7 @@ jobs:
               text = set_key(text, "rpc", "laddr", f"tcp://127.0.0.1:{26657+i}")
               text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{27656+i}")
               text = set_key(text, "p2p", "allow_duplicate_ip", "true", quoted=False)
-              peers = ",".join(f"{ids[j]}@127.0.0.{j+2}:{27656+j}" for j in range(4) if j != i)
+              peers = ",".join(f"{ids[j]}@127.0.0.1:{27656+j}" for j in range(4) if j != i)
               text = set_key(text, "p2p", "persistent_peers", peers)
               cfg.write_text(text)
               genesis = node / "config" / "genesis.json"
