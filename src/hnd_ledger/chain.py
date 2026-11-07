@@ -162,8 +162,12 @@ class LocalChain:
                 if not isinstance(row, list) or len(row) != 6:
                     raise ChainError("malformed stored block")
                 version, height, prev_hash, tx_raws, root, claimed_hash = row
-                if version != 2 or height != expected_height or prev_hash != previous:
-                    raise ChainError("broken block sequence or parent link")
+                if (isinstance(version, bool) or not isinstance(version, int) or version != PROTOCOL_VERSION
+                        or isinstance(height, bool) or not isinstance(height, int) or height != expected_height
+                        or not isinstance(prev_hash, bytes) or len(prev_hash) != 32 or prev_hash != previous
+                        or not isinstance(root, bytes) or len(root) != 32
+                        or not isinstance(claimed_hash, bytes) or len(claimed_hash) != 32):
+                    raise ChainError("invalid block header or broken parent link")
                 if not isinstance(tx_raws, list):
                     raise ChainError("block transactions must be an array")
                 txs = tuple(decode_transaction(raw, self.state.chain_id) for raw in tx_raws)
