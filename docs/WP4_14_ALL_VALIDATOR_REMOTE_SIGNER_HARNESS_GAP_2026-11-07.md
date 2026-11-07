@@ -215,3 +215,29 @@ Subsequent source/CI commits add the dedicated remote-only CLI build and
 negative startup test, and correct the isolated-node partition baseline
 assertion. Those newer changes are still awaiting their own completed CI
 results at the time of this update.
+
+
+## Remote-only CLI wired into validator-4 integration (2026-11-07)
+
+The external-signer branches of the four-validator harness now accept
+`--remote-only-binary` and launch validator 4 with the dedicated fail-closed
+CLI instead of the stock CometBFT CLI. The stock CLI remains responsible for
+disposable testnet `init` and the three local-FilePV validators; the initial
+validator-4 consensus key and state are moved into the signer-owned directory
+before node startup. Validator 4 is then started and restarted with the
+remote-only provider.
+
+The harness now asserts all of the following in external-signer mode:
+
+- the external signer public key matches validator 4's Genesis public key;
+- no validator-4 local `priv_validator_key.json` or
+  `priv_validator_state.json` exists after the signer connection and RPC
+  startup, or after restart/recovery;
+- the signer-owned consensus key digest and P2P node identity remain stable.
+
+Both Unix and authenticated Noise CI invocations pass the dedicated
+`--remote-only-binary` built from pinned CometBFT v0.40.0 source. This change
+is committed in the branch; the resulting new CI runs must pass before the
+no-local-fallback property is considered verified. The architecture is still
+validator-4-only; the other three validators intentionally remain local in
+this integration stage.
