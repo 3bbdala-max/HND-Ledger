@@ -99,10 +99,31 @@ class TestV02ABCIApplication(unittest.TestCase):
                 app_state_bytes=app.application_genesis_bytes(),
             )
 
+    def test_init_chain_rejects_protocol_config_mismatch(self):
+        payload = json.loads(self.app.application_genesis_bytes())
+        payload["protocol_config"]["max_amount"] += 1
+        app = HNDABCIApplication(
+            config=self.config,
+            manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+            state_path=Path(self.temp.name) / "wrong-config.json",
+        )
+        with self.assertRaisesRegex(ABCIApplicationError, "protocol config mismatch"):
+            app.init_chain(
+                chain_id=self.config.network_id,
+                app_state_bytes=canonical_json(payload),
+            )
+        self.assertFalse((Path(self.temp.name) / "wrong-config.json").exists())
+
     def test_init_chain_rejects_unpinned_genesis_hash(self):
         payload = {
             "genesis_hash": "0" * 64,
             "manifest": self.manifest,
+            "protocol_config": {
+                "network_id": self.config.network_id,
+                "protocol_version": self.config.protocol_version,
+                "max_amount": self.config.max_amount,
+            },
         }
         with self.assertRaisesRegex(ABCIApplicationError, "Genesis hash mismatch"):
             app = HNDABCIApplication(
