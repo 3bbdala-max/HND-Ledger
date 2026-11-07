@@ -398,3 +398,53 @@ def test_unsupported_consensus_and_snapshot_methods_fail_closed(tmp_path):
         except NotImplementedError as exc:
             assert method in str(exc)
     chain.close()
+
+
+def test_mempool_concurrent_batch_admission_and_commit_accounting(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    sender = Ed25519PrivateKey.generate()
+    recipient = Ed25519PrivateKey.generate()
+    sender_id = _key_account(sender)
+    recipient_id = _key_account(recipient)
+    count = 128
+    chain = LocalChain(
+        tmp_path / "mempool-batch.sqlite",
+        LedgerState(balances={sender_id: count}, supply_cap=count),
+    )
+    dispatcher = ABCIDispatcher(LedgerApplication(chain))
+    transactions = [
+        encode_transaction(create_transaction(sender, recipient_id, 1, nonce))
+        for nonce in range(count)
+    ]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        responses = list(pool.map(
+            lambda raw: dispatcher("InsertTx", {"tx": _b64(raw)}),
+            transactions,
+        ))
+
+    assert all(response["code"] == 0 for response in responses)
+    assert len(dispatcher._mempool) == count
+    assert len(set(dispatcher._mempool)) == count
+    assert dispatcher._mempool_bytes == sum(map(len, transactions))
+
+    # Consensus proposal order is explicit: sender nonces must be sequential.
+    ordered = sorted(transactions, key=lambda raw: dispatcher.application.decode_tx(raw).nonce)
+    proposal = dispatcher("PrepareProposal", {
+        "max_tx_bytes": sum(map(len, ordered)),
+        "txs": [_b64(raw) for raw in ordered],
+    })
+    assert len(proposal["txs"]) == count
+    assert [dispatcher.application.decode_tx(base64.b64decode(raw)).nonce
+            for raw in proposal["txs"]] == list(range(count))
+
+    dispatcher("FinalizeBlock", {"height": 1, "txs": proposal["txs"]})
+    dispatcher("Commit", {})
+    assert chain.height == 1
+    assert chain.state.balances[sender_id] == 0
+    assert chain.state.balances[recipient_id] == count
+    assert chain.state.next_nonces[sender_id] == count
+    assert len(dispatcher._mempool) == 0
+    assert dispatcher._mempool_bytes == 0
+    chain.close()
