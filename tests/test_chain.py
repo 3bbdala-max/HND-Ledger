@@ -79,7 +79,8 @@ def test_block_persistence_failure_rolls_back_without_state_advance(tmp_path):
     sender_id = account(key)
     recipient_id = account(recipient_key)
     initial = LedgerState(balances={sender_id: 100}, supply_cap=100)
-    chain = LocalChain(tmp_path / "atomic-block.sqlite", initial)
+    path = tmp_path / "atomic-block.sqlite"
+    chain = LocalChain(path, initial)
     before_hash = chain.tip_hash
     tx = create_transaction(key, recipient_id, 40, 0)
 
@@ -104,6 +105,13 @@ def test_block_persistence_failure_rolls_back_without_state_advance(tmp_path):
     assert chain.blocks == []
     assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
     chain.close()
+
+    reopened = LocalChain(path, initial)
+    assert reopened.height == 0
+    assert reopened.state.balances == {sender_id: 100}
+    assert reopened.state.next_nonces == {}
+    assert reopened.blocks == []
+    reopened.close()
 
 
 def test_append_and_restore_preserves_state(tmp_path):
