@@ -212,7 +212,7 @@ def main():
             t=set_toml(t,"p2p","pex","false")
             t=set_toml(t,"p2p","addr_book_strict","false")
             t=set_toml(t,"p2p","allow_duplicate_ip","true")
-            if i==3 and signer_binary:
+            if signer_binary and (i==3 or all_signers_mode):
                 if noise_mode:
                     identity_path=root/"signer4"/"noise_identity.key"
                     noise_addr=f"127.0.0.1:{BASE+12}"
@@ -220,9 +220,9 @@ def main():
                     signer_addr=f"noise://{signer_peer_id}@{noise_addr}"
                     t=set_toml(t,None,"priv_validator_laddr",json.dumps(signer_addr))
                 else:
-                    t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_socket)))
+                    t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_records[i]["socket"])))
             p.write_text(t)
-        apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]; signer=None; signer_log=None
+        apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]; signer=None; signer_log=None; other_signers=[]; other_signer_logs=[]
         try:
             for i,h in enumerate(homes):
                 al=(root/f"app{i+1}.log").open("w"); nl=(root/f"node{i+1}.log").open("w"); ah.append(al); nh.append(nl)
@@ -232,16 +232,24 @@ def main():
                 wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[i].poll() is None else False,f"ABCI app {i+1} startup",30)
             for i,h in enumerate(homes):
                 env=os.environ.copy(); env["CMTHOME"]=str(h)
-                nodes[i]=subprocess.Popen([node_binary if i==3 and signer_binary else binary,"node","--home",str(h)],cwd=root,env=env,stdout=nh[i],stderr=subprocess.STDOUT)
-                if i==3 and signer_binary:
+                use_remote_only=bool(signer_binary and (i==3 or all_signers_mode))
+                nodes[i]=subprocess.Popen([node_binary if use_remote_only else binary,"node","--home",str(h)],cwd=root,env=env,stdout=nh[i],stderr=subprocess.STDOUT)
+                if use_remote_only:
                     local_key=h/"config"/"priv_validator_key.json"
                     local_state=h/"data"/"priv_validator_state.json"
                     if local_key.exists() or local_state.exists():
-                        raise AssertionError("remote-only validator unexpectedly created local consensus key/state files")
-                if i==3 and signer_binary:
-                    signer_log=(root/"signer4.log").open("w")
-                    signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
-                    signer=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log,stderr=subprocess.STDOUT)
+                        raise AssertionError(f"remote-only validator {i+1} unexpectedly created local consensus key/state files")
+                    log_path=root/f"signer{i+1}.log"
+                    signer_log_i=log_path.open("w")
+                    record=signer_records[i]
+                    signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(record["key"]),str(record["state"]),CHAIN] if noise_mode else ["--serve",str(record["socket"]),str(record["key"]),str(record["state"]),CHAIN])
+                    process=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log_i,stderr=subprocess.STDOUT)
+                    if i==3:
+                        signer_log=signer_log_i
+                        signer=process
+                    else:
+                        other_signer_logs.append(signer_log_i)
+                        other_signers.append(process)
             def converged(urls, minheight=1):
                 s=[rpc_status(u) for u in urls]; heights=[int(x["sync_info"]["latest_block_height"]) for x in s]; hashes=[x["sync_info"]["latest_block_hash"] for x in s]
                 return s if min(heights)>=minheight and len(set(heights))==1 and len(set(hashes))==1 else None
