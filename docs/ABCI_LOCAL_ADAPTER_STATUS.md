@@ -21,7 +21,7 @@ Implemented application methods:
 - `Commit` persists the finalized block and removes included transactions
   from the mempool.
 
-The IPC server rejects malformed JSON, duplicate JSON fields, unsupported
+The Python IPC server handles one request at a time on the SQLite-owning thread. This deliberately serializes application access while the local prototype uses a single SQLite connection; it favors deterministic correctness over concurrent throughput. The IPC server rejects malformed JSON, duplicate JSON fields, unsupported
 protocol versions, unknown envelope fields, oversized frames, invalid request
 IDs, and unsupported ABCI methods. The Unix socket is created with mode 0600.
 It does not expose a Python TCP listener.
