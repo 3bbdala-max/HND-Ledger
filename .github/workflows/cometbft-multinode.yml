@@ -291,12 +291,12 @@ jobs:
               base = f"http://127.0.0.1:{26657+i}/abci_query"
               for path in ("/hnd/v1/account", "/hnd/v1/info"):
                   params = {
-                      "path": path,
+                      "path": json.dumps(path),
                       "height": "0",
                       "prove": "false",
                   }
                   if path == "/hnd/v1/account":
-                      params["data"] = "0x" + meta["alice"]
+                      params["data"] = json.dumps("0x" + meta["alice"])
                   url = base + "?" + urllib.parse.urlencode(params)
                   try:
                       with urllib.request.urlopen(url, timeout=15) as response:
