@@ -55,8 +55,9 @@ def sha256_file(path):
             digest.update(chunk)
     return digest.hexdigest()
 
-def validator_identity(home, binary):
-    consensus = json.loads((Path(home)/"config"/"priv_validator_key.json").read_text())
+def validator_identity(home, binary, consensus_key_path=None):
+    key_path = Path(consensus_key_path) if consensus_key_path else Path(home)/"config"/"priv_validator_key.json"
+    consensus = json.loads(key_path.read_text())
     return {
         "consensus_pub_key": json.dumps(consensus["pub_key"], sort_keys=True, separators=(",",":")),
         "node_id": cmd([binary,"show-node-id","--home",str(home)]),
@@ -134,9 +135,12 @@ def set_partition(relays, groups):
 
 def main():
     ap=argparse.ArgumentParser()
-    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary")
-    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or a.remote_signer_binary; noise_mode=bool(a.noise_remote_signer_binary)
+    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary"); ap.add_argument("--remote-only-binary")
+    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or a.remote_signer_binary; noise_mode=bool(a.noise_remote_signer_binary); remote_only_binary=str(Path(a.remote_only_binary).resolve()) if a.remote_only_binary else None
+    if signer_binary and not remote_only_binary: ap.error("external signer mode requires --remote-only-binary")
     if not Path(binary).is_file() or not (source/"go.mod").is_file(): ap.error("missing pinned CometBFT binary/source")
+    if remote_only_binary and not Path(remote_only_binary).is_file(): ap.error("missing remote-only CometBFT binary")
+    node_binary=remote_only_binary if signer_binary else binary
     cfg=ProtocolConfig(network_id=CHAIN,protocol_version=2,max_amount=SUPPLY)
     ak,bk=Ed25519PrivateKey.generate(),Ed25519PrivateKey.generate()
     apub,bpub=public_key_b64(ak),public_key_b64(bk)
@@ -222,7 +226,12 @@ def main():
                 wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[i].poll() is None else False,f"ABCI app {i+1} startup",30)
             for i,h in enumerate(homes):
                 env=os.environ.copy(); env["CMTHOME"]=str(h)
-                nodes[i]=subprocess.Popen([binary,"node","--home",str(h)],cwd=root,env=env,stdout=nh[i],stderr=subprocess.STDOUT)
+                nodes[i]=subprocess.Popen([node_binary if i==3 and signer_binary else binary,"node","--home",str(h)],cwd=root,env=env,stdout=nh[i],stderr=subprocess.STDOUT)
+                if i==3 and signer_binary:
+                    local_key=h/"config"/"priv_validator_key.json"
+                    local_state=h/"data"/"priv_validator_state.json"
+                    if local_key.exists() or local_state.exists():
+                        raise AssertionError("remote-only validator unexpectedly created local consensus key/state files")
                 if i==3 and signer_binary:
                     signer_log=(root/"signer4.log").open("w")
                     signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(signer_key_path),str(signer_state_path),CHAIN] if noise_mode else ["--serve",str(signer_socket),str(signer_key_path),str(signer_state_path),CHAIN])
@@ -324,11 +333,15 @@ def main():
             pre_alice=account(urls[3],aid)["balance"]
             pre_bob=account(urls[3],bid)["balance"]
             pre_shutdown_state_digest=sha256_file(state4)
-            validator_key_path=homes[3]/"config"/"priv_validator_key.json"
+            validator_key_path=signer_key_path if signer_binary else homes[3]/"config"/"priv_validator_key.json"
             node_key_path=homes[3]/"config"/"node_key.json"
             pre_validator_key_digest=sha256_file(validator_key_path)
             pre_node_key_digest=sha256_file(node_key_path)
-            pre_validator_identity=validator_identity(homes[3],binary)
+            pre_validator_identity=validator_identity(homes[3],binary,validator_key_path if signer_binary else None)
+            if signer_binary:
+                genesis_validator=next(v for v in json.loads((homes[3]/"config"/"genesis.json").read_text())["validators"] if v["address"] == json.loads(validator_key_path.read_text())["address"])
+                if genesis_validator["pub_key"] != json.loads(validator_key_path.read_text())["pub_key"]:
+                    raise AssertionError("external signer public key does not match validator-4 Genesis identity")
             pre_height=int(pre_node["sync_info"]["latest_block_height"])
             pre_block_hash=pre_node["sync_info"]["latest_block_hash"]
             pre_node_app_hash=pre_node["sync_info"]["latest_app_hash"]
@@ -383,17 +396,29 @@ def main():
                 raise AssertionError("validator consensus identity key changed during recovery")
             if sha256_file(node_key_path) != pre_node_key_digest:
                 raise AssertionError("CometBFT P2P node identity key changed during recovery")
-            assert_validator_identity(homes[3],binary,pre_validator_identity)
-            expect_identity_substitution_rejected(homes[3],binary,validator_key_path,homes[0]/"config"/"priv_validator_key.json",pre_validator_identity,"consensus_pub_key","HND_WP4_13_ALTERNATE_CONSENSUS_IDENTITY_REJECTED")
-            expect_identity_substitution_rejected(homes[3],binary,node_key_path,homes[0]/"config"/"node_key.json",pre_validator_identity,"node_id","HND_WP4_13_ALTERNATE_P2P_IDENTITY_REJECTED")
-            assert_validator_identity(homes[3],binary,pre_validator_identity)
+            if signer_binary:
+                if sha256_file(validator_key_path) != pre_validator_key_digest:
+                    raise AssertionError("external signer consensus identity key changed during recovery")
+                if (homes[3]/"config"/"priv_validator_key.json").exists() or (homes[3]/"data"/"priv_validator_state.json").exists():
+                    raise AssertionError("remote-only validator created local consensus key/state files before restart")
+                actual_identity=validator_identity(homes[3],binary,validator_key_path)
+                if actual_identity != pre_validator_identity:
+                    raise AssertionError("external signer consensus identity or P2P identity changed during recovery")
+            else:
+                assert_validator_identity(homes[3],binary,pre_validator_identity)
+                expect_identity_substitution_rejected(homes[3],binary,validator_key_path,homes[0]/"config"/"priv_validator_key.json",pre_validator_identity,"consensus_pub_key","HND_WP4_13_ALTERNATE_CONSENSUS_IDENTITY_REJECTED")
+                expect_identity_substitution_rejected(homes[3],binary,node_key_path,homes[0]/"config"/"node_key.json",pre_validator_identity,"node_id","HND_WP4_13_ALTERNATE_P2P_IDENTITY_REJECTED")
+                assert_validator_identity(homes[3],binary,pre_validator_identity)
             if signer_binary:
                 # A stopped Unix listener can leave its pathname behind.
                 # Remove only this disposable test socket before rebinding.
                 if not noise_mode and signer_socket.exists():
                     signer_socket.unlink()
             env=os.environ.copy(); env["CMTHOME"]=str(homes[3])
-            nodes[3]=subprocess.Popen([binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
+            nodes[3]=subprocess.Popen([node_binary if signer_binary else binary,"node","--home",str(homes[3])],cwd=root,env=env,stdout=nh[3],stderr=subprocess.STDOUT)
+            if signer_binary:
+                if (homes[3]/"config"/"priv_validator_key.json").exists() or (homes[3]/"data"/"priv_validator_state.json").exists():
+                    raise AssertionError("remote-only validator recreated local consensus key/state files after restart")
             # Re-establish the external signer immediately after node launch.
             # A remote-signer validator may not finish startup/RPC readiness
             # until its configured signer endpoint has connected.
