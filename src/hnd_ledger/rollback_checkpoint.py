@@ -555,3 +555,46 @@ def publish_local_chain_checkpoint(
         raise CheckpointError("candidate application hash does not match local state")
 
     return publish_checkpoint(authority, trusted_public_key, signed_candidate)
+
+
+def require_local_chain_checkpoint_match(
+    authority: CheckpointAuthority,
+    trusted_public_key: bytes,
+    chain: object,
+) -> RollbackCheckpoint:
+    """Return the trusted checkpoint only when the replayed local tip matches exactly.
+
+    This is a fail-closed gate for future startup integrations. Unlike
+    assess_local_chain it cannot be mistaken for an informational status:
+    every state other than MATCH raises CheckpointError. It performs no writes
+    and does not itself hook into CometBFT startup or commit processing.
+    """
+    assessment = assess_local_chain(authority, trusted_public_key, chain)
+    if assessment.relation is not CheckpointRelation.MATCH:
+        raise CheckpointError(
+            f"local chain is not eligible for checkpointed operation: "
+            f"{assessment.relation.value}: {assessment.reason}"
+        )
+    from .chain import LocalChain, state_commitment
+    if not isinstance(chain, LocalChain):
+        raise CheckpointError("local chain object has an invalid type")
+    try:
+        genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+        checkpoint_raw = authority.read(chain.state.chain_id, genesis_hash)
+    except Exception as exc:
+        raise CheckpointError(
+            "checkpoint authority reread failed after local assessment"
+        ) from exc
+    if not isinstance(checkpoint_raw, bytes):
+        raise CheckpointError("trusted checkpoint disappeared after local assessment")
+    checkpoint = verify_signed_checkpoint(checkpoint_raw, trusted_public_key)
+    # Close the read/assessment race by checking the exact tip again.
+    if (
+        checkpoint.chain_id != chain.state.chain_id
+        or checkpoint.genesis_hash != genesis_hash
+        or checkpoint.height != chain.height
+        or checkpoint.block_hash != chain.tip_hash
+        or checkpoint.app_hash != state_commitment(chain.state)
+    ):
+        raise CheckpointError("local chain or trusted checkpoint changed during startup gate")
+    return checkpoint
