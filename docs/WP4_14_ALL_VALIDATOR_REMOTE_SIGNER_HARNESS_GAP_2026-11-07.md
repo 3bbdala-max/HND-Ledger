@@ -24,7 +24,7 @@ initial discovery and intermediate implementation stages.
   unauthenticated TCP endpoints: **CI PASS**.
 - Same-host advisory single-writer lock in Unix and Noise test helpers,
   including duplicate-process contention rejection and safe state-digest
-  handoff: **CI PASS** (run `42336661940`).
+  handoff: **CI PASS** (runs `42336661940` and `42337449661`).
 - Post-state-save/pre-response signer crash and safe retry/rejection on
   recovery (vote path): **CI PASS** (run `42337449661`).
 - Multi-host exclusive ownership, durable distributed fencing, stale-leader
@@ -483,3 +483,24 @@ covered by successful CI over both Unix sockets and authenticated Noise.
 This closes the all-four signer-mode integration test milestone, not the
 separate production operations, multi-host fencing, HSM/key custody, and
 release assurance requirements.
+
+
+## Full green CI with signer locks and crash-boundary probe (2026-11-07)
+
+Workflow run `42337449661` on commit
+`22249843cf3a65ac6dd55bda9328f96261f579ff` completed both jobs successfully.
+This run includes:
+
+- same-host Unix signer state-lock contention and sequential handoff;
+- same-host Noise signer state-lock contention rejection;
+- anti-double-sign persistence after signer restart;
+- injected signer exit after FilePV state save but before response, followed
+  by same-vote retry and conflicting-vote rejection;
+- remote-only provider fail-closed checks;
+- four independent Unix signers and four independent authenticated Noise
+  signers, each with separate key/state ownership and no local consensus files;
+- signer outage/restart recovery and four-validator network/partition checks.
+
+This is the strongest current integration evidence for the all-four remote
+signer lifecycle. It remains test-harness evidence, not production
+multi-host fencing or launch authorization.
