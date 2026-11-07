@@ -165,13 +165,35 @@ jobs:
             exit 1
           }
 
-          # Prove the full P2P mesh exists before any isolation rule is applied.
-          for i in 0 1 2 3; do
-            curl --silent --fail "http://127.0.0.1:$((26657+i))/net_info" -o "$DATA/net-before-$i.json"
-            peers=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["n_peers"]))' "$DATA/net-before-$i.json")
-            echo "Validator $i connected P2P peers before partition: $peers"
-            [[ "$peers" -ge 3 ]] || { echo "Validator $i did not establish all three expected P2P peers"; exit 1; }
+          # Startup height can be reached before every persistent P2P connection
+          # is established. Wait for the complete mesh rather than treating a
+          # transient two-peer observation as a consensus failure.
+          mesh_ready=false
+          for _ in $(seq 1 90); do
+            mesh_ready=true
+            for i in 0 1 2 3; do
+              if ! curl --silent --fail "http://127.0.0.1:$((26657+i))/net_info" -o "$DATA/net-before-$i.json"; then
+                mesh_ready=false
+                break
+              fi
+              peers=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["n_peers"]))' "$DATA/net-before-$i.json")
+              echo "Validator $i connected P2P peers during mesh readiness: $peers"
+              if [[ "$peers" -lt 3 ]]; then mesh_ready=false; fi
+            done
+            [[ "$mesh_ready" == true ]] && break
+            sleep 1
           done
+          [[ "$mesh_ready" == true ]] || {
+            echo "Four-validator P2P mesh did not converge to three peers per validator within 90 seconds"
+            for i in 0 1 2 3; do
+              echo "===== validator $i net_info ====="
+              curl --silent --show-error "http://127.0.0.1:$((26657+i))/net_info" || true
+              echo
+              echo "===== validator $i node log ====="
+              cat "$DATA/node-$i.log" || true
+            done
+            exit 1
+          }
 
           baseline=0
           for i in 1 2 3; do
