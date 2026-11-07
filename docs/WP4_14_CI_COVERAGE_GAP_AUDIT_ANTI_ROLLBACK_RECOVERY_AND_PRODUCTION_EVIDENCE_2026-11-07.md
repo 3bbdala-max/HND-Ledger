@@ -7,6 +7,28 @@
 **Change type:** Documentation only  
 **Disposition:** Findings and proposed acceptance gates; no workflow or test changes authorized or made
 
+## Current status update (2026-11-07)
+
+The earlier static finding that the explicit CI command omitted
+`tests.test_v02_anti_rollback_reference` and
+`tests.test_v02_recovery_controls` has been closed by a later workflow
+revision. The current `.github/workflows/hnd-v02-tests.yml` explicitly lists
+both modules in the isolated v0.2 test command (lines 46–47), and separately
+runs the VSP JCS compatibility spike.
+
+Workflow run `42337449661` on commit
+`22249843cf3a65ac6dd55bda9328f96261f579ff` completed the
+`hnd-v02-tests` job successfully. Its log records **221 tests passed** in
+17.888 seconds, including tests from both anti-rollback and recovery-controls
+modules. The same workflow run also completed the CometBFT smoke job
+successfully.
+
+The earlier sections below are retained as the historical static audit at
+the time it was written; they are not the current CI status. The synthetic
+anti-rollback model remains offline and synthetic, so passing its tests is
+not evidence of production anchor-to-signer enforcement or distributed
+fencing.
+
 ## 1. Executive finding
 
 The current GitHub Actions workflow runs a defined set of HND v0.2 unit/integration modules and a long CometBFT smoke sequence. The workflow's explicit Python test command does **not** include:
