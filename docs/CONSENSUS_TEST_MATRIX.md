@@ -32,7 +32,7 @@ The three-validator test used separate processes and data directories on one CI 
 | C-06 | Byzantine voting power below one-third | Safety maintained within protocol fault assumptions |
 | C-07 | Byzantine voting power at or above one-third | No unsupported safety/liveness guarantee claimed |
 | C-10a | FilePV reload after persisted Prevote: same H/R/S vote reuses identical signature; conflicting block vote is rejected | Commit `54229259b05ed322f94deaaf87abf532c788c5b3`, Go adapter workflow run `42378294015`, job `128420347444`; `go test ./...` passed | PASS (reload unit test) |
-| C-10b | Signing helper process exits immediately after FilePV signs and persists; parent process reloads state and retries/conflicts | Commit `95f6ffb996e77661c809f536981461558d56640a`; test added, CI evidence not yet available | PENDING CI; not a CometBFT node crash integration |
+| C-10b | Signing helper process exits immediately after FilePV signs and persists; parent process reloads state and retries/conflicts | Commit `95f6ffb996e77661c809f536981461558d56640a`, Go adapter run `42380149848`, job `128425864594`; `go test ./...` and `go vet ./...` passed; consensusguard package passed | PASS (process-exit unit test; not a CometBFT node crash integration) |
 | C-11 | Validator-set update | Old/new set boundary follows protocol rules |
 | C-13 | State sync from trusted checkpoint | Replayed state commitment matches checkpoint |
 | C-16 | Sustained adversarial mempool load | Bounded resource use and deterministic rejection |
