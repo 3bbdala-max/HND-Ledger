@@ -42,6 +42,45 @@ def test_finalize_does_not_persist_until_commit(tmp_path):
     app.chain.close()
 
 
+
+def test_commit_storage_failure_preserves_candidate_for_safe_retry(tmp_path):
+    app, alice, bob_id, alice_id = _app(tmp_path)
+    raw = encode_transaction(create_transaction(alice, bob_id, 25, 0))
+    before_hash = app.app_hash
+    app.finalize_block([raw])
+
+    app.chain.db.execute(
+        """
+        CREATE TRIGGER reject_block_insert
+        BEFORE INSERT ON blocks
+        BEGIN
+            SELECT RAISE(ABORT, 'simulated temporary storage failure');
+        END
+        """
+    )
+    app.chain.db.commit()
+
+    with pytest.raises(ChainError, match="block persistence conflict"):
+        app.commit()
+
+    assert app.height == 0
+    assert app.app_hash == before_hash
+    assert app.chain.state.balances[alice_id] == 100
+    assert app.chain.state.balances.get(bob_id, 0) == 0
+    assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+
+    app.chain.db.execute("DROP TRIGGER reject_block_insert")
+    app.chain.db.commit()
+    block = app.commit()
+
+    assert block.height == 1
+    assert app.height == 1
+    assert app.chain.state.balances[alice_id] == 75
+    assert app.chain.state.balances[bob_id] == 25
+    assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 1
+    app.chain.close()
+
+
 def test_uncommitted_candidate_can_be_discarded_without_state_change(tmp_path):
     app, alice, bob_id, alice_id = _app(tmp_path)
     raw = encode_transaction(create_transaction(alice, bob_id, 25, 0))
