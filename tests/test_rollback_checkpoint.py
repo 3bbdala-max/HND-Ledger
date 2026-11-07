@@ -238,7 +238,7 @@ def test_assess_local_tip_requires_exact_checkpoint_match_for_writes():
     ahead = assess_local_tip(checkpoint, **{**common, "height": 8})
     assert ahead.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
     assert not ahead.writes_allowed
-    assert "explicit verification" in ahead.reason
+    assert "explicit recovery" in ahead.reason
 
     diverged = assess_local_tip(
         checkpoint,
