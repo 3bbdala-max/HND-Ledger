@@ -7,6 +7,7 @@ closed. It never opens a TCP listener.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import socketserver
@@ -96,6 +97,7 @@ class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         raw = self.rfile.readline(MAX_FRAME_BYTES + 1)
         request_id = "invalid"
+        method = "unknown"
         try:
             request_id, method, payload = decode_request(raw)
             dispatcher: Callable[[str, dict[str, Any]], Any] = self.server.dispatcher  # type: ignore[attr-defined]
@@ -110,7 +112,8 @@ class _Handler(socketserver.StreamRequestHandler):
                 "code": "UNSUPPORTED_METHOD", "message": str(exc), "retryable": False,
             })
         except Exception:
-            # Do not leak stack traces, paths, keys, or internal state over IPC.
+            # Keep diagnostics local; never send stack traces or internal state over IPC.
+            logging.exception("HND IPC dispatcher failed for method %s", method)
             response = encode_response(request_id, error={
                 "code": "INTERNAL_ERROR", "message": "application request failed",
                 "retryable": True,
