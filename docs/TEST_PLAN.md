@@ -183,3 +183,8 @@ The local-tip assessment accepts the replayed local block hash and app hash at t
 ## LocalChain-to-checkpoint assessment integration
 
 Added a cross-module regression test that creates a signed checkpoint at an earlier local height, advances the local chain, retrieves the replay-verified ancestor commitments from `LocalChain.checkpoint_ancestor_commitments`, and feeds them to `assess_local_tip`. The expected result remains local-ahead/recovery-required with writes disabled.
+
+
+## Idempotent checkpoint acknowledgement retry
+
+Added tests proving that an exact signed checkpoint retry after a simulated lost acknowledgement succeeds without creating another sequence, while a different candidate with the stale expected sequence/digest is rejected. These tests run against the volatile in-memory authority test double and do not prove remote durability.

@@ -119,3 +119,8 @@ New tests cover missing ancestry evidence, matching ancestry, block-hash mismatc
 Commit `40c622b296fc81d2ee5b40c8d565d45cf418179c` adds `LocalChain.checkpoint_ancestor_commitments(height)`. It returns the genesis hash plus genesis app commitment at height zero, or the replay-verified block hash and state root at a positive height. It rejects boolean, negative, and future heights.
 
 A cross-module test now feeds those actual locally replayed ancestor commitments into `assess_local_tip` for a chain that is ahead of the trusted checkpoint. Matching ancestry still produces `LOCAL_AHEAD_UNVERIFIED`; it does not enable writes. This is still not an external authority integration or a recovery authorization mechanism.
+
+
+## Idempotent compare-and-swap retry semantics
+
+The authority contract and in-memory test double now treat an exact retry of a checkpoint already accepted as success. This models a lost acknowledgement after durable acceptance: retrying the same signed payload with the original compare-and-swap expectation returns success without advancing sequence again. A different candidate using that stale expectation remains rejected. This is a test-double contract guarantee only; durable provider behavior must be independently implemented and verified.

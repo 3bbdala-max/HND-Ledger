@@ -330,3 +330,57 @@ def test_checkpoint_ancestor_commitments_must_be_supplied_as_a_pair():
             app_hash=b"A" * 32,
             checkpoint_ancestor_block_hash=checkpoint.block_hash,
         )
+
+
+
+def test_memory_authority_compare_and_swap_retry_is_idempotent_after_lost_ack():
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    first = sign_checkpoint(make_checkpoint(), key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=first
+    )
+    first_checkpoint = SignedRollbackCheckpoint.decode(first).checkpoint
+    second = sign_checkpoint(make_checkpoint(sequence=2, height=1), key).encode()
+
+    # First request is durably accepted; imagine the response was lost.
+    assert authority.compare_and_swap(
+        expected_sequence=first_checkpoint.sequence,
+        expected_digest=first_checkpoint.digest,
+        new_checkpoint=second,
+    )
+    # Retrying the exact same signed checkpoint with the original CAS token
+    # must report success without creating another sequence or conflicting tip.
+    assert authority.compare_and_swap(
+        expected_sequence=first_checkpoint.sequence,
+        expected_digest=first_checkpoint.digest,
+        new_checkpoint=second,
+    )
+    stored = SignedRollbackCheckpoint.decode(
+        authority.read(b"C" * 32, b"G" * 32)
+    ).checkpoint
+    assert stored == SignedRollbackCheckpoint.decode(second).checkpoint
+    assert stored.sequence == 2
+
+
+def test_memory_authority_stale_cas_does_not_accept_different_candidate():
+    key = Ed25519PrivateKey.generate()
+    authority = MemoryAuthorityForTest(key.public_key().public_bytes_raw())
+    first = sign_checkpoint(make_checkpoint(), key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=first
+    )
+    checkpoint = SignedRollbackCheckpoint.decode(first).checkpoint
+    accepted = sign_checkpoint(make_checkpoint(sequence=2, height=1), key).encode()
+    conflicting = sign_checkpoint(make_checkpoint(sequence=2, height=2), key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=checkpoint.sequence,
+        expected_digest=checkpoint.digest,
+        new_checkpoint=accepted,
+    )
+    assert not authority.compare_and_swap(
+        expected_sequence=checkpoint.sequence,
+        expected_digest=checkpoint.digest,
+        new_checkpoint=conflicting,
+    )

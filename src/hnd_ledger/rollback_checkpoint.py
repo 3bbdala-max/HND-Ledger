@@ -199,7 +199,7 @@ class CheckpointAuthority(Protocol):
         expected_digest: bytes | None,
         new_checkpoint: bytes,
     ) -> bool:
-        """Atomically accept exactly one verified successor of the expected tip."""
+        """Atomically accept one successor; exact retries of an accepted candidate succeed."""
         ...
 
 
