@@ -51,7 +51,39 @@ func blockID(label string) cmttypes.BlockID {
 	}
 }
 
+// acquireLocalSignerLock provides same-host, same-filesystem exclusion for
+// this disposable signer helper. It is an advisory OS lock, not distributed
+// fencing and not a substitute for an authoritative multi-host signer gate.
+func acquireLocalSignerLock(statePath string) *os.File {
+	lockPath := statePath + ".owner.lock"
+	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		fail("open signer ownership lock %q: %v", lockPath, err)
+	}
+	lockFile := os.NewFile(uintptr(fd), lockPath)
+	if err := lockFile.Chmod(0o600); err != nil {
+		_ = lockFile.Close()
+		fail("restrict signer ownership lock %q: %v", lockPath, err)
+	}
+	info, err := lockFile.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		_ = lockFile.Close()
+		fail("signer ownership lock %q is not a regular file", lockPath)
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Getuid()) {
+		_ = lockFile.Close()
+		fail("signer ownership lock %q is not owned by the current UID", lockPath)
+	}
+	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = lockFile.Close()
+		fail("signer ownership lock already held for state path %q: %v", statePath, err)
+	}
+	return lockFile
+}
+
 func runSignerChild(socketPath, keyPath, statePath string, withholdVotes, loadExisting bool) {
+	lockFile := acquireLocalSignerLock(statePath)
+	defer lockFile.Close()
 	logger := log.NewNopLogger()
 	var pv *privval.FilePV
 	if loadExisting {
@@ -381,6 +413,8 @@ func fileSHA256(path string) (string, error) {
 }
 
 func runPersistentSigner(socketPath, keyPath, statePath, signerChainID, expectedStateDigest string, requireExistingState bool) {
+	lockFile := acquireLocalSignerLock(statePath)
+	defer lockFile.Close()
 	if _, err := os.Stat(keyPath); err != nil {
 		fail("signer key file unavailable: %v", err)
 	}
