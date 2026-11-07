@@ -97,7 +97,7 @@ class VSPJCSCompatibilitySpikeTests(unittest.TestCase):
             self.skipTest("HND_JCS_NODE_MODULES is not configured")
         raw_inputs = [
             '{"z":1,"a":4.50,"negativeZero":-0,"tiny":1e-7}',
-            '{"\\ue000":1,"\\U00010000":2}',
+            '{"\ue000":1,"\U00010000":2}',
             '{"numbers":[333333333.33333329,1e30,4.50,2e-3,1e-27]}',
             '{"unicode":"\\u20ac\\ud83d\\ude00","control":"\\b\\t\\n"}',
             '{"nested":{"b":true,"a":null},"array":[0,false,"x"]}',
