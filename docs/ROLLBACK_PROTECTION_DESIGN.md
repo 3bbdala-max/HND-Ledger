@@ -172,3 +172,8 @@ This helper still must be called after the corresponding consensus commit. It do
 The latest implementation adds `require_local_chain_checkpoint_match`. It returns the trusted checkpoint only for an exact MATCH and raises for unanchored, behind, ahead, divergent, malformed, or unavailable-authority states. It rereads the authority and rechecks the local tip before returning to reduce a read/assessment race.
 
 This remains an explicit primitive, not an automatic CometBFT startup hook. The in-memory authority used in tests is volatile and is not a production trust anchor. A production integration still requires a durable independent authority, caller authentication, key custody, consensus-commit evidence validation, a recovery state machine, and startup enforcement before the node can serve or commit.
+
+
+## Startup-gate authority race regression
+
+The exact-match startup helper performs a second authenticated authority read after its initial local assessment and compares the checkpoint against the local tip again. Regression tests simulate the authority advancing between those reads and becoming unavailable on the final read; both cases are rejected. This narrows the read/assessment race but does not provide a lease or fencing token: the authority can still advance immediately after the helper returns. Production runtime safety therefore still requires an authority protocol that coordinates validator identity, checkpoint advancement, and write authorization; this helper alone is not a continuous anti-rollback guarantee.
