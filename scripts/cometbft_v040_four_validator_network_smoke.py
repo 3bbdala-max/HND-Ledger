@@ -138,7 +138,7 @@ def main():
     ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary"); ap.add_argument("--remote-only-binary"); ap.add_argument("--all-remote-signers",action="store_true")
     a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or a.remote_signer_binary; noise_mode=bool(a.noise_remote_signer_binary); all_signers_mode=bool(a.all_remote_signers); remote_only_binary=str(Path(a.remote_only_binary).resolve()) if a.remote_only_binary else None
     if signer_binary and not remote_only_binary: ap.error("external signer mode requires --remote-only-binary")
-    if all_signers_mode and (noise_mode or not a.remote_signer_binary): ap.error("--all-remote-signers currently requires the Unix --remote-signer-binary transport")
+    if all_signers_mode and not signer_binary: ap.error("--all-remote-signers requires an external signer binary")
     if not Path(binary).is_file() or not (source/"go.mod").is_file(): ap.error("missing pinned CometBFT binary/source")
     if remote_only_binary and not Path(remote_only_binary).is_file(): ap.error("missing remote-only CometBFT binary")
     node_binary=remote_only_binary if signer_binary else binary
@@ -214,10 +214,17 @@ def main():
             t=set_toml(t,"p2p","allow_duplicate_ip","true")
             if signer_binary and (i==3 or all_signers_mode):
                 if noise_mode:
-                    identity_path=root/"signer4"/"noise_identity.key"
-                    noise_addr=f"127.0.0.1:{BASE+12}"
+                    record=signer_records[i]
+                    identity_path=record["directory"]/"noise_identity.key"
+                    noise_addr=f"127.0.0.1:{BASE+20+i}"
                     signer_peer_id=cmd([str(Path(signer_binary).resolve()),"--generate-noise-identity",str(identity_path)])
                     signer_addr=f"noise://{signer_peer_id}@{noise_addr}"
+                    record["identity"]=identity_path
+                    record["noise_addr"]=noise_addr
+                    record["noise_peer_id"]=signer_peer_id
+                    if i==3:
+                        identity_path_val4=identity_path
+                        noise_addr_val4=noise_addr
                     t=set_toml(t,None,"priv_validator_laddr",json.dumps(signer_addr))
                 else:
                     t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_records[i]["socket"])))
@@ -242,7 +249,10 @@ def main():
                     log_path=root/f"signer{i+1}.log"
                     signer_log_i=log_path.open("w")
                     record=signer_records[i]
-                    signer_args=(["--serve-noise",noise_addr,str(homes[3]/"config/node_key.json"),str(identity_path),str(record["key"]),str(record["state"]),CHAIN] if noise_mode else ["--serve",str(record["socket"]),str(record["key"]),str(record["state"]),CHAIN])
+                    signer_args=(["--serve-noise",record["noise_addr"],str(homes[i]/"config/node_key.json"),str(record["identity"]),str(record["key"]),str(record["state"]),CHAIN] if noise_mode else ["--serve",str(record["socket"]),str(record["key"]),str(record["state"]),CHAIN])
+                    if i==3 and noise_mode:
+                        identity_path=record["identity"]
+                        noise_addr=record["noise_addr"]
                     process=subprocess.Popen([str(Path(signer_binary).resolve()),*signer_args],cwd=root,stdout=signer_log_i,stderr=subprocess.STDOUT)
                     if i==3:
                         signer_log=signer_log_i
