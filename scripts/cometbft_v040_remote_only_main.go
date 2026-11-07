@@ -6,8 +6,11 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	cmd "github.com/cometbft/cometbft/cmd/cometbft/commands"
 	"github.com/cometbft/cometbft/cmd/cometbft/commands/debug"
@@ -23,6 +26,27 @@ import (
 )
 
 var errRemoteSignerRequired = errors.New("HND remote-only node requires priv_validator_laddr")
+var errUnsupportedSignerTransport = errors.New("HND remote-only node permits only absolute unix:// or authenticated noise:// signer endpoints")
+
+func validateRemoteSignerEndpoint(addr string) error {
+	if addr == "" {
+		return errRemoteSignerRequired
+	}
+	if strings.HasPrefix(addr, "unix://") {
+		if !filepath.IsAbs(strings.TrimPrefix(addr, "unix://")) {
+			return errUnsupportedSignerTransport
+		}
+		return nil
+	}
+	parsed, err := url.Parse(addr)
+	if err != nil || parsed.Scheme != "noise" || parsed.User == nil || parsed.User.Username() == "" {
+		return errUnsupportedSignerTransport
+	}
+	if _, _, err := net.SplitHostPort(parsed.Host); err != nil {
+		return errUnsupportedSignerTransport
+	}
+	return nil
+}
 
 // denyLocalPV is deliberately incapable of returning a public key or signing.
 // node.NewNodeWithContext replaces it with the configured remote signer client
@@ -41,8 +65,8 @@ func (denyLocalPV) SignProposal(string, *cmtproto.Proposal) error {
 }
 
 func remoteOnlyNewNode(config *cfg.Config, logger log.Logger) (*node.Node, error) {
-	if config.PrivValidatorListenAddr == "" {
-		return nil, errRemoteSignerRequired
+	if err := validateRemoteSignerEndpoint(config.PrivValidatorListenAddr); err != nil {
+		return nil, err
 	}
 	// This is the P2P transport identity, not a consensus signing key.
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
