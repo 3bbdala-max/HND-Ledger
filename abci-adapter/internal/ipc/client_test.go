@@ -9,6 +9,7 @@ import (
 	"net"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 
@@ -115,5 +116,68 @@ func TestCallReturnsTypedRemoteError(t *testing.T) {
 	remote, ok := err.(*RemoteError)
 	if !ok || remote.Code != "INVALID_REQUEST" || remote.Retryable {
 		t.Fatalf("expected typed non-retryable remote error, got %#v", err)
+	}
+}
+
+
+func TestCallCancellationInterruptsBlockedResponseRead(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "cancel.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	requestReceived := make(chan struct{})
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		scanner := bufio.NewScanner(conn)
+		if !scanner.Scan() {
+			return
+		}
+		close(requestReceived)
+		// Deliberately withhold a response. The client must close the socket
+		// when its context is canceled rather than waiting for its 30s timeout.
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+
+	client, err := NewClient(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	callDone := make(chan error, 1)
+	go func() {
+		var result testPayload
+		callDone <- client.Call(ctx, "Info", map[string]any{}, &result)
+	}()
+
+	select {
+	case <-requestReceived:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("server did not receive IPC request")
+	}
+	cancel()
+
+	select {
+	case err := <-callDone:
+		if err == nil {
+			t.Fatal("expected canceled IPC call to fail")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("IPC call did not stop promptly after context cancellation")
+	}
+
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server connection did not close after client cancellation")
 	}
 }
