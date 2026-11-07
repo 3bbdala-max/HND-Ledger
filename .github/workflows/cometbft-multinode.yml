@@ -184,3 +184,63 @@ jobs:
               raise SystemExit(f"validator application hashes diverged at height 2: {hashes}")
           print(f"Three validators agree at height 2; app_hash={hashes[0]}; observed heights={heights}")
           PY
+
+          # Restart validator 0 together with its application and adapter,
+          # preserving its CometBFT home and independent SQLite database.
+          kill "${PIDS[2]}" "${PIDS[1]}" "${PIDS[0]}"
+          wait "${PIDS[2]}" "${PIDS[1]}" "${PIDS[0]}" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/hnd-data/python-0.sock"
+
+          hnd-abci-python --chain-db "$RUNNER_TEMP/hnd-data/ledger-0.sqlite" \
+            --socket "$RUNNER_TEMP/hnd-data/python-0.sock" \
+            >"$RUNNER_TEMP/hnd-data/python-0.log" 2>&1 &
+          PIDS[0]=$!
+          for _ in $(seq 1 30); do
+            [[ -S "$RUNNER_TEMP/hnd-data/python-0.sock" ]] && break
+            kill -0 "${PIDS[0]}" 2>/dev/null || { cat "$RUNNER_TEMP/hnd-data/python-0.log"; exit 1; }
+            sleep 1
+          done
+          [[ -S "$RUNNER_TEMP/hnd-data/python-0.sock" ]]
+
+          HND_IPC_SOCKET="$RUNNER_TEMP/hnd-data/python-0.sock" \
+            HND_ABCI_LISTEN="tcp://127.0.0.1:28658" \
+            "$RUNNER_TEMP/hnd-abci" >"$RUNNER_TEMP/hnd-data/adapter-0.log" 2>&1 &
+          PIDS[1]=$!
+          sleep 1
+          kill -0 "${PIDS[1]}"
+
+          cometbft start --home "$ROOT/node0" >"$RUNNER_TEMP/hnd-data/node-0.log" 2>&1 &
+          PIDS[2]=$!
+
+          recovered=false
+          for _ in $(seq 1 120); do
+            if curl --silent --fail http://127.0.0.1:26657/status -o "$RUNNER_TEMP/status-0-restarted.json"; then
+              height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status-0-restarted.json")
+              if [[ "$height" -ge 3 ]]; then
+                recovered=true
+                echo "Validator 0 recovered from persistent application and node data at height $height"
+                break
+              fi
+            fi
+            kill -0 "${PIDS[2]}" 2>/dev/null || { cat "$RUNNER_TEMP/hnd-data/python-0.log" "$RUNNER_TEMP/hnd-data/adapter-0.log" "$RUNNER_TEMP/hnd-data/node-0.log"; exit 1; }
+            sleep 1
+          done
+          [[ "$recovered" == true ]] || { echo "Validator 0 did not recover"; cat "$RUNNER_TEMP/hnd-data/python-0.log" "$RUNNER_TEMP/hnd-data/adapter-0.log" "$RUNNER_TEMP/hnd-data/node-0.log"; exit 1; }
+
+          for i in 0 1 2; do
+            curl --silent --fail "http://127.0.0.1:$((26657+i))/commit?height=2" -o "$RUNNER_TEMP/commit-restarted-$i.json"
+          done
+          python - "$RUNNER_TEMP" <<'PY'
+          import json
+          import pathlib
+          import sys
+          root = pathlib.Path(sys.argv[1])
+          hashes = [
+              json.loads((root / f"commit-restarted-{i}.json").read_text())
+                  ["result"]["signed_header"]["header"]["app_hash"]
+              for i in range(3)
+          ]
+          if len(set(hashes)) != 1:
+              raise SystemExit(f"application hash diverged after validator restart: {hashes}")
+          print(f"Validator restart recovery verified; all three app_hash values still match: {hashes[0]}")
+          PY
