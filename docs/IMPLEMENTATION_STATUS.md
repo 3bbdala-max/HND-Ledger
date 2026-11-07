@@ -30,7 +30,7 @@
 - Crash fault-injection, backup/restore procedures, schema migrations, or external security audit.
 - Economic review, legal review, or authorization to issue or trade a token.
 
-## Verification status
+## ABCI transport decision\n\n- `docs/ABCI_TRANSPORT_DESIGN.md` pins the adapter design to CometBFT v0.40.0: official Go ABCI socket server as a thin transport layer, with Python retaining all HND ledger rules. The adapter is not yet implemented.\n\n## Verification status
 
 - GitHub Actions run `42342012227` completed successfully on commit `6319630828ab0893e981bacc8472f60741245bf2`.
 - Python 3.12 dependency installation completed successfully.
