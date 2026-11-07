@@ -52,6 +52,25 @@ func checkStateDigest(path, expected string) error {
  return nil
 }
 
+func probeStateLockContention() {
+ root,err:=os.MkdirTemp("","hnd-noise-state-lock-")
+ if err!=nil { die("create state-lock probe directory: %v",err) }
+ defer os.RemoveAll(root)
+ statePath:=root+"/priv_validator_state.json"
+ if err:=os.WriteFile(statePath,[]byte("{}"),0600); err!=nil { die("create state-lock fixture: %v",err) }
+ owner:=acquireSignerStateLock(statePath)
+ defer owner.Close()
+ executable,err:=os.Executable()
+ if err!=nil { die("resolve Noise helper executable: %v",err) }
+ child:=exec.Command(executable,"--try-state-lock",statePath)
+ output,runErr:=child.CombinedOutput()
+ if runErr==nil { die("second Noise signer process unexpectedly acquired the same state lock") }
+ if !strings.Contains(string(output),"signer ownership lock already held") {
+  die("second Noise signer process rejected for unexpected reason: %s",output)
+ }
+ fmt.Println("COMETBFT_V040_NOISE_SIGNER_SAME_HOST_LOCK_CONTENTION_REJECTED")
+}
+
 func probeStateDigestMismatch() {
  root,err:=os.MkdirTemp("","hnd-noise-state-digest-mismatch-")
  if err!=nil { die("create state digest probe directory: %v",err) }
@@ -130,6 +149,12 @@ func probeMissingRecoveryState() {
 }
 
 func main(){
+ if len(os.Args)==3 && os.Args[1]=="--try-state-lock" {
+  lock:=acquireSignerStateLock(os.Args[2]); defer lock.Close()
+  fmt.Println("COMETBFT_V040_NOISE_SIGNER_STATE_LOCK_ACQUIRED")
+  return
+ }
+ if len(os.Args)==2 && os.Args[1]=="--state-lock-contention-probe" { probeStateLockContention(); return }
  if len(os.Args)==2 && os.Args[1]=="--missing-state-recovery-probe" { probeMissingRecoveryState(); return }
  if len(os.Args)==2 && os.Args[1]=="--state-digest-mismatch-probe" { probeStateDigestMismatch(); return }
  if len(os.Args)==4 && os.Args[1]=="--probe-unauthorized" { probeUnauthorized(os.Args[2],os.Args[3]); return }
