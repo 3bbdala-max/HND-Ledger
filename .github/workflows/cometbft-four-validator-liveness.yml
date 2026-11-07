@@ -241,6 +241,16 @@ jobs:
             if [[ "$count" -eq 3 ]]; then partition_progress=true; break; fi
             sleep 1
           done
+          echo "Firewall counters after partition window:"
+          sudo iptables -vnL INPUT
+          sudo iptables -vnL OUTPUT
+          for i in 0 1 2 3; do
+            echo "===== validator $i P2P peers ====="
+            curl --silent --show-error "http://127.0.0.1:$((26657+i))/net_info" || true
+            echo
+          done
+          echo "===== TCP sockets ====="
+          ss -tnp || true
           [[ "$partition_progress" == true ]] || { echo "Remaining quorum did not advance during live network partition"; exit 1; }
           curl --silent --fail http://127.0.0.1:26657/status -o "$DATA/partition-isolated-0.json"
           isolated_height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$DATA/partition-isolated-0.json")
