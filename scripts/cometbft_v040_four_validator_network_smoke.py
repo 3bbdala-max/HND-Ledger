@@ -281,6 +281,11 @@ def main():
                     genesis_validator=next(v for v in genesis_validators if v["address"]==signer_key["address"])
                     if genesis_validator["pub_key"] != signer_key["pub_key"]:
                         raise AssertionError(f"validator {i+1} signer public key does not match Genesis identity")
+                key_paths=[str(signer_records[i]["key"].resolve()) for i in range(N)]
+                state_paths=[str(signer_records[i]["state"].resolve()) for i in range(N)]
+                if len(set(key_paths)) != N or len(set(state_paths)) != N:
+                    raise AssertionError("all-four signer key/state records are not independently stored")
+                print(json.dumps({"result":"HND_WP4_14_ALL_FOUR_REMOTE_SIGNERS_NO_LOCAL_KEYS_OK","signer_count":N,"transport":"unix","all_signers_connected":True,"all_genesis_identities_match":True,"all_local_consensus_key_state_files_absent":True,"independent_signer_records":True},sort_keys=True),flush=True)
             if noise_mode:
                 wait(lambda: "HND_NOISE_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text(errors="replace"),"authenticated Noise signer connection marker",30)
                 rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",noise_addr,str(homes[3]/"config/node_key.json")])
