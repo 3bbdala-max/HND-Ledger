@@ -79,8 +79,9 @@ def test_invalid_proposal_is_rejected_and_check_tx_is_read_only(tmp_path):
     invalid = encode_transaction(create_transaction(alice, bob_id, 101, 0))
     original_hash = app.app_hash
 
-    with pytest.raises(ChainError):
-        app.check_tx(invalid)
+    # CheckTx is intentionally weak: state-dependent insufficient funds are
+    # checked against the ordered proposal, not against a stale mempool view.
+    app.check_tx(invalid)
     assert not app.process_proposal([invalid])
     assert app.app_hash == original_hash
     assert app.chain.state.balances[alice_id] == 100
@@ -115,4 +116,35 @@ def test_commit_rejects_candidate_if_committed_state_changed(tmp_path):
     with pytest.raises(ChainError, match="state changed after finalization"):
         app.commit()
     assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    app.chain.close()
+
+
+
+def test_check_tx_accepts_future_nonce_for_mempool_recheck(tmp_path):
+    app, alice, bob_id, alice_id = _app(tmp_path)
+    first = encode_transaction(create_transaction(alice, bob_id, 10, 0))
+    second = encode_transaction(create_transaction(alice, bob_id, 15, 1))
+
+    # Both are independently well-formed and signed, even though nonce 1 is
+    # not yet executable against the committed state in isolation.
+    app.check_tx(first)
+    app.check_tx(second)
+    selected = app.prepare_proposal([first, second])
+
+    assert selected == (first, second)
+    assert app.process_proposal(selected)
+    assert app.chain.state.balances[alice_id] == 100
+    assert app.height == 0
+    app.chain.close()
+
+
+def test_check_tx_rejects_wrong_chain_id(tmp_path):
+    app, alice, bob_id, _ = _app(tmp_path)
+    wrong_chain_tx = encode_transaction(
+        create_transaction(alice, bob_id, 1, 0, chain_id=b"X" * 32)
+    )
+
+    with pytest.raises(ValueError, match="wrong chain id"):
+        app.check_tx(wrong_chain_tx)
+    assert app.height == 0
     app.chain.close()
