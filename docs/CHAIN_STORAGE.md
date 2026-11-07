@@ -1,29 +1,21 @@
 # HND v0.2 local block and storage design
 
-## Scope
-
-This module adds a single-process, SQLite-backed local chain. It is a development harness, not peer-to-peer networking, distributed consensus, or a validator implementation.
-
 ## Block commitment
 
-Each block has a sequential height, previous block hash, exact canonical signed-transaction byte strings, and resulting state commitment. The block identifier is SHA-256 over the domain-separated canonical CBOR tuple:
+A block ID is a domain-separated SHA-256 digest over canonical CBOR of [2, height, previous_hash, transaction_bytes[], state_root].
 
-`[2, height, previous_hash, transaction_bytes[], state_root]`
+The state commitment uses HND-STATE-V3 and canonical CBOR of [2, chain_id, supply_cap, sorted_account_rows]. Each account row contains account ID, balance, and next expected nonce. Chain ID and supply cap are therefore part of the application hash.
 
-The state commitment is SHA-256 over `HND-STATE-V2\0` and canonical CBOR of account rows sorted by account identifier. Each row contains account identifier, balance, and next expected nonce.
+## Genesis and persistence
 
-The genesis identifier commits to protocol version, chain identifier, supply cap, and the initial state commitment. The supply cap is included so two chains with identical initial balances but different issuance limits cannot share a genesis identifier.
+SQLite stores the canonical genesis snapshot, genesis hash, CometBFT genesis marker, and committed encoded blocks. Funded genesis state and marker are persisted in one transaction. Each validator runs its own SQLite database; databases are not shared across validator processes.
 
-## Persistence and recovery
+Blocks are limited to 1,000 transactions and 64 KiB of encoded payload. On reopen, the implementation starts from the stored genesis snapshot and replays blocks in height order, checking canonical CBOR, parent link, transaction signatures and chain ID, nonce/balance rules, state commitment, block identifier, and stored hash agreement.
 
-SQLite stores the canonical genesis snapshot and each encoded block. Blocks are limited to 1,000 transactions and 64 KiB of encoded payload. On reopen, the implementation starts from the stored genesis state and replays every block in height order. It checks canonical CBOR, block-header types and lengths, the parent link, transaction signatures and chain ID, nonce and balance rules, state commitment, block identifier, and agreement between the block-table hash and payload commitment before accepting recovered state.
+A candidate block is validated against a copy of state before database persistence. The committed in-memory state is advanced only after the SQLite transaction succeeds. A rejected or failed block write must not alter committed state.
 
-A block is validated against a candidate copy of state before the database transaction is committed. Count and encoded-size limits are checked before persistence. A rejected block must not alter the live state or append to the database.
+## Compatibility and limitations
 
-## Limitations
+Pre-v3 state-root databases are incompatible with the current v3 state commitment. No automatic migration is implemented; treat old local development databases as disposable.
 
-- No consensus, validator voting, fork choice, networking, or multi-writer coordination.
-- No wall-clock timestamp is included in block identity; block ordering is deterministic by height.
-- SQLite durability settings, crash fault-injection, schema migrations, and backup/restore procedures still require dedicated testing.
-- The genesis snapshot is local bootstrap data, not a public token allocation decision.
-- Passing local tests would not constitute a security audit or production-readiness evidence.
+No full crash-injection campaign, backup/restore procedure, database migration, snapshot/state sync, or external rollback checkpoint is complete. SQLite is a per-validator local store, not a shared multi-writer database.

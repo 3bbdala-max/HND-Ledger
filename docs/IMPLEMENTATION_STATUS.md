@@ -14,17 +14,19 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 - Query paths /hnd/v1/info and /hnd/v1/account, latest-state only, no proofs or historical reads.
 - Bounded JSONL IPC over Unix socket; strict envelope checks, duplicate-key rejection, 1 MiB frame limit, socket mode 0600.
 - Go CometBFT v0.40.0 adapter; partial-write handling; loopback-only ABCI listener.
-- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/recovery.
+- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/recovery.
 
-## Verified baseline
+## Verified evidence
 
-On commit 1c62d3cad548315b8cecb811edd76ee6b93808af, Python, Go, one-node restart, and three-validator signed-transfer workflows all passed (runs 42359852666, 42359852685, 42359852690, 42359852656).
+- Python tests: run 42360521258 on commit a6c5250905d0861c5d3a62dd766d957742080b1c, success.
+- One-node CometBFT restart: run 42360521260 on the same commit, success.
+- Three-validator signed transfer, Query RPC on all validators, post-transfer app-hash comparison, and validator restart recovery: run 42360521298 on the same commit, success.
+- Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
 
-On commit a6c5250905d0861c5d3a62dd766d957742080b1c, Python tests passed (run 42360521258). The new three-validator RPC query check was still in progress at the time of this update.
+The three-validator integration checked sender balance 750,000, recipient balance 250,000, sender next nonce 1, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. The RPC account and ledger-info queries returned committed values on all three nodes. After restarting validator 0, its database retained the transfer, balances, nonce, and matching app hash.
 
 ## Remaining work
 
-- Finish RPC-level query verification on all three validators.
 - Crash injection at FinalizeBlock/Commit and SQLite persistence boundaries.
 - Adversarial proposals, equivocation, partitions, delayed/reordered messages, and Byzantine voting-power tests.
 - Snapshots, state sync, Query proofs, historical queries, and validator-set changes.

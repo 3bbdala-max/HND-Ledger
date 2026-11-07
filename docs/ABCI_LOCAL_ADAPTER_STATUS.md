@@ -23,12 +23,15 @@ Unsupported snapshot, state-sync, and vote-extension methods fail closed.
 - Go ABCI listener is restricted to loopback TCP addresses.
 - Go IPC client handles partial writes and zero-progress write errors.
 
-## Verified baseline
+## Verified integration
 
-The one-node and three-validator integrations passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af (runs 42359852690 and 42359852656). The three-validator test committed a signed transfer at height 4, compared local state commitments and CometBFT app hashes at header height 5, restarted validator 0, and verified its persisted transfer, balances, nonce, and matching app hash.
+On commit a6c5250905d0861c5d3a62dd766d957742080b1c:
+- One-node CometBFT block production and restart recovery: run 42360521260, success.
+- Three-validator funded-genesis, signed-transfer, RPC Query, post-transfer app-hash comparison, and restart recovery: run 42360521298, success.
+- Python test workflow: run 42360521258, success.
 
-Python Query unit tests passed on commit a6c5250905d0861c5d3a62dd766d957742080b1c (run 42360521258). The new end-to-end CometBFT RPC Query check is still being validated and must not be treated as passed until its workflow completes successfully.
+The three-validator run committed a signed transfer at height 4. All three local ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. The account and ledger-info queries returned the committed state on all three validators. All CometBFT header app hashes matched at height 5. After validator 0 restarted, its database retained the transfer, balances, nonce, and matching app hash.
 
 ## Compatibility and remaining work
 
-Pre-v3 state roots are incompatible with the current v3 commitment format. Crash injection, Query RPC verification, Query proofs and historical reads, snapshots/state sync, adversarial consensus testing, mempool resource-exhaustion testing, and production validator/key-management procedures remain open.
+Pre-v3 state roots are incompatible with the current v3 commitment format. Crash injection, Query proofs and historical reads, snapshots/state sync, adversarial consensus testing, mempool resource-exhaustion testing, and production validator/key-management procedures remain open.

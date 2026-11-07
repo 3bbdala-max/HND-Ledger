@@ -6,19 +6,24 @@ HND-Ledger is an experimental educational ledger and consensus-integration proje
 
 The implementation/v0.2-local-ledger branch contains a deterministic Python ledger, Ed25519-signed transfers, canonical CBOR, account nonces, supply-cap checks, SQLite replay/recovery, a Python ABCI++ application, a private Unix IPC service, and a Go ABCI adapter pinned to CometBFT v0.40.0.
 
-The project has passing one-node restart and three-validator signed-transfer integrations. A read-only ABCI query API has been added for latest account state and ledger metadata. Its Python unit tests pass; the newest CometBFT RPC-level query test is still running in CI.
+The project has passing one-node restart and three-validator signed-transfer integrations. The three-validator workflow also exercises read-only account and ledger-info queries through the CometBFT RPC on all three nodes.
 
-## Verified baseline
+## Verified CI evidence
 
-All four workflows passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af:
+Baseline workflows passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af:
 - Python tests: run 42359852666.
 - Go adapter tests/static analysis: run 42359852685.
 - One-node CometBFT restart: run 42359852690.
 - Three-validator signed-transfer integration: run 42359852656.
 
-The three-validator test committed one signed transfer at height 4. All local ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. All CometBFT header app hashes matched at height 5. Validator 0 restarted and retained the committed transfer and state.
+The strengthened Query and integration suite passed on commit a6c5250905d0861c5d3a62dd766d957742080b1c:
+- Python tests: run 42360521258.
+- One-node CometBFT restart: run 42360521260.
+- Three-validator signed-transfer, RPC Query, and restart recovery: run 42360521298.
 
-Python tests including read-only Query unit coverage passed on commit a6c5250905d0861c5d3a62dd766d957742080b1c, run 42360521258. The latest one-node and three-validator workflows for that commit were still in progress at the time of this update; the three-validator run includes the new RPC-level query check.
+In the three-validator run, a signed transfer was committed at height 4. All local ledgers agreed on balances, nonce, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. Account and ledger-info queries succeeded on all three validators. All CometBFT header app hashes matched at height 5. After validator 0 restarted, it retained the committed transfer, balances, nonce, and matching app hash.
+
+The validators ran as separate processes and data directories on one CI runner. This is not independent multi-operator deployment or an adversarial Byzantine test.
 
 ## Protocol parameters
 

@@ -1,6 +1,6 @@
 # HND read-only ABCI Query API
 
-Status: implemented in the Python ABCI dispatcher and covered by unit tests. The CometBFT RPC-level integration check is pending final CI confirmation.
+Status: implemented, unit-tested, and exercised through CometBFT RPC on all three validators in run 42360521298.
 
 ## Constraints
 
@@ -48,4 +48,4 @@ Example parameter values:
 
 For ledger metadata, omit data and set path="/hnd/v1/info".
 
-This is an internal local query surface, not a public account API or explorer. Do not expose CometBFT RPC publicly without a separate security design.
+The three-validator workflow verified account and ledger-info queries on all three nodes after a signed transfer. This is an internal local query surface, not a public account API or explorer. Do not expose CometBFT RPC publicly without a separate security design.
