@@ -714,7 +714,7 @@ def test_assess_local_chain_accepts_exact_trusted_genesis_match(tmp_path):
 
 def test_assess_local_chain_detects_behind_and_ahead_states(tmp_path):
     from hnd_ledger.chain import LocalChain
-    from hnd_ledger.protocol import create_transaction
+    from hnd_ledger.protocol import account_id, create_transaction
     from hnd_ledger.rollback_checkpoint import (
         CheckpointRelation,
         RollbackCheckpoint,
@@ -764,7 +764,7 @@ def test_assess_local_chain_detects_behind_and_ahead_states(tmp_path):
 
 def test_assess_local_chain_rejects_divergent_checkpoint_ancestor(tmp_path):
     from hnd_ledger.chain import LocalChain
-    from hnd_ledger.protocol import create_transaction
+    from hnd_ledger.protocol import account_id, create_transaction
     from hnd_ledger.rollback_checkpoint import (
         CheckpointRelation,
         RollbackCheckpoint,
