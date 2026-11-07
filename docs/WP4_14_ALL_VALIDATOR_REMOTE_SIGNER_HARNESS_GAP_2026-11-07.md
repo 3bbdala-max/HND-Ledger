@@ -383,3 +383,15 @@ each signer key to Genesis, probes unauthorized peer rejection for every
 signer, and retains the validator-4 outage/recovery scenario. A dedicated
 all-four Noise CI step is now wired; no successful result is claimed until
 that run completes.
+
+
+## All-four Unix signer invariant marker confirmed by CI
+
+Workflow run `42335234969` on commit
+`a610ef9100257379da87b632ce31e40866131256` completed the
+`Run four independent external signers with no local consensus keys` step
+successfully after the explicit all-four evidence marker was added. This
+reconfirms the four independent signer records, signer-to-Genesis identity
+checks, absence of local consensus key/state files, validator-4 signer
+outage/recovery, and four-node network behavior. The all-four Unix test path
+is now green on two separate workflow revisions.
