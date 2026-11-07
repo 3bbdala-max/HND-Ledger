@@ -45,13 +45,34 @@ jobs:
           set -euo pipefail
           cometbft testnet --v 3 --o "$RUNNER_TEMP/hnd-net" --populate-persistent-peers=false
           python - "$RUNNER_TEMP/hnd-net" <<'PY'
+          import base64
+          import hashlib
           import json
           import pathlib
           import re
           import subprocess
           import sys
+          import cbor2
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
           root = pathlib.Path(sys.argv[1])
+          data_root = pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "hnd-data"
+          data_root.mkdir(parents=True, exist_ok=True)
+
+          # Deterministic test-only genesis key. The seed stays in the CI runner
+          # and is never placed in CometBFT genesis or committed to the repo.
+          alice_seed = hashlib.sha256(b"HND-LOCAL-V2 three-validator integration Alice").digest()
+          alice_key = Ed25519PrivateKey.from_private_bytes(alice_seed)
+          alice_public = alice_key.public_key().public_bytes(
+              serialization.Encoding.Raw, serialization.PublicFormat.Raw
+          )
+          alice_id = hashlib.sha256(b"HND-ACCOUNT-V2\\x00" + alice_public).digest()
+          (data_root / "alice.seed").write_bytes(alice_seed)
+          (data_root / "alice.seed").chmod(0o600)
+          genesis_app_state = cbor2.dumps(
+              [2, 1_000_000, [[alice_id, 1_000_000]]], canonical=True
+          )
           ids = []
           for i in range(3):
               node = root / f"node{i}"
@@ -92,6 +113,7 @@ jobs:
               genesis = node / "config" / "genesis.json"
               data = json.loads(genesis.read_text())
               data["chain_id"] = "HND-LOCAL-V2"
+              data["app_state"] = base64.b64encode(genesis_app_state).decode("ascii")
               genesis.write_text(json.dumps(data, separators=(",", ":")))
 
           print("Configured three validators with separate RPC, P2P, ABCI, DB, and IPC endpoints.")
@@ -154,6 +176,84 @@ jobs:
             fi
             sleep 1
           done
+
+          # Submit a real Ed25519-signed transfer through CometBFT RPC.
+          python - "$RUNNER_TEMP" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+          import urllib.request
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+          from hnd_ledger.protocol import account_id, create_transaction, encode_transaction
+
+          root = pathlib.Path(sys.argv[1])
+          seed = (root / "hnd-data" / "alice.seed").read_bytes()
+          alice = Ed25519PrivateKey.from_private_bytes(seed)
+          bob_seed = hashlib.sha256(b"HND-LOCAL-V2 integration Bob").digest()
+          bob = Ed25519PrivateKey.from_private_bytes(bob_seed)
+          bob_public = bob.public_key().public_bytes_raw()
+          bob_id = account_id(bob_public)
+          tx = create_transaction(alice, bob_id, 250_000, 0)
+          raw = encode_transaction(tx)
+          url = "http://127.0.0.1:26657/broadcast_tx_commit?tx=0x" + raw.hex()
+          with urllib.request.urlopen(url, timeout=45) as response:
+              result = json.loads(response.read())["result"]
+          check = result["check_tx"]["code"]
+          delivered = result.get("tx_result", result.get("deliver_tx", {}))
+          if check != 0 or delivered.get("code") != 0:
+              raise SystemExit(f"transfer rejected: check_tx={result.get('check_tx')} tx_result={delivered}")
+          height = int(result["height"])
+          (root / "hnd-data" / "transfer.json").write_text(json.dumps({
+              "height": height, "alice": account_id(alice.public_key().public_bytes_raw()).hex(),
+              "bob": bob_id.hex(), "amount": 250_000, "raw": raw.hex(),
+          }))
+          print(f"Committed signed HND test transfer at height {height}")
+          PY
+
+          tx_height=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["height"])' "$RUNNER_TEMP/hnd-data/transfer.json")
+          for _ in $(seq 1 120); do
+            ready=0
+            for i in 0 1 2; do
+              curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/tx-status-$i.json" || continue
+              height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/tx-status-$i.json")
+              [[ "$height" -ge "$tx_height" ]] && ready=$((ready+1))
+            done
+            [[ "$ready" -eq 3 ]] && break
+            sleep 1
+          done
+
+          python - "$RUNNER_TEMP" <<'PY'
+          import json
+          import pathlib
+          import sys
+          from hnd_ledger.chain import LocalChain
+
+          root = pathlib.Path(sys.argv[1])
+          meta = json.loads((root / "hnd-data" / "transfer.json").read_text())
+          alice, bob, amount = bytes.fromhex(meta["alice"]), bytes.fromhex(meta["bob"]), meta["amount"]
+          hashes = []
+          for i in range(3):
+              db_path = root / "hnd-data" / f"ledger-{i}.sqlite"
+              chain = LocalChain(db_path)
+              try:
+                  if chain.height < meta["height"]:
+                      raise SystemExit(f"validator {i} has not committed transfer height")
+                  if chain.blocks[meta["height"] - 1].transactions.count(bytes.fromhex(meta["raw"])) != 1:
+                      raise SystemExit(f"validator {i} did not commit exactly one copy of the transfer")
+                  if chain.state.balances.get(alice) != 750_000:
+                      raise SystemExit(f"validator {i} Alice balance mismatch: {chain.state.balances.get(alice)}")
+                  if chain.state.balances.get(bob) != amount:
+                      raise SystemExit(f"validator {i} Bob balance mismatch: {chain.state.balances.get(bob)}")
+                  if chain.state.next_nonces.get(alice) != 1:
+                      raise SystemExit(f"validator {i} Alice nonce mismatch")
+                  hashes.append(chain.app_hash if hasattr(chain, "app_hash") else __import__("hnd_ledger.chain", fromlist=["state_commitment"]).state_commitment(chain.state))
+              finally:
+                  chain.close()
+          if len(set(hashes)) != 1:
+              raise SystemExit(f"post-transfer app hashes diverged: {hashes}")
+          print(f"All validators committed the signed transfer at height {meta['height']}; balances, nonce, and app hash agree: {hashes[0].hex()}")
+          PY
 
           for i in 0 1 2; do
             curl --silent --fail "http://127.0.0.1:$((26657+i))/status" -o "$RUNNER_TEMP/status-$i.json" || {
