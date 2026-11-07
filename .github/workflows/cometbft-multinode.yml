@@ -163,6 +163,7 @@ jobs:
             PIDS+=("$NODE_PID")
           done
 
+          ready=0
           for _ in $(seq 1 180); do
             ready=0
             for i in 0 1 2; do
@@ -177,6 +178,18 @@ jobs:
             fi
             sleep 1
           done
+          if [[ "$ready" -ne 3 ]]; then
+            echo "Only $ready validators reached height 3 before the startup deadline"
+            for i in 0 1 2; do
+              echo "===== validator $i: Python ABCI ====="
+              cat "$RUNNER_TEMP/hnd-data/python-$i.log" || true
+              echo "===== validator $i: Go adapter ====="
+              cat "$RUNNER_TEMP/hnd-data/adapter-$i.log" || true
+              echo "===== validator $i: CometBFT ====="
+              cat "$RUNNER_TEMP/hnd-data/node-$i.log" || true
+            done
+            exit 1
+          fi
 
           # Submit a real Ed25519-signed transfer through CometBFT RPC.
           python - "$RUNNER_TEMP" <<'PY'
