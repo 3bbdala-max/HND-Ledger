@@ -195,3 +195,24 @@ serialize/send the response. The parent then:
 This targets the post-state-save/pre-response case in RS-CRASH-05. It does not
 simulate power loss, a crash during the atomic rename, or a crash before the
 state save returns. A fresh CI run is required before claiming this case.
+
+
+### Execution result — post-state-save / pre-response crash (vote path)
+
+Workflow run `42337449661` on commit
+`22249843cf3a65ac6dd55bda9328f96261f579ff` passed the new step
+`Crash signer after state save and before response, then verify safe recovery`.
+
+The test process exits with an injected code immediately after CometBFT
+v0.40.0 `FilePV.SignVote` returns (after its `LastSignState.Save()` call)
+and before the SignerServer can send the response. The parent confirms the
+persisted H/R/S record, captures the state digest, restarts the signer in
+fail-closed recovery mode, retries the identical vote and verifies the
+returned signature, then submits a conflicting vote at the same H/R/type and
+requires rejection.
+
+**Coverage:** RS-CRASH-05 is now exercised for the vote-signing path at the
+post-state-save/pre-response boundary. This does not test a power loss, crash
+during the temporary-file write/rename, directory metadata persistence, or
+the pre-save interval; those cases remain open. It is not a distributed
+fencing test or production durability certification.
