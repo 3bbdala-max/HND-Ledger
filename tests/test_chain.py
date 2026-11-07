@@ -335,3 +335,62 @@ def test_block_encoded_byte_limit_is_checked_before_state_changes(tmp_path):
     assert chain.state.balances[alice_id] == 20
     assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
     chain.close()
+
+
+
+def test_process_crash_during_genesis_marker_write_recovers_empty_genesis(tmp_path):
+    key = Ed25519PrivateKey.generate()
+    account_id_value = account(key)
+    path = tmp_path / "crash-during-genesis.sqlite"
+    chain = LocalChain(path, LedgerState(supply_cap=100))
+    before_state = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0]
+    before_hash = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0]
+    chain.close()
+
+    child = r"""
+import os
+import sys
+from hnd_ledger.chain import LocalChain
+from hnd_ledger.state import LedgerState
+
+chain = LocalChain(sys.argv[1])
+chain.db.create_function("crash_now", 0, lambda: os._exit(74))
+chain.db.execute(
+    "CREATE TRIGGER crash_during_genesis_marker "
+    "BEFORE INSERT ON metadata "
+    "WHEN NEW.key = 'cometbft_genesis_marker' "
+    "BEGIN SELECT crash_now(); END"
+)
+chain.db.commit()
+chain.initialize_genesis(
+    LedgerState(balances={bytes.fromhex(sys.argv[2]): 50}, supply_cap=100),
+    marker=b"M" * 32,
+)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", child, str(path), account_id_value.hex()],
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 74, result.stderr.decode(errors="replace")
+
+    recovered = LocalChain(path)
+    assert recovered.height == 0
+    assert recovered.state.total_supply == 0
+    assert recovered.state.balances == {}
+    assert recovered.state.next_nonces == {}
+    assert recovered.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0] == before_state
+    assert recovered.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0] == before_hash
+    assert recovered.db.execute(
+        "SELECT COUNT(*) FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0] == 0
+    recovered.close()
