@@ -127,6 +127,8 @@ class LocalChain:
             chain_id=self.state.chain_id,
             supply_cap=self.state.supply_cap,
         )
+        if len(txs) > MAX_BLOCK_TRANSACTIONS:
+            raise ChainError("block transaction count exceeds limit")
         encoded = tuple(encode_transaction(tx) for tx in txs)
         for tx in txs:
             candidate.apply(tx)
@@ -135,6 +137,8 @@ class LocalChain:
         root = state_commitment(candidate)
         block_hash = _block_hash(height, previous, encoded, root)
         payload = canonical_cbor([2, height, previous, list(encoded), root, block_hash])
+        if len(payload) > MAX_BLOCK_BYTES:
+            raise ChainError("encoded block exceeds byte limit")
         try:
             with self.db:
                 self.db.execute(
@@ -156,6 +160,8 @@ class LocalChain:
         ):
             payload = stored_payload
             try:
+                if not isinstance(payload, bytes) or len(payload) > MAX_BLOCK_BYTES:
+                    raise ChainError("persisted block exceeds byte limit")
                 row = cbor2.loads(payload)
                 if cbor2.dumps(row, canonical=True) != payload:
                     raise ChainError("non-canonical stored block")
@@ -170,6 +176,8 @@ class LocalChain:
                     raise ChainError("invalid block header or broken parent link")
                 if not isinstance(tx_raws, list):
                     raise ChainError("block transactions must be an array")
+                if len(tx_raws) > MAX_BLOCK_TRANSACTIONS or any(not isinstance(raw, bytes) for raw in tx_raws):
+                    raise ChainError("block transaction count or encoding is invalid")
                 txs = tuple(decode_transaction(raw, self.state.chain_id) for raw in tx_raws)
                 candidate = LedgerState(
                     balances=dict(self.state.balances),
