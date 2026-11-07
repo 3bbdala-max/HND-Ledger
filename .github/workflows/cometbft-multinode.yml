@@ -57,14 +57,14 @@ jobs:
               key = json.loads((node / "config" / "node_key.json").read_text())
               ids.append(key["id"])
 
-          def set_key(text, section, key, value):
+          def set_key(text, section, key, value, *, quoted=True):
               pattern = rf"(?ms)(\[{re.escape(section)}\]\n)(.*?)(?=^\[|\Z)"
               match = re.search(pattern, text)
               if not match:
                   raise SystemExit(f"missing TOML section [{section}]")
               body = match.group(2)
               line = re.compile(rf"(?m)^{re.escape(key)}\s*=.*$")
-              replacement = f'{key} = "{value}"'
+              replacement = f'{key} = "{value}"' if quoted else f"{key} = {value}"
               if line.search(body):
                   body = line.sub(replacement, body, count=1)
               else:
@@ -78,7 +78,7 @@ jobs:
               text = re.sub(r'(?m)^proxy_app\s*=.*$', f'proxy_app = "tcp://127.0.0.1:{26658+i}"', text, count=1)
               text = set_key(text, "rpc", "laddr", f"tcp://127.0.0.1:{26657+i}")
               text = set_key(text, "p2p", "laddr", f"tcp://127.0.0.1:{26656+i}")
-              text = set_key(text, "p2p", "allow_duplicate_ip", "true")
+              text = set_key(text, "p2p", "allow_duplicate_ip", "true", quoted=False)
               peers = ",".join(
                   f"{ids[j]}@127.0.0.1:{26656+j}" for j in range(3) if j != i
               )
