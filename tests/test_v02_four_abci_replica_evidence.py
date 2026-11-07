@@ -113,7 +113,7 @@ class TestFourABCIReplicaEvidence(unittest.TestCase):
             # Restart one application from its durable state and recheck the
             # committed evidence journal and composite application hash.
             original_hash = hashes[0]
-            original_journal = journals[0]
+            original_evidence = decoded["evidence"]
             restarted = HNDABCIApplication(
                 config=config,
                 manifest=manifest,
@@ -124,7 +124,7 @@ class TestFourABCIReplicaEvidence(unittest.TestCase):
             self.assertEqual(restarted.info()["last_block_app_hash"], original_hash)
             self.assertEqual(
                 json.dumps({"evidence": restarted.evidence_journal}, sort_keys=True, separators=(",", ":")).encode(),
-                original_journal,
+                json.dumps({"evidence": original_evidence}, sort_keys=True, separators=(",", ":")).encode(),
             )
         finally:
             for channel in channels:
