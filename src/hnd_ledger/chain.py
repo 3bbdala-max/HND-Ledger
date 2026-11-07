@@ -61,56 +61,62 @@ class LocalChain:
     def __init__(self, path: str | Path, initial_state: LedgerState | None = None):
         self.path = str(path)
         self.db = sqlite3.connect(self.path)
-        self.db.execute("PRAGMA foreign_keys = ON")
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value BLOB NOT NULL)"
-        )
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS blocks (height INTEGER PRIMARY KEY, payload BLOB NOT NULL, block_hash BLOB NOT NULL UNIQUE)"
-        )
-        self.db.commit()
-
-        row = self.db.execute("SELECT value FROM metadata WHERE key='genesis_state'").fetchone()
-        if row is None:
-            if initial_state is None:
-                raise ChainError("new chain requires an explicit initial state")
-            if initial_state.chain_id != CHAIN_ID:
-                raise ChainError("initial state uses an unsupported chain id")
-            self.state = LedgerState(
-                balances=dict(initial_state.balances),
-                next_nonces=dict(initial_state.next_nonces),
-                chain_id=initial_state.chain_id,
-                supply_cap=initial_state.supply_cap,
+        try:
+            self.db.execute("PRAGMA foreign_keys = ON")
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value BLOB NOT NULL)"
             )
-            snapshot = canonical_cbor([
-                2, self.state.chain_id, self.state.supply_cap,
-                [[a, self.state.balances.get(a, 0), self.state.next_nonces.get(a, 0)]
-                 for a in sorted(set(self.state.balances) | set(self.state.next_nonces))]
-            ])
-            self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_state',?)", (snapshot,))
-            self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_hash',?)", (_genesis_hash(self.state.chain_id, self.state),))
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS blocks (height INTEGER PRIMARY KEY, payload BLOB NOT NULL, block_hash BLOB NOT NULL UNIQUE)"
+            )
             self.db.commit()
-        else:
-            if initial_state is not None:
-                raise ChainError("initial state must not be supplied when reopening a chain")
-            import cbor2
-            decoded = cbor2.loads(row[0])
-            if cbor2.dumps(decoded, canonical=True) != row[0]:
-                raise ChainError("non-canonical persisted genesis state")
-            if not isinstance(decoded, list) or len(decoded) != 4 or decoded[0] != 2:
-                raise ChainError("invalid persisted genesis state")
-            _, chain_id, supply_cap, rows = decoded
-            self.state = LedgerState(
-                balances={r[0]: r[1] for r in rows if r[1] != 0},
-                next_nonces={r[0]: r[2] for r in rows if r[2] != 0},
-                chain_id=chain_id,
-                supply_cap=supply_cap,
-            )
-            genesis_row = self.db.execute("SELECT value FROM metadata WHERE key='genesis_hash'").fetchone()
-            if genesis_row is None or genesis_row[0] != _genesis_hash(self.state.chain_id, self.state):
-                raise ChainError("persisted genesis commitment mismatch")
-        self.blocks: list[Block] = []
-        self._restore()
+    
+            row = self.db.execute("SELECT value FROM metadata WHERE key='genesis_state'").fetchone()
+            if row is None:
+                if initial_state is None:
+                    raise ChainError("new chain requires an explicit initial state")
+                if initial_state.chain_id != CHAIN_ID:
+                    raise ChainError("initial state uses an unsupported chain id")
+                self.state = LedgerState(
+                    balances=dict(initial_state.balances),
+                    next_nonces=dict(initial_state.next_nonces),
+                    chain_id=initial_state.chain_id,
+                    supply_cap=initial_state.supply_cap,
+                )
+                snapshot = canonical_cbor([
+                    2, self.state.chain_id, self.state.supply_cap,
+                    [[a, self.state.balances.get(a, 0), self.state.next_nonces.get(a, 0)]
+                     for a in sorted(set(self.state.balances) | set(self.state.next_nonces))]
+                ])
+                self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_state',?)", (snapshot,))
+                self.db.execute("INSERT INTO metadata(key,value) VALUES('genesis_hash',?)", (_genesis_hash(self.state.chain_id, self.state),))
+                self.db.commit()
+            else:
+                if initial_state is not None:
+                    raise ChainError("initial state must not be supplied when reopening a chain")
+                import cbor2
+                decoded = cbor2.loads(row[0])
+                if cbor2.dumps(decoded, canonical=True) != row[0]:
+                    raise ChainError("non-canonical persisted genesis state")
+                if not isinstance(decoded, list) or len(decoded) != 4 or decoded[0] != 2:
+                    raise ChainError("invalid persisted genesis state")
+                _, chain_id, supply_cap, rows = decoded
+                self.state = LedgerState(
+                    balances={r[0]: r[1] for r in rows if r[1] != 0},
+                    next_nonces={r[0]: r[2] for r in rows if r[2] != 0},
+                    chain_id=chain_id,
+                    supply_cap=supply_cap,
+                )
+                genesis_row = self.db.execute("SELECT value FROM metadata WHERE key='genesis_hash'").fetchone()
+                if genesis_row is None or genesis_row[0] != _genesis_hash(self.state.chain_id, self.state):
+                    raise ChainError("persisted genesis commitment mismatch")
+            self.blocks: list[Block] = []
+            self._restore()
+    
+        except BaseException:
+            # A failed constructor must not leave a live SQLite connection.
+            self.db.close()
+            raise
 
     def initialize_genesis(self, initial_state: LedgerState, *, marker: bytes | None = None) -> None:
         """Install an explicitly supplied genesis allocation before block 1.
