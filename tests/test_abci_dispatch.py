@@ -384,6 +384,14 @@ def test_mempool_enforces_item_and_byte_limits_and_releases_committed_capacity(t
     # Capacity is reusable after committed entries are evicted.
     assert dispatcher("InsertTx", {"tx": _b64(third)}) == {"code": 0}
     assert dispatcher._mempool_bytes == len(third)
+
+    # The independent item-count ceiling is still enforced.
+    fourth = encode_transaction(create_transaction(alice, bob_id, 1, 3))
+    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_BYTES", 1024 * 1024)
+    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_ITEMS", 1)
+    assert dispatcher("InsertTx", {"tx": _b64(fourth)}) == {"code": 2}
+    assert list(dispatcher._mempool) == [third]
+    assert dispatcher._mempool_bytes == len(third)
     chain.close()
 
 def test_unsupported_consensus_and_snapshot_methods_fail_closed(tmp_path):
