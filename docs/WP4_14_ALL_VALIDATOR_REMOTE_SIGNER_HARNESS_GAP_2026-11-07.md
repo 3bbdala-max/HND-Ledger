@@ -25,6 +25,8 @@ initial discovery and intermediate implementation stages.
 - Same-host advisory single-writer lock in Unix and Noise test helpers,
   including duplicate-process contention rejection and safe state-digest
   handoff: **CI PASS** (run `42336661940`).
+- Post-state-save/pre-response signer crash and safe retry/rejection on
+  recovery (vote path): **CI PASS** (run `42337449661`).
 - Multi-host exclusive ownership, durable distributed fencing, stale-leader
   rejection, and production-grade failover: **OPEN**.
 - Production key custody/HSM, operational approval, signed releases,
