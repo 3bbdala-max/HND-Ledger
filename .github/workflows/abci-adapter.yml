@@ -1,0 +1,38 @@
+name: HND ABCI adapter
+
+on:
+  push:
+    branches:
+      - implementation/v0.2-local-ledger
+    paths:
+      - "abci-adapter/**"
+      - ".github/workflows/abci-adapter.yml"
+  pull_request:
+    paths:
+      - "abci-adapter/**"
+      - ".github/workflows/abci-adapter.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  go-adapter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: abci-adapter
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+          cache-dependency-path: abci-adapter/go.mod
+      - name: Download pinned dependencies
+        run: go mod download
+      - name: Compile and test adapter
+        run: go test ./...
+      - name: Static analysis
+        run: go vet ./...
