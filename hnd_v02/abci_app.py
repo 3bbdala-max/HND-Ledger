@@ -158,6 +158,17 @@ class HNDABCIApplication:
         with self._lock:
             return _json_copy(self._evidence_journal)
 
+    def evidence_page(self, *, offset: int, limit: int) -> tuple[list[dict[str, Any]], int]:
+        """Return a bounded committed-evidence page and the total record count."""
+        if type(offset) is not int or offset < 0:
+            raise ABCIApplicationError("evidence offset must be a non-negative integer")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ABCIApplicationError("evidence limit must be an integer from 1 to 100")
+        with self._lock:
+            total = len(self._evidence_journal)
+            page = self._evidence_journal[offset:offset + limit]
+            return _json_copy(page), total
+
     def application_genesis_bytes(self) -> bytes:
         """Canonical HND application-state payload for CometBFT InitChain."""
         return canonical_json({
