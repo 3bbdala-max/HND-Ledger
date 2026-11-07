@@ -71,3 +71,19 @@ No checkpoint provider, credential, remote endpoint, or hardware trust anchor is
 ## Current verified boundary
 
 The latest verified code commit before this design note is `166231c251dbcb181e52dd65af0cdda191f3fb64`. Four exact-commit workflows passed: HND Python tests `42401814429`, one-node CometBFT `42401814447`, three-validator CometBFT `42401814426`, and four-validator liveness/recovery `42401814441`. This evidence does not include external rollback protection.
+
+
+## Signed checkpoint primitives — implemented, not integrated
+
+On code commit `be1e5725707861b7996ea6b1bfeb2b939653a127`, the provider-neutral record module now includes:
+
+- Canonical CBOR checkpoint payloads with fixed domain and version.
+- Strict uint64 and 32-byte hash validation; booleans are rejected as integers.
+- Ed25519 signing and verification with an explicitly pinned 32-byte public key.
+- A signed envelope with its own domain separator; payload, envelope, signer identity, and signature are validated before use.
+- A provider-neutral `CheckpointAuthority` protocol with read and compare-and-swap operations.
+- A volatile, lock-protected in-memory authority test double covering first acceptance, successor monotonicity, replay/conflict rejection, and competing updates.
+
+All four exact-commit CI workflows passed on `be1e5725707861b7996ea6b1bfeb2b939653a127`: Python `42402800672`, one-node `42402800686`, three-validator `42402800837`, and four-validator liveness/recovery `42402800633`.
+
+This does NOT yet provide a production authority. The in-memory test double is volatile and is not an anti-rollback trust anchor. The checkpoint contract is not yet wired into chain startup, block commit, or recovery. No external endpoint, credential, durable monotonic store, production signing-key custody, or multi-validator checkpoint policy is configured. Therefore production rollback protection remains unimplemented and unclaimed.
