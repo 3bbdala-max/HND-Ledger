@@ -50,3 +50,14 @@ Each adversarial run must record CometBFT version, source commit, genesis hash, 
 - Vote extensions and snapshot/state-sync methods are explicitly unsupported and fail closed; state sync and snapshot restoration are not release features.
 - Four-validator liveness and live partition/healing evidence is limited to four separate processes and data directories on one CI runner. Independent hosts, operators, network paths, and production deployment remain unverified.
 - Passing local integration tests do not constitute an independent security audit or production-readiness approval.
+
+
+## IPC and exact-commit regression evidence
+
+| ID | Scenario | Evidence | Result |
+|---|---|---|---|
+| C-19 | An incomplete local IPC JSONL request cannot indefinitely block the sequential Python dispatcher; a following valid Info request is served after the 5-second read deadline | Implementation/test commit `a7665df2edcd18ea15417640593eefd7d994ed0d`; Python run `42382630569` | PASS (single stalled-client regression; not flood-resistance proof) |
+
+The subsequent documentation-only commit `03b2b9c6f601525bb810d123de04c64bb06f4494` completed all four exact-commit workflows: Python run `42382868802`, one-node run `42382868836`, three-validator run `42382868758`, and four-validator liveness/recovery run `42382868746`. These confirm the documented code state still passes the current integration suite; the documentation commit did not change runtime code.
+
+IPC timeout scope remains deliberately narrow: the test covers one incomplete client and confirms service resumes after the configured read deadline. Connection-rate limiting, per-client quotas, concurrent flood behavior, and sustained CPU/memory exhaustion remain untested.
