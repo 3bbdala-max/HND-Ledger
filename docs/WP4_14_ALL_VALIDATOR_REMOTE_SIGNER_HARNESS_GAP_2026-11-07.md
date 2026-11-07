@@ -420,3 +420,13 @@ the validator-4 authenticated Noise integration/recovery step. The dedicated
 remote-only CLI therefore has green CI for both allowed transports, with
 all-four simultaneous signing covered over Unix. All-four simultaneous Noise
 is the next validation milestone.
+
+
+## All-four Unix mode reconfirmed after Noise generalization
+
+Workflow run `42335547079` on commit
+`588a9465f36d431e735e7746aa09ef72e047a63b` passed the four-independent-
+Unix-signer step after the harness was generalized to support both Unix and
+Noise for all four validators. This confirms the shared signer-record and
+startup logic did not regress the Unix path. The same workflow is continuing
+through the authenticated Noise tests, including the new all-four Noise step.
