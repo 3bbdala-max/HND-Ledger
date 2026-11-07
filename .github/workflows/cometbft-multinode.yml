@@ -281,6 +281,7 @@ jobs:
           import json
           import pathlib
           import sys
+          import urllib.error
           import urllib.parse
           import urllib.request
 
@@ -297,8 +298,16 @@ jobs:
                   if path == "/hnd/v1/account":
                       params["data"] = "0x" + meta["alice"]
                   url = base + "?" + urllib.parse.urlencode(params)
-                  with urllib.request.urlopen(url, timeout=15) as response:
-                      result = json.loads(response.read())["result"]["response"]
+                  try:
+                      with urllib.request.urlopen(url, timeout=15) as response:
+                          result = json.loads(response.read())["result"]["response"]
+                  except urllib.error.HTTPError as exc:
+                      print(f"validator {i} RPC query {path} returned HTTP {exc.code}")
+                      print(exc.read().decode("utf-8", errors="replace"))
+                      for log_path in sorted((root / "hnd-data").glob("*.log")):
+                          print(f"===== {log_path.name} =====")
+                          print(log_path.read_text(errors="replace"))
+                      raise
                   if result["code"] != 0:
                       raise SystemExit(f"validator {i} query {path} failed: {result}")
                   value = json.loads(base64.b64decode(result["value"]))
