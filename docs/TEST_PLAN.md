@@ -46,6 +46,15 @@ Go tests cover IPC request correlation, malformed/mismatched responses, typed er
 
 ## Latest exact-commit CI evidence
 
+All five CI paths completed successfully on commit `54229259b05ed322f94deaaf87abf532c788c5b3`:
+- Python tests run `42378294082`: PASS.
+- Go adapter tests and `go vet` run `42378294015`: PASS; logs show `internal/consensusguard` tests passed.
+- One-node CometBFT restart run `42378294051`: PASS.
+- Three-validator integration run `42378294043`: PASS.
+- Four-validator liveness and live partition/recovery run `42378294063`: PASS.
+
+The Go suite includes `TestFilePVRecoversSignatureAndRejectsConflictingVoteAfterReload`: after a persisted Prevote is reloaded, the same H/R/S vote reuses the original signature and a conflicting block vote is rejected. This is a targeted FilePV reload unit test only. It does **not** complete INT/C-10's separate process-crash CometBFT integration requirement.
+
 All four workflows completed successfully on code commit `a76cee10eabafc7d27f36dbd66910f0f7feea790`:
 - Python tests run `42368248628`: PASS (77 tests).
 - One-node CometBFT restart run `42368248709`: PASS.
