@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_ledger.abci_dispatch import ABCIDispatcher
 from hnd_ledger.application import LedgerApplication
 from hnd_ledger.chain import LocalChain
-from hnd_ledger.protocol import account_id, create_transaction, encode_transaction
+from hnd_ledger.protocol import account_id, create_transaction, decode_transaction, encode_transaction
 from hnd_ledger.state import LedgerState
 
 
@@ -430,13 +430,13 @@ def test_mempool_concurrent_batch_admission_and_commit_accounting(tmp_path):
     assert dispatcher._mempool_bytes == sum(map(len, transactions))
 
     # Consensus proposal order is explicit: sender nonces must be sequential.
-    ordered = sorted(transactions, key=lambda raw: dispatcher.application.decode_tx(raw).nonce)
+    ordered = sorted(transactions, key=lambda raw: decode_transaction(raw, chain.state.chain_id).nonce)
     proposal = dispatcher("PrepareProposal", {
         "max_tx_bytes": sum(map(len, ordered)),
         "txs": [_b64(raw) for raw in ordered],
     })
     assert len(proposal["txs"]) == count
-    assert [dispatcher.application.decode_tx(base64.b64decode(raw)).nonce
+    assert [decode_transaction(base64.b64decode(raw), chain.state.chain_id).nonce
             for raw in proposal["txs"]] == list(range(count))
 
     dispatcher("FinalizeBlock", {"height": 1, "txs": proposal["txs"]})
