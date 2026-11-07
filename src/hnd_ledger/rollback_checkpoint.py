@@ -514,3 +514,44 @@ def assess_local_chain(
         checkpoint_ancestor_block_hash=ancestor_block_hash,
         checkpoint_ancestor_app_hash=ancestor_app_hash,
     )
+
+
+def publish_local_chain_checkpoint(
+    authority: CheckpointAuthority,
+    trusted_public_key: bytes,
+    signed_candidate: bytes,
+    chain: object,
+) -> RollbackCheckpoint:
+    """Publish only a signed checkpoint that exactly describes the local tip.
+
+    This guards the composition boundary: a valid signature alone is not
+    evidence that the named block and application state exist in the local
+    replay-verified chain. The caller still must invoke this after consensus
+    commit. The external authority remains responsible for durable CAS.
+    """
+    from .chain import LocalChain, state_commitment
+
+    if not isinstance(chain, LocalChain):
+        raise CheckpointError("local chain object has an invalid type")
+    candidate = verify_signed_checkpoint(signed_candidate, trusted_public_key)
+    try:
+        local_chain_id = chain.state.chain_id
+        local_genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+        local_height = chain.height
+        local_block_hash = chain.tip_hash
+        local_app_hash = state_commitment(chain.state)
+    except Exception as exc:
+        raise CheckpointError("unable to obtain verified local chain tip") from exc
+
+    if candidate.chain_id != local_chain_id:
+        raise CheckpointError("candidate chain id does not match local chain")
+    if candidate.genesis_hash != local_genesis_hash:
+        raise CheckpointError("candidate genesis hash does not match local chain")
+    if candidate.height != local_height:
+        raise CheckpointError("candidate height does not match local chain tip")
+    if candidate.block_hash != local_block_hash:
+        raise CheckpointError("candidate block hash does not match local chain tip")
+    if candidate.app_hash != local_app_hash:
+        raise CheckpointError("candidate application hash does not match local state")
+
+    return publish_checkpoint(authority, trusted_public_key, signed_candidate)

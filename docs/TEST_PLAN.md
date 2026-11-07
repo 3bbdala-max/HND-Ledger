@@ -206,3 +206,8 @@ Additional test: simulated authority durably stores a candidate but returns fals
 ## LocalChain authority assessment integration
 
 Added end-to-end unit tests for `assess_local_chain`: exact genesis match, local-behind, local-ahead with matching ancestry (writes remain disabled), and divergent ancestor rejection. This helper combines LocalChain replay commitments with authenticated authority reads, but it is not wired into the running CometBFT startup or commit lifecycle.
+
+
+## Local-tip-bound checkpoint publication
+
+Added `publish_local_chain_checkpoint` on the implementation branch. It verifies the signed checkpoint against the replay-verified local chain's exact chain ID, genesis hash, height, block hash, and application-state commitment before delegating to provider-neutral CAS publication. Tests reject wrong height, block hash, application hash, and an untrusted signer. This helper does not establish consensus finality or atomicity with SQLite and is not wired into ABCI commit. Production external authority remains unconfigured.

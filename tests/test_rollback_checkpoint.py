@@ -806,3 +806,104 @@ def test_assess_local_chain_rejects_divergent_checkpoint_ancestor(tmp_path):
     assert not assessment.writes_allowed
     trusted_chain.close()
     divergent_chain.close()
+
+
+def test_publish_local_chain_checkpoint_requires_exact_local_tip(tmp_path):
+    from hnd_ledger.chain import LocalChain, state_commitment
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointError,
+        RollbackCheckpoint,
+        publish_local_chain_checkpoint,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    chain = LocalChain(tmp_path / "publish-local-tip.sqlite", LedgerState(supply_cap=50))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+
+    valid = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=chain.height,
+        block_hash=chain.tip_hash,
+        app_hash=state_commitment(chain.state),
+        sequence=1,
+    )
+    raw = sign_checkpoint(valid, key).encode()
+    assert publish_local_chain_checkpoint(
+        authority, public_key, raw, chain
+    ) == valid
+
+    wrong_height = RollbackCheckpoint(
+        chain_id=valid.chain_id,
+        genesis_hash=valid.genesis_hash,
+        height=1,
+        block_hash=b"B" * 32,
+        app_hash=valid.app_hash,
+        sequence=2,
+    )
+    with pytest.raises(CheckpointError, match="height does not match"):
+        publish_local_chain_checkpoint(
+            authority, public_key, sign_checkpoint(wrong_height, key).encode(), chain
+        )
+
+    wrong_block = RollbackCheckpoint(
+        chain_id=valid.chain_id,
+        genesis_hash=valid.genesis_hash,
+        height=valid.height,
+        block_hash=b"X" * 32,
+        app_hash=valid.app_hash,
+        sequence=2,
+    )
+    with pytest.raises(CheckpointError, match="block hash does not match"):
+        publish_local_chain_checkpoint(
+            authority, public_key, sign_checkpoint(wrong_block, key).encode(), chain
+        )
+
+    wrong_app = RollbackCheckpoint(
+        chain_id=valid.chain_id,
+        genesis_hash=valid.genesis_hash,
+        height=valid.height,
+        block_hash=valid.block_hash,
+        app_hash=b"Y" * 32,
+        sequence=2,
+    )
+    with pytest.raises(CheckpointError, match="application hash does not match"):
+        publish_local_chain_checkpoint(
+            authority, public_key, sign_checkpoint(wrong_app, key).encode(), chain
+        )
+    chain.close()
+
+
+def test_publish_local_chain_checkpoint_rejects_untrusted_signer(tmp_path):
+    from hnd_ledger.chain import LocalChain, state_commitment
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointError,
+        RollbackCheckpoint,
+        publish_local_chain_checkpoint,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    other_key = Ed25519PrivateKey.generate()
+    trusted_public_key = other_key.public_key().public_bytes_raw()
+    chain = LocalChain(tmp_path / "publish-local-untrusted.sqlite", LedgerState(supply_cap=10))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=0,
+        block_hash=chain.tip_hash,
+        app_hash=state_commitment(chain.state),
+        sequence=1,
+    )
+    authority = MemoryAuthorityForTest(trusted_public_key)
+    with pytest.raises(CheckpointError, match="not trusted"):
+        publish_local_chain_checkpoint(
+            authority, trusted_public_key, sign_checkpoint(checkpoint, key).encode(), chain
+        )
+    chain.close()

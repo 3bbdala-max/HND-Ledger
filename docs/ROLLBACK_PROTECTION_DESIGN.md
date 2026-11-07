@@ -158,3 +158,10 @@ Integration tests cover:
 - A locally valid but divergent history whose block/state commitment at the trusted height differs (rejected).
 
 Authority outages, invalid signatures, missing checkpoints, and wrong response types remain fail-closed. No production authority provider or startup enforcement is configured.
+
+
+## Publication bound to the replay-verified local tip
+
+The provider-neutral publication path now has an additional composition helper, `publish_local_chain_checkpoint`. Before attempting authority CAS, it verifies that the signed candidate's chain ID, genesis hash, height, block hash, and application-state commitment exactly match the supplied replay-verified `LocalChain` tip. Tests reject a validly signed candidate with a wrong height, block hash, or application hash, and reject an untrusted signer.
+
+This helper still must be called after the corresponding consensus commit. It does not independently prove CometBFT finality, does not authenticate the caller to a remote service, and does not provide atomicity between SQLite and the external authority. It is not wired automatically into ABCI commit. Production anti-rollback remains unimplemented.
