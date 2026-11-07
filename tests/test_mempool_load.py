@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_ledger.abci_dispatch import ABCIDispatcher, MAX_MEMPOOL_BYTES, MAX_MEMPOOL_ITEMS
 from hnd_ledger.application import LedgerApplication
 from hnd_ledger.chain import MAX_BLOCK_BYTES, MAX_BLOCK_TRANSACTIONS, LocalChain
-from hnd_ledger.protocol import account_id, create_transaction, decode_transaction, encode_transaction
+from hnd_ledger.protocol import account_id, canonical_cbor, create_transaction, decode_transaction, encode_transaction
 from hnd_ledger.state import LedgerState
 
 
@@ -19,9 +19,7 @@ def _b64(raw):
 
 
 def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_path):
-    # Reserve room for the canonical block envelope, state root, and block hash.
-    # MAX_BLOCK_BYTES also caps the complete persisted block, not just tx bytes.
-    block_tx_budget = MAX_BLOCK_BYTES - 256
+    # MAX_BLOCK_BYTES caps the complete persisted CBOR block, including its envelope.
     sender = Ed25519PrivateKey.generate()
     recipient = Ed25519PrivateKey.generate()
     sender_id = _account_id(sender)
@@ -31,7 +29,10 @@ def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_pa
     total_bytes = 0
     for nonce in range(min(MAX_BLOCK_TRANSACTIONS, MAX_MEMPOOL_ITEMS)):
         raw = encode_transaction(create_transaction(sender, recipient_id, 1, nonce))
-        if total_bytes + len(raw) > min(block_tx_budget, MAX_MEMPOOL_BYTES):
+        candidate = [*transactions, raw]
+        candidate_block = canonical_cbor([2, 1, bytes(32), candidate, bytes(32), bytes(32)])
+        if (total_bytes + len(raw) > MAX_MEMPOOL_BYTES
+                or len(candidate_block) > MAX_BLOCK_BYTES):
             break
         transactions.append(raw)
         total_bytes += len(raw)
@@ -39,7 +40,7 @@ def test_mempool_admits_and_commits_maximum_byte_bounded_concurrent_batch(tmp_pa
     count = len(transactions)
     assert count > 0
     assert count <= MAX_BLOCK_TRANSACTIONS
-    assert total_bytes <= block_tx_budget
+    assert len(canonical_cbor([2, 1, bytes(32), transactions, bytes(32), bytes(32)])) <= MAX_BLOCK_BYTES
     assert total_bytes <= MAX_MEMPOOL_BYTES
 
     chain = LocalChain(
