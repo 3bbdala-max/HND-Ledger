@@ -129,3 +129,44 @@ def test_recovery_rejects_noncanonical_block_payload(tmp_path):
 
     with pytest.raises(ChainError, match="non-canonical"):
         LocalChain(path)
+
+
+
+def test_multiple_sequential_transactions_in_one_block_survive_restore(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    path = tmp_path / "multi.sqlite"
+    chain = LocalChain(path, LedgerState(balances={alice_id: 20}, supply_cap=20))
+    first = create_transaction(alice, bob_id, 5, 0)
+    second = create_transaction(alice, bob_id, 7, 1)
+    block = chain.append([first, second])
+    assert block.height == 1
+    assert chain.state.balances[alice_id] == 8
+    assert chain.state.balances[bob_id] == 12
+    assert chain.state.next_nonces[alice_id] == 2
+    chain.close()
+
+    restored = LocalChain(path)
+    assert restored.height == 1
+    assert restored.tip_hash == block.block_hash
+    assert restored.state.balances[alice_id] == 8
+    assert restored.state.balances[bob_id] == 12
+    assert restored.state.next_nonces[alice_id] == 2
+    restored.close()
+
+
+def test_block_transaction_count_limit_is_atomic(tmp_path):
+    from hnd_ledger.chain import MAX_BLOCK_TRANSACTIONS
+
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    chain = LocalChain(tmp_path / "limit.sqlite", LedgerState(balances={alice_id: 20}, supply_cap=20))
+    tx = create_transaction(alice, bob_id, 1, 0)
+    with pytest.raises(ChainError, match="transaction count"):
+        chain.append([tx] * (MAX_BLOCK_TRANSACTIONS + 1))
+    assert chain.height == 0
+    assert chain.state.balances[alice_id] == 20
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    chain.close()
