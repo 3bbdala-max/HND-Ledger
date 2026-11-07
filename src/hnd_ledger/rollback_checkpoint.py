@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from enum import Enum
 from typing import Protocol, runtime_checkable
 
 import cbor2
@@ -220,3 +221,80 @@ def validate_successor(
         raise CheckpointError("checkpoint sequence is not the next value")
     if candidate.height <= current.height:
         raise CheckpointError("checkpoint height must advance")
+
+
+class CheckpointRelation(str, Enum):
+    """Relationship between a local replayed tip and the accepted remote tip."""
+
+    UNANCHORED = "unanchored"
+    MATCH = "match"
+    LOCAL_BEHIND = "local_behind"
+    LOCAL_AHEAD_UNVERIFIED = "local_ahead_unverified"
+    DIVERGED = "diverged"
+
+
+@dataclass(frozen=True, slots=True)
+class CheckpointAssessment:
+    """Fail-closed startup assessment; only an exact match permits writes."""
+
+    relation: CheckpointRelation
+    reason: str
+
+    @property
+    def writes_allowed(self) -> bool:
+        return self.relation is CheckpointRelation.MATCH
+
+
+def assess_local_tip(
+    checkpoint: RollbackCheckpoint | None,
+    *,
+    chain_id: bytes,
+    genesis_hash: bytes,
+    height: int,
+    block_hash: bytes,
+    app_hash: bytes,
+) -> CheckpointAssessment:
+    """Compare local replay result with the latest independently trusted anchor.
+
+    A local-ahead result is deliberately NOT accepted: the suffix after the
+    trusted checkpoint must be separately verified and explicitly recovered.
+    This function only compares tips; it does not prove ancestry or commit
+    evidence for an unanchored suffix.
+    """
+    _hash(chain_id, "local chain_id")
+    _hash(genesis_hash, "local genesis_hash")
+    _uint(height, "local height")
+    _hash(block_hash, "local block_hash")
+    _hash(app_hash, "local app_hash")
+
+    if checkpoint is None:
+        return CheckpointAssessment(
+            CheckpointRelation.UNANCHORED,
+            "no independently trusted checkpoint is configured",
+        )
+    if not isinstance(checkpoint, RollbackCheckpoint):
+        raise CheckpointError("trusted checkpoint has an invalid type")
+    if chain_id != checkpoint.chain_id:
+        raise CheckpointError("local chain id does not match trusted checkpoint")
+    if genesis_hash != checkpoint.genesis_hash:
+        raise CheckpointError("local genesis hash does not match trusted checkpoint")
+
+    if height < checkpoint.height:
+        return CheckpointAssessment(
+            CheckpointRelation.LOCAL_BEHIND,
+            "local database is behind the independently trusted checkpoint",
+        )
+    if height > checkpoint.height:
+        return CheckpointAssessment(
+            CheckpointRelation.LOCAL_AHEAD_UNVERIFIED,
+            "local suffix beyond the trusted checkpoint requires explicit verification and recovery",
+        )
+    if block_hash != checkpoint.block_hash or app_hash != checkpoint.app_hash:
+        return CheckpointAssessment(
+            CheckpointRelation.DIVERGED,
+            "local block or application commitment conflicts at the trusted height",
+        )
+    return CheckpointAssessment(
+        CheckpointRelation.MATCH,
+        "local chain tip exactly matches the independently trusted checkpoint",
+    )

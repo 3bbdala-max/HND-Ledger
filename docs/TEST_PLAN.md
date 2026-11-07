@@ -168,3 +168,8 @@ All four workflows passed on this exact commit:
 - Four-validator liveness/recovery: run `42402800633`, PASS.
 
 Scope limitation: these tests verify record/signature primitives and an in-memory test authority only. They do not verify durable remote CAS, independent key custody, startup enforcement, DB/checkpoint crash-window recovery, authority outages, or production anti-rollback protection.
+
+
+## Checkpoint reconciliation assessment
+
+Added a pure fail-closed assessment for local tip versus trusted checkpoint. Tests cover unanchored, exact match, local behind, local ahead requiring explicit suffix verification, divergent commitments, wrong chain/genesis, and boolean height rejection. The assessment is not yet integrated into startup or commit paths and does not independently prove suffix ancestry.

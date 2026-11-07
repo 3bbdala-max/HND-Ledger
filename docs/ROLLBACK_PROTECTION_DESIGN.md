@@ -87,3 +87,18 @@ On code commit `be1e5725707861b7996ea6b1bfeb2b939653a127`, the provider-neutral 
 All four exact-commit CI workflows passed on `be1e5725707861b7996ea6b1bfeb2b939653a127`: Python `42402800672`, one-node `42402800686`, three-validator `42402800837`, and four-validator liveness/recovery `42402800633`.
 
 This does NOT yet provide a production authority. The in-memory test double is volatile and is not an anti-rollback trust anchor. The checkpoint contract is not yet wired into chain startup, block commit, or recovery. No external endpoint, credential, durable monotonic store, production signing-key custody, or multi-validator checkpoint policy is configured. Therefore production rollback protection remains unimplemented and unclaimed.
+
+
+## Local-tip reconciliation — implemented as a pure fail-closed assessment
+
+On commit `6f093fc69a899244eb3f840f13eae3efb008c6a1`, the checkpoint primitives were verified by all four CI workflows. A follow-up implementation now adds a pure local-tip assessment:
+
+- `MATCH`: chain ID, genesis hash, height, block hash, and application hash all match; this is the only relation marked as write-eligible by the assessment.
+- `LOCAL_BEHIND`: local database is below the trusted height; writes are not eligible.
+- `LOCAL_AHEAD_UNVERIFIED`: local database is ahead; the suffix is not presumed valid and requires explicit verification/recovery; writes are not eligible.
+- `DIVERGED`: height matches but block or application commitment differs; writes are not eligible.
+- `UNANCHORED`: no trusted checkpoint exists; writes are not eligible.
+
+The signing domain separator is also corrected to use a literal zero byte rather than the printable characters backslash-x-zero-zero.
+
+This is a comparison primitive only. It is not yet wired into `LocalChain`, CometBFT startup, or block commit. It does not establish that an ahead suffix descends from the checkpoint; a future recovery procedure must replay and verify that suffix and require explicit authorization. No production anti-rollback guarantee is claimed.

@@ -199,3 +199,69 @@ def test_memory_authority_compare_and_swap_allows_only_one_concurrent_successor(
     for thread in threads:
         thread.join()
     assert sorted(results) == [False, True]
+
+
+
+def test_checkpoint_signature_domain_uses_a_real_zero_byte_separator():
+    from hnd_ledger.rollback_checkpoint import CHECKPOINT_SIGNATURE_DOMAIN
+
+    assert CHECKPOINT_SIGNATURE_DOMAIN.endswith(b"\\x00")
+    assert b"\\\\x00" not in CHECKPOINT_SIGNATURE_DOMAIN
+
+
+def test_assess_local_tip_requires_exact_checkpoint_match_for_writes():
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointRelation,
+        assess_local_tip,
+    )
+
+    checkpoint = make_checkpoint(sequence=3, height=7)
+    common = {
+        "chain_id": checkpoint.chain_id,
+        "genesis_hash": checkpoint.genesis_hash,
+        "block_hash": checkpoint.block_hash,
+        "app_hash": checkpoint.app_hash,
+    }
+
+    unanchored = assess_local_tip(None, **{**common, "height": 7})
+    assert unanchored.relation is CheckpointRelation.UNANCHORED
+    assert not unanchored.writes_allowed
+
+    matched = assess_local_tip(checkpoint, **{**common, "height": 7})
+    assert matched.relation is CheckpointRelation.MATCH
+    assert matched.writes_allowed
+
+    behind = assess_local_tip(checkpoint, **{**common, "height": 6})
+    assert behind.relation is CheckpointRelation.LOCAL_BEHIND
+    assert not behind.writes_allowed
+
+    ahead = assess_local_tip(checkpoint, **{**common, "height": 8})
+    assert ahead.relation is CheckpointRelation.LOCAL_AHEAD_UNVERIFIED
+    assert not ahead.writes_allowed
+    assert "explicit verification" in ahead.reason
+
+    diverged = assess_local_tip(
+        checkpoint,
+        **{**common, "height": 7, "block_hash": b"X" * 32},
+    )
+    assert diverged.relation is CheckpointRelation.DIVERGED
+    assert not diverged.writes_allowed
+
+
+def test_assess_local_tip_rejects_wrong_chain_genesis_and_malformed_local_values():
+    from hnd_ledger.rollback_checkpoint import assess_local_tip
+
+    checkpoint = make_checkpoint(height=7)
+    args = {
+        "chain_id": checkpoint.chain_id,
+        "genesis_hash": checkpoint.genesis_hash,
+        "height": 7,
+        "block_hash": checkpoint.block_hash,
+        "app_hash": checkpoint.app_hash,
+    }
+    with pytest.raises(CheckpointError, match="chain id"):
+        assess_local_tip(checkpoint, **{**args, "chain_id": b"X" * 32})
+    with pytest.raises(CheckpointError, match="genesis hash"):
+        assess_local_tip(checkpoint, **{**args, "genesis_hash": b"X" * 32})
+    with pytest.raises(CheckpointError, match="local height must be an integer"):
+        assess_local_tip(checkpoint, **{**args, "height": True})
