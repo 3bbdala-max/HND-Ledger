@@ -2,12 +2,48 @@ package ipc
 
 import (
 	"bufio"
+	"bytes"
+	"io"
 	"context"
 	"encoding/json"
 	"net"
 	"path/filepath"
 	"testing"
 )
+
+
+type partialWriter struct {
+	buffer bytes.Buffer
+	limit int
+}
+
+func (w *partialWriter) Write(data []byte) (int, error) {
+	if len(data) > w.limit {
+		data = data[:w.limit]
+	}
+	return w.buffer.Write(data)
+}
+
+func TestWriteFullRetriesPartialWrites(t *testing.T) {
+	writer := &partialWriter{limit: 2}
+	payload := []byte("bounded-ipc-frame")
+	if err := writeFull(writer, payload); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(writer.buffer.Bytes(), payload) {
+		t.Fatalf("partial write corrupted payload: %q", writer.buffer.Bytes())
+	}
+}
+
+type zeroWriter struct{}
+
+func (zeroWriter) Write([]byte) (int, error) { return 0, nil }
+
+func TestWriteFullRejectsZeroProgress(t *testing.T) {
+	if err := writeFull(zeroWriter{}, []byte("x")); err != io.ErrShortWrite {
+		t.Fatalf("expected io.ErrShortWrite, got %v", err)
+	}
+}
 
 type testPayload struct {
 	Value string `json:"value"`
