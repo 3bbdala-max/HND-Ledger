@@ -173,7 +173,15 @@ def main():
     }
     genesis_hash = genesis_manifest_hash(manifest)
     app_state_json = json.dumps(
-        {"genesis_hash": genesis_hash, "manifest": manifest},
+        {
+            "genesis_hash": genesis_hash,
+            "manifest": manifest,
+            "protocol_config": {
+                "network_id": cfg.network_id,
+                "protocol_version": cfg.protocol_version,
+                "max_amount": cfg.max_amount,
+            },
+        },
         sort_keys=True, separators=(",", ":"),
     )
     with tempfile.TemporaryDirectory(prefix="hnd-wp4-11-") as temp:
