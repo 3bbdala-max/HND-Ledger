@@ -10,12 +10,14 @@ import binascii
 import hashlib
 import json
 import threading
+
+import cbor2
 from collections import deque
 from typing import Any
 
 from .application import LedgerApplication
 from .ipc_server import IPCError
-from .protocol import CHAIN_ID, encode_transaction
+from .protocol import CHAIN_ID, MAX_SUPPLY, MAX_U64, encode_transaction
 
 EXTERNAL_CHAIN_ID = "HND-LOCAL-V2"
 MAX_MEMPOOL_ITEMS = 10_000
@@ -94,22 +96,64 @@ class ABCIDispatcher:
         if self.application.chain.state.balances or self.application.chain.state.next_nonces:
             raise IPCError("development genesis must not contain preloaded account state")
         app_state = _bytes(payload, "app_state_bytes", required=False)
-        if app_state:
-            raise IPCError("non-empty app_state_bytes require an explicitly reviewed genesis schema")
         marker = hashlib.sha256(
-            json.dumps({"chain_id": chain_id, "app_state_bytes": ""}, sort_keys=True).encode()
+            json.dumps(
+                {"chain_id": chain_id, "app_state_bytes": base64.b64encode(app_state).decode("ascii")},
+                sort_keys=True,
+            ).encode()
         ).digest()
         row = self.application.chain.db.execute(
             "SELECT value FROM metadata WHERE key='cometbft_genesis_marker'"
         ).fetchone()
-        if row is not None and row[0] != marker:
-            raise IPCError("a different CometBFT genesis was already initialized")
-        if row is None:
-            with self.application.chain.db:
-                self.application.chain.db.execute(
-                    "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
-                    (marker,),
+        if row is not None:
+            if row[0] != marker:
+                raise IPCError("a different CometBFT genesis was already initialized")
+            return {"validators": []}
+
+        if app_state:
+            try:
+                decoded = cbor2.loads(app_state)
+                if cbor2.dumps(decoded, canonical=True) != app_state:
+                    raise ValueError("non-canonical genesis CBOR")
+                if not isinstance(decoded, list) or len(decoded) != 3 or decoded[0] != 2:
+                    raise ValueError("genesis must be [2, supply_cap, allocations]")
+                _, supply_cap, allocations = decoded
+                if (isinstance(supply_cap, bool) or not isinstance(supply_cap, int)
+                        or supply_cap < 0 or supply_cap > MAX_SUPPLY):
+                    raise ValueError("genesis supply cap is outside protocol limits")
+                if not isinstance(allocations, list) or len(allocations) > 10_000:
+                    raise ValueError("genesis allocations must be a bounded array")
+                balances = {}
+                previous = None
+                for item in allocations:
+                    if not isinstance(item, list) or len(item) != 2:
+                        raise ValueError("each allocation must be [account_id, amount]")
+                    account, amount = item
+                    if not isinstance(account, bytes) or len(account) != 32:
+                        raise ValueError("genesis account IDs must be 32 bytes")
+                    if previous is not None and account <= previous:
+                        raise ValueError("genesis allocations must be strictly sorted and unique")
+                    if (isinstance(amount, bool) or not isinstance(amount, int)
+                            or amount <= 0 or amount > MAX_U64):
+                        raise ValueError("genesis allocation amount is outside uint64")
+                    balances[account] = amount
+                    previous = account
+                from .state import LedgerState, LedgerError
+                genesis_state = LedgerState(
+                    balances=balances, supply_cap=supply_cap,
+                    chain_id=self.application.chain.state.chain_id,
                 )
+            except (ValueError, TypeError, cbor2.CBORDecodeError) as exc:
+                raise IPCError(f"invalid HND genesis app_state_bytes: {exc}") from exc
+            try:
+                self.application.chain.initialize_genesis(genesis_state)
+            except ValueError as exc:
+                raise IPCError(f"unable to install HND genesis allocations: {exc}") from exc
+        with self.application.chain.db:
+            self.application.chain.db.execute(
+                "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
+                (marker,),
+            )
         return {"validators": []}
 
     def _handle_CheckTx(self, payload: dict[str, Any]) -> dict[str, Any]:
