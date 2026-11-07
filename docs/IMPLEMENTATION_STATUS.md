@@ -23,7 +23,7 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 - Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42361234762 on the same commit, success.
 - Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
 
-The test suite includes a SQLite trigger failure during block insertion and a child process forcibly terminated from inside an uncommitted block-insert transaction. Reopening the database recovers the original genesis state with no block row, height advance, balance change, or nonce change. This is one process-crash boundary test, not a complete power-loss campaign.
+The test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
 
 ## Remaining work
 
