@@ -144,7 +144,7 @@ def main():
     alloc=sorted([{"account_id":aid,"public_key":apub,"amount":ALICE},{"account_id":bid,"public_key":bpub,"amount":SUPPLY-ALICE}],key=lambda x:x["account_id"])
     manifest={"manifest_version":1,"network_id":CHAIN,"protocol_version":2,"total_supply":SUPPLY,"allocations":alloc}
     gh=genesis_manifest_hash(manifest)
-    appstate={"genesis_hash":gh,"manifest":manifest}
+    appstate={"genesis_hash":gh,"manifest":manifest,"protocol_config":{"network_id":cfg.network_id,"protocol_version":cfg.protocol_version,"max_amount":cfg.max_amount}}
     tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=TRANSFER,nonce=0))
     with tempfile.TemporaryDirectory(prefix="hnd-four-validator-") as tmp:
         root=Path(tmp); mp=root/"manifest.json"; mp.write_text(json.dumps(manifest,sort_keys=True,indent=2)+"\n")
