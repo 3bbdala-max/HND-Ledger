@@ -176,3 +176,22 @@ on the same CI host/local filesystem. They do not establish distributed
 ownership, network-filesystem lock semantics, durable host fencing, stale
 leader rejection, or signer-side authorization linearization. The full
 RS-CON-01..05 and RS-CRASH-01..06 matrices remain open.
+
+
+## Additional crash boundary probe added: state save completed, response not delivered
+
+A disposable process probe now wraps CometBFT v0.40.0 FilePV signing so the
+child signer exits immediately after `FilePV.SignVote` returns (therefore
+after `LastSignState.Save()` has completed) but before the SignerServer can
+serialize/send the response. The parent then:
+
+1. verifies the child exited at the injected boundary;
+2. loads the persisted H/R/S state and captures its digest;
+3. restarts the signer through the fail-closed recovery path using that exact
+   digest;
+4. retries the identical vote and requires a valid signature;
+5. submits a conflicting vote at the same H/R/type and requires rejection.
+
+This targets the post-state-save/pre-response case in RS-CRASH-05. It does not
+simulate power loss, a crash during the atomic rename, or a crash before the
+state save returns. A fresh CI run is required before claiming this case.
