@@ -3,13 +3,28 @@ import sqlite3
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from hnd_ledger.chain import ChainError, LocalChain
+from hnd_ledger.chain import ChainError, LocalChain, state_commitment
 from hnd_ledger.protocol import account_id, create_transaction
 from hnd_ledger.state import LedgerState
 
 
 def account(key):
     return account_id(key.public_key().public_bytes_raw())
+
+
+
+def test_state_commitment_covers_chain_id_and_supply_cap():
+    key = Ed25519PrivateKey.generate()
+    account_id_value = account(key)
+    base = LedgerState(balances={account_id_value: 10}, supply_cap=20)
+    different_cap = LedgerState(balances={account_id_value: 10}, supply_cap=30)
+    different_chain = LedgerState(
+        balances={account_id_value: 10}, supply_cap=20, chain_id=b"X" * 32
+    )
+
+    base_hash = state_commitment(base)
+    assert state_commitment(different_cap) != base_hash
+    assert state_commitment(different_chain) != base_hash
 
 
 def test_append_and_restore_preserves_state(tmp_path):
