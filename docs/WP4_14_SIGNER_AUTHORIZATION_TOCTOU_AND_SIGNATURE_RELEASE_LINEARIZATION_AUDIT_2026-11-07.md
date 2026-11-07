@@ -69,6 +69,19 @@ The anti-rollback reference tests include:
 
 These tests establish properties of the reference model only. The current `.github/workflows/hnd-v02-tests.yml` isolated v0.2 test command does not list `tests.test_v02_anti_rollback_reference` or `tests.test_v02_recovery_controls`. The current remote-signer process probes do not close the missing anchor-to-signature-release integration.
 
+### 2.5 Separate reproduced FilePV multi-process dual-sign finding (2026-11-07)
+
+A separate negative-security integration probe now demonstrates a concrete cross-process ownership failure in the tested CometBFT v0.40.0 FilePV setup:
+
+- Tested source commit: `f769dcb2890085497bbd275e325e974eff793b6e`
+- CI run: `42323914517` — both configured workflow jobs completed successfully.
+- Probe: `Reproduce shared FilePV multi-process dual-sign risk (expected unsafe behavior)`.
+- Evidence: `docs/WP4_14_SHARED_FILEPV_MULTIPROCESS_DUAL_SIGN_REPRODUCTION_2026-11-07.md`.
+
+Two independent signer processes load the same initial key/state before either request. The first signs one prevote; the second signs a conflicting prevote at the same height, round and type using stale in-memory state. Both signatures verify against the same validator public key. The requests are sequential after both processes load state, intentionally isolating stale cross-process state from a simultaneous filesystem-write race.
+
+This reproduced finding confirms that sharing a FilePV state path does not provide cross-process single-writer ownership. It is distinct from AUTH-TOCTOU-01: it does not demonstrate the retained-readiness-boolean/fencing interleaving, a multi-host failure, or a production deployment exploit. The AUTH-TOCTOU signature-release linearization gap remains independently open.
+
 ## 3. Required production invariant
 
 The security invariant must be stronger than “the host checked readiness recently”:
@@ -115,6 +128,6 @@ Tests must run against the actual signer/key boundary and a durable independentl
 
 ## 7. Decision
 
-**OPEN — NOT APPROVED.**
+**OPEN — NOT APPROVED.** The shared FilePV cross-process dual-sign condition is now reproduced in a disposable two-process test; signer authorization TOCTOU, durable fencing, multi-host ownership, and production signature-release linearization remain unimplemented and unapproved.
 
 This audit identifies a concrete boundary between a successful readiness check and a later signature operation. It does not assert that a production exploit has been demonstrated. The reference model remains offline and synthetic; no production signer integration is present or authorized. Do not enable production signing, validator failover, or public network launch on the strength of this model.
