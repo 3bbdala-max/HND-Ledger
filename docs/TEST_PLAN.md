@@ -40,6 +40,15 @@ Go tests cover IPC request correlation, malformed/mismatched responses, typed er
 | INT-12 | Non-canonical base64 genesis payload rejected without writing marker or allocations | PASS, 42362574022 |
 | INT-13 | Mempool item/byte caps, duplicate accounting, and committed-entry capacity release | PASS, 42365173568 |\n| INT-14 | CheckTx RECHECK rejects stale balance/nonce transactions after commit without mutating state | PASS, 42365759445 |
 
-## Latest exact-commit CI evidence\n\nAll three workflows completed successfully on commit `05f4449c052a0e869dd1c6f18f5da67d88c24532`: Python suite run `42365759445` (77 tests), one-node CometBFT restart run `42365759497`, and three-validator integration run `42365759520`. The three-validator run includes the funded signed transfer, state/app-hash consistency, restart recovery, and the existing weak-CheckTx overspend filtering scenario.\n\n## Remaining adversarial and operational tests
+## Latest exact-commit CI evidence
+
+All three required workflows completed successfully on code commit `c91bb1478a50da0bd3c7c59c6b46c4bdb1bc897f`:
+- Python tests run `42365922063`: PASS (77 tests).
+- One-node CometBFT startup, block production, restart, and recovery run `42365922052`: PASS.
+- Three-validator integration run `42365922077`: PASS; all three validators completed the integration job, including signed transfer, state/app-hash consistency, Query, overspend filtering, and validator-0 restart recovery.
+
+The earlier all-green baseline on commit `05f4449c052a0e869dd1c6f18f5da67d88c24532` is retained as historical evidence: Python run `42365759445` (77 tests), one-node run `42365759497`, and three-validator run `42365759520`.
+
+## Remaining adversarial and operational tests
 
 Process-kill/power-loss tests at other boundaries, conflicting proposals, equivocation, replayed votes, network partitions/healing, Byzantine voting-power scenarios, validator crash after signing, validator-set updates, state sync, snapshot integrity, database rollback detection, backup/restore, multi-host deployment, mempool flooding, per-peer quotas, CPU/memory exhaustion, and crash injection around every SQLite commit boundary.
