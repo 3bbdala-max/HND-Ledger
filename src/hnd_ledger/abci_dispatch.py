@@ -178,6 +178,70 @@ class ABCIDispatcher:
                 )
         return {"validators": []}
 
+    def _handle_Query(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Expose a small read-only latest-state query surface; proofs are unsupported."""
+        height = _integer(payload, "height", default=0)
+        current_height = self.application.height
+        prove = payload.get("prove", False)
+        path = payload.get("path")
+        if set(payload) - {"path", "data", "height", "prove"}:
+            message = "query contains unsupported fields"
+        elif not isinstance(prove, bool):
+            message = "prove must be a boolean"
+        elif prove:
+            message = "state proofs are not implemented"
+        elif height not in (0, current_height):
+            message = "historical or future query heights are not supported"
+        elif not isinstance(path, str):
+            message = "query path must be a string"
+        else:
+            message = ""
+
+        key = b""
+        result: dict[str, Any] | None = None
+        if not message and path == "/hnd/v1/info":
+            if _bytes(payload, "data", required=False):
+                message = "info query data must be empty"
+            else:
+                state = self.application.chain.state
+                result = {
+                    "chain_id": state.chain_id.rstrip(b"\x00").decode("ascii"),
+                    "height": current_height,
+                    "state_commitment": self.application.app_hash.hex(),
+                    "supply_cap": state.supply_cap,
+                    "total_supply": state.total_supply,
+                    "account_count": len(set(state.balances) | set(state.next_nonces)),
+                }
+        elif not message and path == "/hnd/v1/account":
+            key = _bytes(payload, "data", required=False)
+            if len(key) != 32:
+                message = "account query data must be a 32-byte account ID"
+            else:
+                state = self.application.chain.state
+                result = {
+                    "account_id": key.hex(),
+                    "balance": state.balances.get(key, 0),
+                    "next_nonce": state.next_nonces.get(key, 0),
+                    "height": current_height,
+                }
+        elif not message:
+            message = "unsupported HND query path"
+
+        if message:
+            return {
+                "code": 1, "log": message, "info": "", "index": 0,
+                "key": "", "value": "", "height": current_height,
+                "codespace": "hnd",
+            }
+
+        value = json.dumps(result, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return {
+            "code": 0, "log": "", "info": "HND read-only query",
+            "index": 0, "key": base64.b64encode(key).decode("ascii"),
+            "value": base64.b64encode(value).decode("ascii"),
+            "height": current_height, "codespace": "",
+        }
+
     def _handle_CheckTx(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw = _bytes(payload, "tx")
         try:
