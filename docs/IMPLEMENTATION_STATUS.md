@@ -18,7 +18,8 @@
 ## Design documents added
 
 - Threat model with assets, trust boundaries, threats, controls, and release gates.
-- Validator and consensus design gate. CometBFT is an evaluation candidate only, not a selected or integrated dependency.
+- Validator and consensus design gate.
+- CometBFT v0.40.0 selected as a pinned candidate for a controlled ABCI++ integration spike; integration is not yet implemented. The application lifecycle, candidate-state isolation, commit/recovery rules, and test gates are documented in `COMETBFT_INTEGRATION_DECISION.md`.
 - Distributed-consensus test matrix. All entries are planned tests, not executed results.
 
 ## Not yet implemented
