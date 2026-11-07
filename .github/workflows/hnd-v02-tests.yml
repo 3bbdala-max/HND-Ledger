@@ -142,6 +142,10 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
           go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go" --remote-anti-double-sign-probe
+      - name: Crash signer after state save and before response, then verify safe recovery
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_signer_process_probe.go" --crash-after-state-save-vote-probe
       - name: Build pinned persistent remote signer helper
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
