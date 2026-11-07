@@ -233,6 +233,84 @@ func runRemoteAntiDoubleSignProbe() {
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_ANTI_DOUBLE_SIGN_RESTART_OK")
 }
 
+func runCrashAfterDurableVoteProbe() {
+	root, err := os.MkdirTemp("", "hnd-remote-signer-crash-after-save-")
+	if err != nil { fail("create crash-after-save probe directory: %v", err) }
+	defer os.RemoveAll(root)
+	socketPath := filepath.Join(root, "privval.sock")
+	rawListener, err := net.Listen("unix", socketPath)
+	if err != nil { fail("listen for crash-after-save signer: %v", err) }
+	defer rawListener.Close()
+	if err := os.Chmod(socketPath, 0o600); err != nil { fail("restrict crash-after-save socket: %v", err) }
+	endpoint := privval.NewSignerListenerEndpoint(log.NewNopLogger(), privval.NewUnixListener(rawListener))
+	client, err := privval.NewSignerClient(endpoint, chainID)
+	if err != nil { fail("create crash-after-save client: %v", err) }
+	defer client.Close()
+	executable, err := os.Executable()
+	if err != nil { fail("resolve crash-after-save executable: %v", err) }
+	keyPath, statePath := filepath.Join(root, "key.json"), filepath.Join(root, "state.json")
+	child := exec.Command(executable, "--signer-child", socketPath, keyPath, statePath, "--crash-after-vote")
+	child.Stdout, child.Stderr = os.Stdout, os.Stderr
+	if err := child.Start(); err != nil { fail("start crash-after-save signer child: %v", err) }
+	if err := client.WaitForConnection(10*time.Second); err != nil { fail("wait for crash-after-save signer: %v", err) }
+	pubKey, err := client.GetPubKey()
+	if err != nil { fail("get crash-after-save signer public key: %v", err) }
+	vote := (&cmttypes.Vote{
+		ValidatorAddress: cmttypes.Address(pubKey.Address()),
+		ValidatorIndex: 0, Height: 88, Round: 1, Type: cmtproto.PrevoteType,
+		Timestamp: cmttime.Now(), BlockID: blockID("crash-after-durable-save"),
+	}).ToProto()
+	if err := client.SignVote(chainID, vote); err == nil {
+		fail("crash-after-save signer unexpectedly returned a response")
+	}
+	waitErr := child.Wait()
+	var exitErr *exec.ExitError
+	if !errors.As(waitErr, &exitErr) || exitErr.ExitCode() != 77 {
+		fail("crash-after-save signer did not exit at the injected post-persistence boundary: %v", waitErr)
+	}
+	loaded := privval.LoadFilePV(keyPath, statePath)
+	if loaded.LastSignState.Height != 88 || loaded.LastSignState.Round != 1 || loaded.LastSignState.Step != 2 {
+		fail("crash-after-save state did not persist expected H/R/S: got %d/%d/%d", loaded.LastSignState.Height, loaded.LastSignState.Round, loaded.LastSignState.Step)
+	}
+	stateDigest, err := fileSHA256(statePath)
+	if err != nil { fail("hash durable signer state after injected crash: %v", err) }
+
+	// Recreate the node-side listener/client to avoid carrying a stale
+	// connection across the signer process crash.
+	_ = client.Close()
+	_ = rawListener.Close()
+	_ = os.Remove(socketPath)
+	rawListener, err = net.Listen("unix", socketPath)
+	if err != nil { fail("reopen crash-after-save listener: %v", err) }
+	defer rawListener.Close()
+	if err := os.Chmod(socketPath, 0o600); err != nil { fail("restrict restarted crash-after-save socket: %v", err) }
+	endpoint = privval.NewSignerListenerEndpoint(log.NewNopLogger(), privval.NewUnixListener(rawListener))
+	client, err = privval.NewSignerClient(endpoint, chainID)
+	if err != nil { fail("create restarted crash-after-save client: %v", err) }
+	defer client.Close()
+	child = exec.Command(executable, "--serve-recovery", socketPath, keyPath, statePath, chainID, stateDigest)
+	child.Stdout, child.Stderr = os.Stdout, os.Stderr
+	if err := child.Start(); err != nil { fail("restart signer after durable-save crash: %v", err) }
+	if err := client.WaitForConnection(10*time.Second); err != nil { fail("wait for recovered signer after durable-save crash: %v", err) }
+	restartedPub, err := client.GetPubKey()
+	if err != nil { fail("get public key after durable-save crash: %v", err) }
+	if !bytes.Equal(pubKey.Bytes(), restartedPub.Bytes()) { fail("signer identity changed after durable-save crash") }
+	if err := client.SignVote(chainID, vote); err != nil { fail("retry same vote after durable-save crash: %v", err) }
+	if len(vote.Signature) == 0 || !pubKey.VerifySignature(cmttypes.VoteSignBytes(chainID, vote), vote.Signature) {
+		fail("recovered signer did not return a valid signature for the persisted vote")
+	}
+	conflict := (&cmttypes.Vote{
+		ValidatorAddress: cmttypes.Address(pubKey.Address()),
+		ValidatorIndex: 0, Height: 88, Round: 1, Type: cmtproto.PrevoteType,
+		Timestamp: vote.Timestamp, BlockID: blockID("conflict-after-durable-save"),
+	}).ToProto()
+	if err := client.SignVote(chainID, conflict); err == nil {
+		fail("recovered signer accepted a conflicting vote after crash-before-response")
+	}
+	stopSignerProcess(child, "recovered crash-after-save signer")
+	fmt.Println("HND_REMOTE_SIGNER_CRASH_AFTER_DURABLE_SAVE_BEFORE_RESPONSE_OK")
+}
+
 // runConcurrentSharedFilePVProbe deliberately starts two independent signer
 // processes with the same key/state files. It is a negative security probe:
 // if both processes emit valid signatures for conflicting blocks at the same
