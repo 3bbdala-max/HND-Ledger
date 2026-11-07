@@ -187,9 +187,11 @@ class LocalChain:
                 self.blocks.append(block)
                 self.state = candidate
                 previous = claimed_hash
-            except (ValueError, TypeError, IndexError) as exc:
+            except Exception as exc:
                 if isinstance(exc, ChainError):
                     raise
+                # CBOR decoder errors are not consistently ValueError subclasses
+                # across cbor2 versions; normalize all malformed-storage failures.
                 raise ChainError("unable to restore persisted chain") from exc
 
     def close(self) -> None:
