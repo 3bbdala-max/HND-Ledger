@@ -198,3 +198,20 @@ execution. The prior run remains recorded as **FAILED**; it is not retroactively
 counted as passing. This correction does not relax the safety assertion: the
 isolated node's height, block hash, application hash, and account state must
 remain unchanged from its own pre-partition baseline.
+
+
+## Later full CI result for the existing validator-4 signer scenarios
+
+Workflow run `42333800723` on commit
+`4008ec842111f0e7d77ed1d4f7f81ffeff08279a` has now completed successfully:
+both `hnd-v02-tests` and `cometbft-single-node-smoke` passed. The latter
+includes the private four-validator network smoke, validator-4 Unix
+external-signer outage/recovery, and authenticated Noise external-signer
+outage/recovery steps. This is positive evidence for the existing
+**validator-4-only** signer scenarios; it does not establish all-four
+external-signer coverage or validate the newly added remote-only CLI.
+
+Subsequent source/CI commits add the dedicated remote-only CLI build and
+negative startup test, and correct the isolated-node partition baseline
+assertion. Those newer changes are still awaiting their own completed CI
+results at the time of this update.
