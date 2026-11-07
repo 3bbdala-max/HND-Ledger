@@ -394,3 +394,61 @@ chain.initialize_genesis(
         "SELECT COUNT(*) FROM metadata WHERE key='cometbft_genesis_marker'"
     ).fetchone()[0] == 0
     recovered.close()
+
+
+def test_process_crash_after_genesis_marker_insert_rolls_back_all_genesis_writes(tmp_path):
+    key = Ed25519PrivateKey.generate()
+    account_id_value = account(key)
+    path = tmp_path / "crash-after-genesis-marker.sqlite"
+    chain = LocalChain(path, LedgerState(supply_cap=100))
+    before_state = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0]
+    before_hash = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0]
+    chain.close()
+
+    child = r"""
+import os
+import sys
+from hnd_ledger.chain import LocalChain
+from hnd_ledger.state import LedgerState
+
+chain = LocalChain(sys.argv[1])
+chain.db.create_function("crash_now", 0, lambda: os._exit(75))
+chain.db.execute(
+    "CREATE TRIGGER crash_after_genesis_marker "
+    "AFTER INSERT ON metadata "
+    "WHEN NEW.key = 'cometbft_genesis_marker' "
+    "BEGIN SELECT crash_now(); END"
+)
+chain.db.commit()
+chain.initialize_genesis(
+    LedgerState(balances={bytes.fromhex(sys.argv[2]): 50}, supply_cap=100),
+    marker=b"N" * 32,
+)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", child, str(path), account_id_value.hex()],
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 75, result.stderr.decode(errors="replace")
+
+    recovered = LocalChain(path)
+    assert recovered.height == 0
+    assert recovered.state.total_supply == 0
+    assert recovered.state.balances == {}
+    assert recovered.state.next_nonces == {}
+    assert recovered.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0] == before_state
+    assert recovered.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0] == before_hash
+    assert recovered.db.execute(
+        "SELECT COUNT(*) FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0] == 0
+    recovered.close()
