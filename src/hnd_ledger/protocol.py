@@ -168,7 +168,7 @@ def decode_transaction(raw: bytes, expected_chain_id: bytes = CHAIN_ID) -> Trans
     if not isinstance(value, list) or len(value) != 8:
         raise ProtocolError("transaction must be an eight-element CBOR array")
     version, chain_id, sender, recipient, amount, nonce, public_key, signature = value
-    if version != PROTOCOL_VERSION or isinstance(version, bool):
+    if isinstance(version, bool) or not isinstance(version, int) or version != PROTOCOL_VERSION:
         raise ProtocolError("unsupported protocol version")
     tx = Transaction(chain_id, sender, recipient, amount, nonce, public_key, signature)
     verify_transaction(tx, expected_chain_id)
