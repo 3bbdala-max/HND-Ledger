@@ -165,3 +165,10 @@ Authority outages, invalid signatures, missing checkpoints, and wrong response t
 The provider-neutral publication path now has an additional composition helper, `publish_local_chain_checkpoint`. Before attempting authority CAS, it verifies that the signed candidate's chain ID, genesis hash, height, block hash, and application-state commitment exactly match the supplied replay-verified `LocalChain` tip. Tests reject a validly signed candidate with a wrong height, block hash, or application hash, and reject an untrusted signer.
 
 This helper still must be called after the corresponding consensus commit. It does not independently prove CometBFT finality, does not authenticate the caller to a remote service, and does not provide atomicity between SQLite and the external authority. It is not wired automatically into ABCI commit. Production anti-rollback remains unimplemented.
+
+
+## Fail-closed startup gate primitive
+
+The latest implementation adds `require_local_chain_checkpoint_match`. It returns the trusted checkpoint only for an exact MATCH and raises for unanchored, behind, ahead, divergent, malformed, or unavailable-authority states. It rereads the authority and rechecks the local tip before returning to reduce a read/assessment race.
+
+This remains an explicit primitive, not an automatic CometBFT startup hook. The in-memory authority used in tests is volatile and is not a production trust anchor. A production integration still requires a durable independent authority, caller authentication, key custody, consensus-commit evidence validation, a recovery state machine, and startup enforcement before the node can serve or commit.
