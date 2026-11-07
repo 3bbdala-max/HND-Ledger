@@ -265,3 +265,50 @@ def test_init_chain_rejects_unsorted_duplicate_and_over_cap_allocations(tmp_path
             pass
     assert chain.state.total_supply == 0
     chain.close()
+
+
+def test_funded_genesis_retry_and_conflict_survive_process_restart(tmp_path):
+    dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path, funded=False)
+    bob_id = _key_account(bob)
+    allocations = sorted([[alice_id, 700], [bob_id, 300]], key=lambda row: row[0])
+    app_state = _genesis_bytes([2, 1_000, allocations])
+    request = {
+        "chain_id": "HND-LOCAL-V2",
+        "app_state_bytes": _b64(app_state),
+    }
+
+    assert dispatcher("InitChain", request) == {"validators": []}
+    original_marker = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0]
+    original_state = dict(chain.state.balances)
+    path = chain.path
+    chain.close()
+
+    # A fresh process/application instance must recognize the exact same
+    # genesis request as an idempotent retry, without reinstalling state.
+    restored = LocalChain(path)
+    restarted_dispatcher = ABCIDispatcher(LedgerApplication(restored))
+    assert restarted_dispatcher("InitChain", request) == {"validators": []}
+    assert restored.state.balances == original_state
+    assert restored.db.execute(
+        "SELECT value FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0] == original_marker
+
+    conflicting_request = {
+        "chain_id": "HND-LOCAL-V2",
+        "app_state_bytes": _b64(_genesis_bytes([2, 1_000, [[alice_id, 999]]])),
+    }
+    try:
+        restarted_dispatcher("InitChain", conflicting_request)
+        assert False, "conflicting genesis must be rejected after restart"
+    except ValueError:
+        pass
+
+    assert restored.state.balances == original_state
+    assert restored.state.total_supply == 1_000
+    assert restored.state.supply_cap == 1_000
+    assert restored.db.execute(
+        "SELECT value FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0] == original_marker
+    restored.close()
