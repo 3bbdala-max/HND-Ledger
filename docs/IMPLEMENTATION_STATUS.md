@@ -42,3 +42,41 @@ The four-validator test demonstrates quorum liveness for a single stopped valida
 - Independent protocol, cryptographic, application security, economic, and legal review.
 
 No public deployment, issuance, or real-value use should occur before these gates are complete.
+
+
+## Verified update — checkpoint crash recovery (2026-11-07)
+
+This addendum supersedes older evidence and status statements above where they conflict.
+
+The latest code commit for the rollback-checkpoint recovery regression is `0aa49d823c252fc8214cd1ed9aa0f96fe4c551e8`. All four workflows completed successfully on that exact SHA:
+- HND Python tests: run `42411996750`.
+- CometBFT one-node restart: run `42411996862`.
+- CometBFT three-validator integration: run `42411996702`.
+- CometBFT four-validator liveness/recovery: run `42411996737`.
+
+The subsequent documentation commit `d3fc4cd0770bcbc87436d3709a61e3d0650540d2` also passed all four exact-SHA workflows:
+- HND Python tests: run `42412003076`.
+- CometBFT one-node restart: run `42412003224`.
+- CometBFT three-validator integration: run `42412003111`.
+- CometBFT four-validator liveness/recovery: run `42412002973`.
+
+The new restart regression exercises the distributed-commit failure window: SQLite has committed a block, the process stops before publishing the corresponding external checkpoint, and the chain is reopened. The local chain is correctly classified as `LOCAL_AHEAD_UNVERIFIED`; the startup-gate helper rejects operation instead of silently treating the local database as trusted. This is a deterministic process/reopen regression using the volatile in-memory test authority, not a production remote-authority integration.
+
+The existing consensus matrix also records a four-validator partition/healing test: one validator was isolated while the other three retained quorum and advanced, then the isolated validator caught up after healing. That evidence is limited to separate processes/data directories on one CI runner; it does not prove multi-host or multi-operator behavior.
+
+## Current security boundary — do not overclaim
+
+- Signed checkpoint records, pinned-key verification, compare-and-swap contract, local-chain assessment, publication helpers, and a fail-closed exact-match helper exist.
+- The checkpoint helper is **not wired into CometBFT startup or block commit**.
+- The only authority implementation used in tests is volatile and in-memory. No independently operated durable authority, remote endpoint, credential, production signing-key custody, or validator-wide checkpoint policy is configured.
+- Therefore external anti-rollback protection is **not implemented for production**, and no public deployment, issuance, or real-value use is authorized.
+- The exact-match helper rereads the authority and local tip to reduce a read/assessment race, but it is not a lease or fencing mechanism and does not prevent the authority or local chain changing immediately after the helper returns.
+
+## Next engineering gates
+
+1. Implement and independently test a durable external authority with authenticated clients, monotonic CAS, idempotent retry, audit history, and outage semantics.
+2. Define secure authority-key custody, rotation, revocation, and multi-validator checkpoint publication policy.
+3. Design explicit recovery authorization for a local chain ahead of its last accepted checkpoint; verify every suffix block and CometBFT commit evidence before advancing the authority.
+4. Wire the gate into the actual CometBFT lifecycle so no consensus writes can occur before successful verification and after an unacknowledged checkpoint update.
+5. Test adversarial proposals, equivocation, delayed/reordered messages, Byzantine voting-power boundaries, power-loss durability, and independent multi-host operators.
+6. Complete independent protocol, cryptographic, application-security, economic, and legal reviews before any public launch.
