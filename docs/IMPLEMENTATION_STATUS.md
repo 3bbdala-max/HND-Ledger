@@ -14,7 +14,7 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 - Query paths /hnd/v1/info and /hnd/v1/account, latest-state only, no proofs or historical reads.
 - Bounded JSONL IPC over Unix socket; strict envelope checks, duplicate-key rejection, 1 MiB frame limit, socket mode 0600.
 - Go CometBFT v0.40.0 adapter; partial-write handling; loopback-only ABCI listener.
-- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/overspend/recovery; bounded mempool capacity and committed-entry eviction are covered by unit tests.
+- CI for Python, Go tests/static analysis, one-node restart, and three-validator transfer/query/overspend/recovery; bounded mempool capacity, committed-entry eviction, and state-aware CheckTx RECHECK are covered by unit tests.
 
 ## Verified evidence
 
@@ -24,9 +24,9 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 - Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success; CometBFT workflows above also rebuilt and exercised the adapter.
 - Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
 
-The test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. The mempool tests additionally verify item/byte caps, duplicate submissions not inflating byte accounting, and capacity reuse after committed transactions are evicted. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
+The dispatcher now distinguishes new CheckTx submissions from CometBFT RECHECK. New submissions retain weak admission semantics; RECHECK validates against the latest committed state so stale balance/nonce transactions are rejected and cannot remain indefinitely in CometBFT's mempool. This path is covered by a regression test proving rejection after a balance-changing commit, acceptance of a still-valid transaction, and no state mutation during recheck.\n\nThe test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. The mempool tests additionally verify item/byte caps, duplicate submissions not inflating byte accounting, and capacity reuse after committed transactions are evicted. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
 
-## Remaining work
+## Latest exact-commit CI evidence\n\nCommit `05f4449c052a0e869dd1c6f18f5da67d88c24532` passed all three workflows: Python run `42365759445` (77 tests), one-node CometBFT restart run `42365759497`, and three-validator integration run `42365759520`. These results are tied to the exact commit above.\n\n## Remaining work
 
 - Process-level crash injection at other FinalizeBlock/Commit and database boundaries; power-loss durability testing.
 - Adversarial proposals, equivocation, partitions, delayed/reordered messages, and Byzantine voting-power tests.
