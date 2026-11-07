@@ -321,6 +321,11 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         wrong_payload = canonical_json({
             "genesis_hash": "0" * 64,
             "manifest": self.manifest,
+            "protocol_config": {
+                "network_id": self.config.network_id,
+                "protocol_version": self.config.protocol_version,
+                "max_amount": self.config.max_amount,
+            },
         })
         with self.assertRaisesRegex(RuntimeError, "Genesis hash mismatch"):
             servicer.InitChain(
