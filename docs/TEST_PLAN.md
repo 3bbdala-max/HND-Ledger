@@ -104,3 +104,8 @@ The four integration workflows on the same exact commit all completed successful
 - Four-validator liveness and recovery: run `42382630546`, PASS.
 
 This establishes the tested single-client timeout behavior and integration regression coverage. It does not establish connection-rate protection, per-peer quotas, multi-client flood resistance, or CPU/memory exhaustion resistance.
+
+
+## Concurrent IPC burst regression
+
+The concurrent local IPC regression was increased from 16 to 32 clients on commit `7e86e0a21a7e51033d44471376cef45b346b2f40`. All four workflows passed on that exact commit: Python run `42391236132`, one-node CometBFT run `42391236205`, three-validator run `42391236154`, and four-validator liveness/recovery run `42391236188`. The Python test checks that all 32 short requests receive successful responses with the correct request IDs and client payloads. It does not establish sustained throughput, overload behavior, or denial-of-service resistance.
