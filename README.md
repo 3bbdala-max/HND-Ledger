@@ -7,8 +7,8 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - **Version 0.1:** archived documentation and historical claims; not independently reproduced by the current implementation.
 - **Version 0.2 design:** protocol and cryptographic serialization specifications are maintained under `docs/`.
 - **Local implementation branch:** `implementation/v0.2-local-ledger` contains an initial Python implementation of Ed25519-signed transactions, canonical CBOR encoding, an atomic account ledger, deterministic block commitments, and SQLite-backed replay on restart.
-- **Automated tests:** pytest tests and a GitHub Actions workflow are included. A passing CI result has not yet been confirmed; test presence is not proof of passing behavior.
-- **Consensus design:** threat model, validator design gate, and distributed test matrix are documented; no consensus engine or independent validators are implemented.
+- **Automated tests:** 30 pytest tests passed in GitHub Actions run [42342012227](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42342012227), tied to commit `6319630828ab0893e981bacc8472f60741245bf2`.
+- **Consensus evaluation:** CometBFT v0.40.0 is the pinned candidate for a controlled ABCI++ integration spike; the lifecycle, architecture, and mandatory gates are documented. It is not integrated, and no independent validators are running.
 - **Not implemented:** peer-to-peer networking, wallet, public RPC, production genesis allocation, or public network.
 
 ## Protocol parameters
@@ -32,6 +32,7 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - [Threat model](docs/THREAT_MODEL.md)
 - [Validator and consensus design gate](docs/VALIDATOR_CONSENSUS_DESIGN.md)
 - [Consensus test matrix](docs/CONSENSUS_TEST_MATRIX.md)
+- [CometBFT integration decision](docs/COMETBFT_INTEGRATION_DECISION.md)
 
 ## Safety and launch status
 
