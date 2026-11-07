@@ -516,6 +516,10 @@ func main() {
 		runRemoteAntiDoubleSignProbe()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--shared-filepv-dual-writer-probe" {
+		runConcurrentSharedFilePVProbe()
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--withholding-probe" {
 		runWithholdingProbe()
 		return
