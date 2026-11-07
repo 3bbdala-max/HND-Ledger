@@ -1,5 +1,7 @@
 import base64
 
+import cbor2
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hnd_ledger.abci_dispatch import ABCIDispatcher
@@ -123,4 +125,60 @@ def test_check_tx_rejects_tampered_signature_and_invalid_base64(tmp_path):
     except ValueError:
         pass
     assert dispatcher("ReapTxs", {"max_bytes": 65_536}) == {"txs": []}
+    chain.close()
+
+
+def test_init_chain_installs_canonical_genesis_allocations_once(tmp_path):
+    dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path, funded=False)
+    bob_id = _key_account(bob)
+    allocations = sorted([[alice_id, 700], [bob_id, 300]], key=lambda row: row[0])
+    app_state = cbor2.dumps([2, 1_000, allocations], canonical=True)
+    encoded = _b64(app_state)
+
+    assert dispatcher("InitChain", {
+        "chain_id": "HND-LOCAL-V2", "app_state_bytes": encoded,
+    }) == {"validators": []}
+    assert chain.state.balances == {row[0]: row[1] for row in allocations}
+    assert chain.state.total_supply == 1_000
+    assert chain.state.supply_cap == 1_000
+
+    # An identical InitChain retry is idempotent; a different genesis is rejected.
+    assert dispatcher("InitChain", {
+        "chain_id": "HND-LOCAL-V2", "app_state_bytes": encoded,
+    }) == {"validators": []}
+    other_state = _b64(cbor2.dumps([2, 1_000, [[alice_id, 999]]], canonical=True))
+    try:
+        dispatcher("InitChain", {
+            "chain_id": "HND-LOCAL-V2", "app_state_bytes": other_state,
+        })
+        assert False, "a different genesis must be rejected"
+    except ValueError:
+        pass
+
+    path = chain.path
+    chain.close()
+    restored = LocalChain(path)
+    assert restored.state.balances == {row[0]: row[1] for row in allocations}
+    assert restored.state.supply_cap == 1_000
+    restored.close()
+
+
+def test_init_chain_rejects_unsorted_duplicate_and_over_cap_allocations(tmp_path):
+    dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path, funded=False)
+    bob_id = _key_account(bob)
+    bad_payloads = [
+        [2, 1_000, [[bob_id, 1], [alice_id, 1]]],
+        [2, 1_000, [[alice_id, 1], [alice_id, 2]]],
+        [2, 1_000, [[alice_id, 1_001]]],
+    ]
+    for value in bad_payloads:
+        try:
+            dispatcher("InitChain", {
+                "chain_id": "HND-LOCAL-V2",
+                "app_state_bytes": _b64(cbor2.dumps(value, canonical=True)),
+            })
+            assert False, "invalid genesis allocations must fail"
+        except ValueError:
+            pass
+    assert chain.state.total_supply == 0
     chain.close()
