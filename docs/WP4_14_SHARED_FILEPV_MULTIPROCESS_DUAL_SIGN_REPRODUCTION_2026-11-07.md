@@ -69,3 +69,21 @@ CometBFT FilePV and its per-process mutex do not provide cross-process
 ownership. It is not a distributed lease, durable host fencing, or protection
 against processes that bypass the helper. The corresponding Unix and Noise
 lock CI probes are pending; no safety result is claimed until they pass.
+
+
+## Lock mitigation verification
+
+Workflow run `42336661940` on commit
+`d952ba745e5b2950efb55621cd45e2b6dff19c3a` passed the revised
+`Enforce same-host single-writer lock for shared FilePV signer processes`
+step. It confirmed that the HND helper rejects a second process while the
+first holds the state-path lock, then permits sequential ownership transfer
+only after the first process exits and the second process supplies the updated
+persisted-state digest; the second owner rejected a conflicting H/R/type vote.
+The parallel Noise helper lock-contention probe also passed in the same run.
+
+The original reproduction remains valid for **unlocked upstream FilePV
+processes**. The mitigation applies only when processes use the HND helper and
+cooperate with its same-host advisory lock. It does not modify upstream
+CometBFT, protect against a bypassing signer process, or provide multi-host
+fencing. Distributed single-writer ownership remains OPEN.
