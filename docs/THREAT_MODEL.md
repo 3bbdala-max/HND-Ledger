@@ -1,63 +1,62 @@
 # HND v0.2 threat model
 
-**Status:** initial engineering threat model for review; not a security audit.
+**Status:** engineering threat model updated for the local CometBFT integration; not a security audit.
 
 ## Assets to protect
 
 - Correct account balances and sequential nonces.
 - Transaction authenticity and chain separation.
-- Block ordering, parent linkage, and deterministic state commitments.
-- Supply-cap invariant and integrity of the genesis configuration.
-- Availability and recoverability of node data.
+- Deterministic block ordering, parent linkage, and state commitments.
+- Supply-cap invariant and integrity of genesis configuration.
+- Validator signing state and node data availability.
+- Private keys, database files, and local IPC boundaries.
 
 ## Trust boundaries
 
 - Wallet/private-key holder to transaction decoder.
 - Untrusted transaction pool to block proposer.
-- Untrusted peer or validator to block verifier.
-- Local process to persistent SQLite database.
+- CometBFT peer and validator messages to the consensus engine.
+- Go ABCI adapter to Python engine through a Unix-domain socket.
+- Python application to persistent SQLite database.
 - Genesis configuration to every node joining a network.
 
-## Threats and required controls
+## Threats and current controls
 
-| Threat | Required control | Current local prototype |
+| Threat | Current control | Residual risk |
 |---|---|---|
-| Forged transaction | Ed25519 verification and sender-key binding | Implemented in transaction module |
-| Cross-chain replay | Chain ID included in signed payload | Implemented |
-| Transaction replay | Exact sequential account nonce | Implemented in local state |
-| Overspend | Check balance before state mutation | Implemented |
-| Supply inflation | Genesis and state supply invariant | Local cap check only; public genesis unresolved |
-| Non-canonical encoding | Canonical CBOR re-encoding check | Implemented for transaction decode |
-| Block tampering | Parent hash, transaction replay, state-root and block-hash checks | Implemented in local recovery |
-| Database rollback | Trusted checkpoint or external finalized height | Not implemented |
-| Malicious proposer | Independent deterministic validation by every node | Not implemented |
-| Equivocating validator | Signed votes and equivocation evidence | Not implemented |
-| Network partition | Explicit quorum and safety rules | Not implemented |
-| Sybil identities | Permissioned validator admission or costly Sybil resistance | Not implemented |
-| Key theft | Secure key storage, rotation, revocation | Not implemented |
-| Denial of service | Limits, rate control, bounded decoding and resource budgets | Not implemented |
-| Software supply-chain compromise | Pinned dependencies, reproducible builds, review | Not implemented |
+| Forged transaction | Ed25519 verification and sender-key binding | No independent cryptographic audit |
+| Cross-chain replay | Chain ID included in signed transaction payload | Protocol migration and chain-ID governance still need policy |
+| Transaction replay | Sequential account nonce; replay tests | No external transaction index or wallet UX |
+| Overspend | Balance check before state mutation; atomic candidate execution | Adversarial consensus scenarios not yet tested |
+| Supply inflation | Genesis allocation cap and state invariant; cap included in state commitment v3 | No issuance governance, mint/burn policy, or public genesis policy |
+| Non-canonical encoding | Canonical CBOR re-encoding check | Fuzzing and sustained malformed-input campaigns remain |
+| Block/database tampering | Parent linkage, transaction replay, state-root and block-hash verification on restore | No external trusted checkpoint or rollback detection |
+| Malicious proposer | ProcessProposal and FinalizeBlock deterministically validate ordered transactions | No adversarial proposer/round test campaign |
+| Validator equivocation | CometBFT supplies consensus voting and signing protocol | No HND-specific evidence/slashing policy or double-sign recovery campaign |
+| Network partition | CometBFT handles quorum-based consensus | Partition/healing tests not yet executed |
+| Sybil identities | Test cluster uses explicit validator identities from genesis | Production validator admission and voting-power governance undefined |
+| Key theft | No production key custody is claimed | Secure storage, backup, rotation, revocation, and operator procedures absent |
+| Denial of service | 1 MiB IPC frame limit, bounded mempool, block limits, sequential local IPC handling | No rate limits, per-peer quotas, or sustained CPU/memory exhaustion tests |
+| Unauthorized local IPC access | Unix socket mode 0600 | Same-user processes and parent-directory permissions remain in the local trust boundary |
+| Public ABCI exposure | Go listener accepts loopback TCP addresses only | CometBFT RPC/P2P production firewall and deployment hardening still required |
+| Supply-chain compromise | CometBFT version pinned; Go/Python dependencies bounded and CI-tested | Reproducible builds, SBOM, signing, and independent dependency audit absent |
 
 ## Consensus safety assumptions
 
-No consensus protocol is currently selected or implemented. A future protocol must state:
-- The validator admission model and validator-set transition rules.
-- The maximum Byzantine validator weight it tolerates.
-- The quorum threshold and why two conflicting quorums cannot both finalize.
-- Message authentication, round/height binding, replay protection, and equivocation handling.
-- Liveness assumptions, including network synchrony and validator availability.
-- Restart, state-sync, and validator-key rotation behavior.
+CometBFT v0.40.0 is integrated as the consensus engine in local CI. Three validators run as separate processes with separate node homes, validator identities, Python applications, SQLite databases, and IPC sockets. They are nevertheless co-located on one CI runner and controlled by one workflow.
+
+The integration demonstrates ordinary proposal, commit, application-hash agreement, and restart recovery for the tested configuration. It does **not** test Byzantine validators, conflicting quorums, network partitions, independent operators, or multi-host operation. The standard CometBFT/Tendermint voting-power fault assumptions must be reflected in the eventual validator policy and verified against the exact pinned release.
 
 ## Mandatory release gates
 
-1. Protocol and genesis formats frozen with test vectors.
-2. Independent implementation review and adversarial test suite.
-3. Consensus safety proof or established protocol with parameters justified.
-4. Multi-process, multi-host tests with network delay, partitions, crashes, and equivocation.
-5. External cryptographic and application security review.
-6. Backup, upgrade, recovery, monitoring, and incident-response procedures.
-7. Separate legal and economic review before any public issuance or distribution.
+1. Versioned protocol and genesis formats, test vectors, and migration policy.
+2. Independent implementation and cryptographic review.
+3. Adversarial consensus tests: equivocation, conflicting proposals, replay, partitions, delay, loss, and Byzantine voting power.
+4. Multi-host and independently operated validator tests.
+5. Key custody, rotation, anti-double-signing, backup, restore, and incident-response procedures.
+6. Resource-exhaustion tests, monitoring, alerting, and RPC/P2P network hardening.
+7. Independent security, economic, and jurisdiction-specific legal review before any public issuance or deployment.
 
 ## Non-claims
 
-This document does not establish that HND is decentralized, secure, fault tolerant, audited, legally approved, or ready for public launch.
+This document does not establish that HND is decentralized, secure, fault tolerant under adversarial conditions, audited, legally approved, economically viable, or ready for public launch.

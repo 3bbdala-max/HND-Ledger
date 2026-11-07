@@ -1,53 +1,45 @@
-# HND validator and consensus design gate
+# HND validator and consensus design
 
-**Status:** design decision record; no consensus implementation is enabled.
+**Status:** CometBFT v0.40.0 is selected and integrated for local testing. Production validator governance and operations are not yet designed or enabled.
 
-## Decision 1: do not invent a consensus protocol
+## Decision: use an established consensus engine
 
-The local prototype must not be promoted into a public chain by adding an ad-hoc voting loop. Consensus is a distributed-systems safety protocol, not a validator count or a periodic block signature.
+HND does not implement a custom voting loop. CometBFT owns validator voting, proposal gossip, and block consensus. The Go ABCI adapter is a transport layer; Python owns HND transaction and state-transition rules.
 
-The next implementation should evaluate an established Byzantine Fault Tolerant protocol rather than create a new one. CometBFT is the leading candidate for evaluation because it has a documented validator model and mature implementation, but this document does not yet select it for HND production use.
+## Current test topology
 
-## Candidate model for evaluation
+The CI integration creates three CometBFT validators with distinct node homes and validator identities. Each validator has its own Python application process, SQLite database, and Unix IPC socket. The workflow tests a funded development genesis, a signed transfer, matching application hashes, and restart recovery.
 
-A permissioned validator set with voting power is the simplest first model to test. Under the conventional BFT assumption, safety requires less than one-third of total voting power to be Byzantine, and finalization requires a quorum greater than two-thirds. These thresholds must be checked against the exact protocol version and validator-set transition rules before implementation.
+These are three processes on one CI runner, not three independent operators or hosts. The test does not cover Byzantine behavior, network partitions, or validator-set governance.
 
-A validator is not an account balance or a wallet. It is an independently operated node with:
-- A dedicated consensus signing key.
-- A configured identity and voting power.
-- A verified software version and chain/genesis identity.
-- Persistent anti-double-signing state.
-- A monitored operator process and network endpoint.
+## Consensus assumptions
 
-## Required validator behavior
+CometBFT uses a voting-power-based BFT consensus protocol. The eventual HND validator policy must explicitly adopt and validate the exact pinned release's safety and liveness assumptions, including the conventional less-than-one-third Byzantine voting-power safety bound and quorum rules. A local three-node success is not a proof of those assumptions.
 
-1. Verify chain ID, protocol version, block structure, transaction signatures, nonce order, balances, and state commitment.
-2. Never sign two conflicting proposals or votes for the same height/round/step.
-3. Persist consensus signing state before acknowledging a signature operation.
-4. Reject messages for another chain, stale height, invalid round, or invalid validator-set context.
-5. Apply validator-set changes only at the protocol-defined activation height.
-6. Recover from restart without forgetting prior signing decisions.
+## Validator identity and operations required before public use
 
-## Test matrix required before any live validator
+A production validator requires:
+- Dedicated consensus signing key stored outside the application database.
+- Explicit validator identity and voting power.
+- Chain ID and genesis verification before joining.
+- Persistent anti-double-signing state and safe restart behavior.
+- Access-controlled network endpoint and firewall policy.
+- Secure backup, recovery, rotation, and revocation procedures.
+- Monitoring, alerting, upgrade coordination, and incident response.
 
-- 1, 2, 3, 4, and 7 validator configurations.
-- One validator offline; multiple validators offline.
-- One-third and greater-than-one-third Byzantine voting power scenarios.
-- Two conflicting proposals at the same height.
-- Duplicate, delayed, reordered, and replayed messages.
-- Network partition and later healing.
-- Process crash before and after vote persistence.
-- Restart with stale database or wrong genesis.
-- Validator-set change at an activation boundary.
-- Deterministic replay of finalized blocks on all nodes.
+None of these operational procedures is complete for public use.
 
-## Selection gate
+## Remaining consensus test gate
 
-CometBFT is only a candidate. Before adoption, compare:
-- Exact protocol and software release compatibility.
-- ABCI/application integration model.
-- Validator-set update semantics and key management.
-- State-sync and upgrade procedures.
-- Operational requirements and independent test results.
+- Conflicting proposals at the same height and round.
+- Duplicate, delayed, reordered, and replayed votes.
+- Byzantine voting-power scenarios inside and outside the documented fault bound.
+- Network partition, packet loss, validator downtime, and healing.
+- Crash before/after vote persistence and restart without double-signing.
+- Validator-set update at an activation boundary.
+- State sync, snapshot recovery, and deterministic replay across independent hosts.
+- Multi-host deployment operated by independent parties.
 
-Until this gate is completed, HND v0.2 remains a local deterministic ledger and no validator or consensus claim should be made.
+## Selection and release gate
+
+CometBFT v0.40.0 is the selected integration engine, not a final public-network deployment decision. Before any public use, freeze the validator admission model, voting-power governance, genesis process, upgrade policy, key custody, state sync, monitoring, and legal/economic framework. Complete independent security review and adversarial testing.

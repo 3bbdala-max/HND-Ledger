@@ -1,10 +1,10 @@
-# HND consensus engine evaluation
+# HND consensus engine integration decision
 
-**Decision status:** candidate selected for a controlled integration spike; not integrated and not approved for public deployment.
+**Decision status:** CometBFT v0.40.0 is selected and integrated for controlled local testing. This is not approval for public deployment or production use.
 
-## Candidate
+## Selected engine
 
-Use **CometBFT v0.40.0** as the first integration candidate. Pin the exact release tag for experiments; do not build production artifacts from the moving `main` branch. The upstream release page lists v0.40.0 as a release dated 27 July 2026 and documents API-breaking changes in that release series. Re-evaluate the pin before any public testnet or production deployment.
+Use **CometBFT v0.40.0** as the pinned consensus engine for the v0.2 integration. Do not build from the moving `main` branch. Re-evaluate the pin before any public testnet or production deployment; version upgrades require coordinated compatibility and migration tests.
 
 Upstream references:
 - Release and versioning policy: https://github.com/cometbft/cometbft/releases
@@ -13,50 +13,47 @@ Upstream references:
 - ABCI++ application requirements: https://github.com/cometbft/cometbft/blob/v0.40.0/spec/abci/abci%2B%2B_app_requirements.md
 - Running an out-of-process application: https://github.com/cometbft/cometbft/blob/v0.40.0/docs/core/using-cometbft.md
 
-## Why this candidate
-
-CometBFT supplies a mature Byzantine-fault-tolerant consensus engine and an application boundary (ABCI++). HND can retain ownership of transaction validity, balances, nonces, supply policy, and deterministic state commitments while CometBFT handles proposal gossip, validator voting, and block decision.
-
-The release must be pinned. Upstream explicitly warns against depending on `main`, and documents that minor-version changes can break public APIs. A version upgrade is therefore a protocol/infrastructure change that requires a coordinated compatibility plan.
-
-## Required application lifecycle
-
-The adapter must implement the ABCI++ lifecycle without confusing candidate state with committed state:
-
-1. `InitChain`: validate the HND genesis configuration, chain identifier, supply cap, initial allocations, and validator set.
-2. `CheckTx`: validate transaction encoding, signature, chain ID, nonce against mempool state, and basic resource limits. This is admission checking, not final execution.
-3. `PrepareProposal`: select and order only transactions that fit the configured byte and transaction limits. Any speculative execution must use an isolated candidate state.
-4. `ProcessProposal`: deterministically validate the proposed transactions against the last committed state and the proposal limits. Reject only for deterministic protocol-invalid proposals; careless rejection can harm liveness.
-5. `FinalizeBlock`: deterministically execute the decided block and compute transaction results and the application state hash. Do not make speculative candidate state durable here.
-6. `Commit`: atomically persist the resulting application state and committed height before returning. Recovery must reconcile the application height with CometBFT's stored height.
-
-ABCI++ may call proposal methods multiple times for different rounds and candidate blocks. Candidate state from a proposal that is not ultimately decided must be discarded. The adapter must be correct across retries, process restarts, and crashes between block storage, finalization, and commit.
-
 ## Integration architecture
 
-- Keep the existing Python HND protocol/state implementation as the reference state machine during the spike.
-- Run CometBFT as a separately version-pinned process.
-- Implement a narrow ABCI socket adapter. The adapter must call the deterministic HND transition logic and must not duplicate transaction rules in a second implementation.
-- Use separate committed and candidate state snapshots. Only `Commit` advances durable application state.
-- Derive `AppHash` from the deterministic HND state commitment, with explicit chain/genesis domain separation.
-- Configure explicit maximum block bytes, transaction count, gas/resource policy, validator voting power, timeouts, and peer access controls.
-- Store validator private keys outside the application database; define backup, access, rotation, and double-sign prevention procedures before any validator carries voting power.
+- CometBFT runs as a separately pinned process and owns P2P communication, validator voting, and block consensus.
+- The Go ABCI socket adapter implements the CometBFT application interface and delegates HND logic to Python over a private Unix-domain socket.
+- Python remains the reference implementation for transaction verification, state transitions, supply policy, and state commitments.
+- Only Commit writes the finalized block to the SQLite ledger. Proposal candidates remain isolated from committed state.
+- The Python IPC service uses a bounded JSONL envelope, strict request validation, and a mode-0600 Unix socket.
+- The Go ABCI listener is restricted to loopback TCP addresses.
 
-A Python ABCI socket adapter is not yet selected as an implementation library. Before coding it, the spike must prove compatibility with the exact v0.40.0 protobuf/service definitions and exercise restart and commit semantics. If the available Python ecosystem cannot provide a reliable maintained adapter, use a small Go ABCI transport shim that calls the Python state machine through a versioned local IPC boundary; do not rewrite consensus rules in Go.
+## Implemented ABCI lifecycle
 
-## Mandatory integration gates
+- `Info`: reports committed height and application hash.
+- `InitChain`: validates the fixed chain ID and bounded canonical genesis envelope; persists funded test allocations and the CometBFT genesis marker atomically.
+- `CheckTx`: validates encoding, chain ID, and signature. State-dependent nonce and balance validity is checked against ordered proposals.
+- `InsertTx` and `ReapTxs`: bounded in-memory mempool operations.
+- `PrepareProposal` and `ProcessProposal`: deterministic transaction selection and validation.
+- `FinalizeBlock`: computes a candidate without durable writes.
+- `Commit`: persists the decided block and updates the committed state.
 
-- Exact release pin and reproducible build.
-- One-node ABCI handshake, genesis initialization, transaction admission, block proposal, finalization, and commit.
-- Three-node local cluster with independent data directories and validator keys.
-- Same application hash on all nodes after each committed height.
-- Invalid signature, wrong chain, replay, nonce gap, insufficient funds, overflow, duplicate transaction, oversized block, and malformed transaction rejection.
-- Proposal retries and different candidate blocks across rounds do not mutate committed state.
-- Crash injection before and after `FinalizeBlock` and `Commit`; restart must converge to the same committed height and app hash.
-- Validator-set change and validator key persistence tests.
-- Network partition, delayed messages, validator downtime, and Byzantine proposal scenarios.
-- Reproducible test evidence tied to exact source commit and CometBFT binary version.
+Query, snapshots, state sync, and vote-extension methods are not implemented by the Python dispatcher and fail closed.
 
-## Explicit non-goals at this stage
+## Verified local integration
 
-No validator keys, public network, token distribution, exchange listing, public claims of decentralization, or real-value transfers are authorized by this evaluation. CometBFT integration is not complete merely because a single-node process starts. Independent security review and legal review remain release gates.
+On commit `1c62d3cad548315b8cecb811edd76ee6b93808af`:
+
+- One-node CometBFT block production and restart recovery passed: run 42359852690.
+- Three-validator funded-genesis and signed-transfer integration passed: run 42359852656.
+- The three-validator test compared all local state commitments after the signed transfer and all CometBFT header app hashes at height H+1. It restarted validator 0 and verified the transfer, balances, nonce, and matching app hash remained intact.
+- Python tests passed: run 42359852666.
+- Go adapter tests and static analysis passed: run 42359852685.
+
+The three validators were separate processes and data directories on one CI runner. This does not establish independent validator operation or adversarial BFT safety.
+
+## Remaining integration and release gates
+
+- Crash injection at every boundary around FinalizeBlock, SQLite commit, and process restart.
+- Conflicting proposals, equivocation, duplicate/replayed votes, and Byzantine voting-power tests.
+- Network delay, loss, partition, healing, and validator downtime tests.
+- Validator-set changes, key persistence, anti-double-signing, and rotation.
+- Snapshots, state sync, Query API, database backup/restore, and schema migration.
+- Multi-host, independently operated validator tests.
+- Independent protocol, cryptographic, application security, economic, and legal review.
+
+No validator keys, public network, real-value transfers, token distribution, or public claims of decentralization are authorized by this integration decision.
