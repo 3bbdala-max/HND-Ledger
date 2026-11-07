@@ -389,3 +389,13 @@ def test_memory_authority_stale_cas_does_not_accept_different_candidate():
         expected_digest=checkpoint.digest,
         new_checkpoint=conflicting,
     )
+
+
+
+def test_signed_checkpoint_rejects_invalid_direct_payload_type():
+    with pytest.raises(CheckpointError, match="payload has an invalid type"):
+        SignedRollbackCheckpoint(
+            checkpoint="not-a-checkpoint",
+            public_key=b"K" * 32,
+            signature=b"S" * 64,
+        )

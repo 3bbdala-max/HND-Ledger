@@ -111,6 +111,8 @@ class SignedRollbackCheckpoint:
     signature: bytes
 
     def __post_init__(self) -> None:
+        if not isinstance(self.checkpoint, RollbackCheckpoint):
+            raise CheckpointError("signed checkpoint payload has an invalid type")
         _hash(self.public_key, "signer public key")
         if not isinstance(self.signature, bytes) or len(self.signature) != _SIGNATURE_BYTES:
             raise CheckpointError("checkpoint signature must be exactly 64 bytes")
