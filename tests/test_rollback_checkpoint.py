@@ -907,3 +907,80 @@ def test_publish_local_chain_checkpoint_rejects_untrusted_signer(tmp_path):
             authority, trusted_public_key, sign_checkpoint(checkpoint, key).encode(), chain
         )
     chain.close()
+
+
+def test_require_local_chain_checkpoint_match_returns_only_exact_trusted_tip(tmp_path):
+    from hnd_ledger.chain import LocalChain, state_commitment
+    from hnd_ledger.rollback_checkpoint import (
+        RollbackCheckpoint,
+        require_local_chain_checkpoint_match,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    chain = LocalChain(tmp_path / "required-match.sqlite", LedgerState(supply_cap=20))
+    genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+    checkpoint = RollbackCheckpoint(
+        chain_id=chain.state.chain_id,
+        genesis_hash=genesis_hash,
+        height=chain.height,
+        block_hash=chain.tip_hash,
+        app_hash=state_commitment(chain.state),
+        sequence=1,
+    )
+    raw = sign_checkpoint(checkpoint, key).encode()
+    assert authority.compare_and_swap(
+        expected_sequence=None, expected_digest=None, new_checkpoint=raw
+    )
+    assert require_local_chain_checkpoint_match(authority, public_key, chain) == checkpoint
+    chain.close()
+
+
+@pytest.mark.parametrize("authority_mode, expected", [
+    ("missing", "unanchored"),
+    ("ahead", "local_ahead_unverified"),
+])
+def test_require_local_chain_checkpoint_match_rejects_every_non_match(
+    tmp_path, authority_mode, expected
+):
+    from hnd_ledger.chain import LocalChain
+    from hnd_ledger.protocol import account_id, create_transaction
+    from hnd_ledger.rollback_checkpoint import (
+        CheckpointError,
+        RollbackCheckpoint,
+        require_local_chain_checkpoint_match,
+        sign_checkpoint,
+    )
+    from hnd_ledger.state import LedgerState
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+    authority = MemoryAuthorityForTest(public_key)
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id = account_id(alice.public_key().public_bytes_raw())
+    bob_id = account_id(bob.public_key().public_bytes_raw())
+    initial = LedgerState(balances={alice_id: 10}, supply_cap=10)
+    chain = LocalChain(tmp_path / f"required-{authority_mode}.sqlite", initial)
+    if authority_mode == "ahead":
+        genesis_hash, _ = chain.checkpoint_ancestor_commitments(0)
+        block = chain.append([create_transaction(alice, bob_id, 1, 0)])
+        checkpoint = RollbackCheckpoint(
+            chain_id=chain.state.chain_id,
+            genesis_hash=genesis_hash,
+            height=block.height,
+            block_hash=block.block_hash,
+            app_hash=block.state_root,
+            sequence=1,
+        )
+        raw = sign_checkpoint(checkpoint, key).encode()
+        assert authority.compare_and_swap(
+            expected_sequence=None, expected_digest=None, new_checkpoint=raw
+        )
+        chain.append([create_transaction(alice, bob_id, 1, 1)])
+    with pytest.raises(CheckpointError, match=expected):
+        require_local_chain_checkpoint_match(authority, public_key, chain)
+    chain.close()
