@@ -110,7 +110,7 @@ class LocalChain:
         self.blocks: list[Block] = []
         self._restore()
 
-    def initialize_genesis(self, initial_state: LedgerState) -> None:
+    def initialize_genesis(self, initial_state: LedgerState, *, marker: bytes | None = None) -> None:
         """Install an explicitly supplied genesis allocation before block 1.
 
         This is only permitted on a pristine zero-allocation chain. Reopening
@@ -134,6 +134,8 @@ class LocalChain:
              for a in sorted(set(candidate.balances) | set(candidate.next_nonces))]
         ])
         genesis_hash = _genesis_hash(candidate.chain_id, candidate)
+        if marker is not None and (not isinstance(marker, bytes) or len(marker) != 32):
+            raise ChainError("genesis marker must be 32 bytes")
         with self.db:
             self.db.execute(
                 "UPDATE metadata SET value=? WHERE key='genesis_state'", (snapshot,)
@@ -141,6 +143,11 @@ class LocalChain:
             self.db.execute(
                 "UPDATE metadata SET value=? WHERE key='genesis_hash'", (genesis_hash,)
             )
+            if marker is not None:
+                self.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
+                    (marker,),
+                )
         self.state = candidate
 
     @property
