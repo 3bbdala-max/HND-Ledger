@@ -1,29 +1,32 @@
 # HND v0.2 implementation status
 
-**Status:** first local-ledger implementation draft; not production-ready.
+**Status:** initial local prototype implementation; not production-ready.
 
 ## Implemented in this branch
 
 - Python package scaffold targeting Python 3.11+.
-- Ed25519 transaction signing and signature verification using the maintained `cryptography` library.
-- Canonical CBOR serialization using `cbor2` canonical mode, with re-encoding checks on decode.
-- Domain-separated account identifiers and transaction signing messages.
+- Ed25519 transaction signing and verification using the maintained `cryptography` library.
+- Canonical CBOR transaction serialization and strict re-encoding checks.
+- Domain-separated account identifiers, transaction signing messages, state commitments, genesis identifiers, and block identifiers.
 - Chain-ID binding, sender/public-key binding, uint64 amount and nonce validation.
-- Atomic local balance transfer with exact sequential nonces, insufficient-funds rejection, recipient overflow checks, and supply-cap invariant.
-- Initial pytest coverage for signatures, tampering, chain mismatch, canonical encoding, replay, nonce, insufficient funds, and supply invariants.
+- Atomic local balance transfers with sequential nonces, insufficient-funds rejection, overflow checks, and supply-cap invariant.
+- Deterministic blocks with sequential heights, parent hashes, transaction bytes, and state roots.
+- SQLite persistence and restart recovery by replaying every stored block from the genesis snapshot.
+- Tests for protocol validation, ledger invariants, block restoration, rejected-block atomicity, and persisted-block tampering.
+- GitHub Actions workflow definition.
 
 ## Not yet implemented
 
-- Block production, block persistence, recovery, or state commitments.
-- Genesis allocation format and production genesis file.
-- Validator registration, validator networking, consensus, or independent validator operation.
-- Peer-to-peer networking, wallet application, RPC/API, explorer, or public network.
-- External security audit, economic review, legal review, or authorization to issue or trade a token.
+- Independent validators, validator registration, voting, consensus, fork choice, or peer-to-peer networking.
+- Block production across multiple nodes or multi-writer coordination.
+- Wallet, RPC/API, explorer, public network, or production genesis allocation.
+- Crash fault-injection, backup/restore procedures, schema migrations, or external security audit.
+- Economic review, legal review, or authorization to issue or trade a token.
 
 ## Verification status
 
-The repository contains an initial automated test suite. The suite has **not** yet been run in a controlled environment and no passing CI result has been observed. Do not interpret the presence of tests as evidence that they passed.
+The test suite is committed but has not yet been run successfully in a controlled environment. The current execution environment lacks the `cbor2` dependency, and no passing GitHub Actions result has been observed. A workflow definition is not evidence of a passing run.
 
 ## Important scope limitation
 
-This is a local prototype foundation only. It does not establish decentralization, Byzantine fault tolerance, production security, or readiness for public launch.
+This is a deterministic, single-process local prototype. It does not establish decentralization, Byzantine fault tolerance, production security, or readiness for public launch.
