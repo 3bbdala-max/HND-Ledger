@@ -342,7 +342,7 @@ jobs:
           for _ in $(seq 1 120); do
             if curl --silent --fail http://127.0.0.1:26657/status -o "$RUNNER_TEMP/status-0-restarted.json"; then
               height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status-0-restarted.json")
-              if [[ "$height" -ge 3 ]]; then
+              if [[ "$height" -ge "$target_header_height" ]]; then
                 recovered=true
                 echo "Validator 0 recovered from persistent application and node data at height $height"
                 break
