@@ -108,6 +108,10 @@ func (c *Client) Call(ctx context.Context, method string, payload, result any) e
 		return fmt.Errorf("connect to HND engine: %w", err)
 	}
 	defer conn.Close()
+	// A canceled ABCI request must interrupt an in-flight socket read/write,
+	// not merely stop the caller from waiting for this method to return.
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
 	deadline := time.Now().Add(c.timeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
