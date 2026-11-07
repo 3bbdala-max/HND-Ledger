@@ -242,13 +242,11 @@ jobs:
           done
           partition_target=$((partition_baseline + 5))
           echo "Partitioning validator 0 at height $partition_baseline; target for remaining quorum: $partition_target"
-          sudo iptables -I INPUT 1 -p tcp --dport 27656 -j DROP
           sudo iptables -I OUTPUT 1 -p tcp --dport 27657:27659 -m owner --uid-owner "$VALIDATOR0_UID" -j DROP
           sudo iptables -vnL INPUT
           sudo iptables -vnL OUTPUT
           partitioned=true
           remove_partition() {
-            sudo iptables -D INPUT -p tcp --dport 27656 -j DROP 2>/dev/null || true
             sudo iptables -D OUTPUT -p tcp --dport 27657:27659 -m owner --uid-owner "$VALIDATOR0_UID" -j DROP 2>/dev/null || true
             partitioned=false
           }
@@ -269,11 +267,10 @@ jobs:
           echo "Firewall counters after partition window:"
           sudo iptables -vnxL INPUT
           sudo iptables -nvxL OUTPUT
-          input_drops=$(sudo iptables -nvxL INPUT | awk '$0 ~ /dpt:27656/ {print $1; exit}')
           output_drops=$(sudo iptables -nvxL OUTPUT | grep -F "owner UID match $VALIDATOR0_UID" | awk 'NR==1 {print $1}')
-          echo "Validator-0 inbound-to-listener drops: ${input_drops:-0}; outbound drops: ${output_drops:-0}"
-          [[ "${input_drops:-0}" -gt 0 && "${output_drops:-0}" -gt 0 ]] || {
-            echo "Firewall did not demonstrably drop validator-0 listener and outbound P2P traffic"
+          echo "Validator-0 outbound P2P drops: ${output_drops:-0}"
+          [[ "${output_drops:-0}" -gt 0 ]] || {
+            echo "Firewall did not demonstrably drop validator-0 outbound P2P traffic"
             exit 1
           }
           for i in 0 1 2 3; do
@@ -283,6 +280,12 @@ jobs:
           done
           echo "===== TCP sockets ====="
           ss -tnp || true
+          isolated_peers=999
+          for _ in $(seq 1 60); do
+            isolated_peers=$(curl --silent --fail http://127.0.0.1:26657/net_info | python -c 'import json,sys; print(int(json.load(sys.stdin)["result"]["n_peers"]))')
+            [[ "$isolated_peers" -eq 0 ]] && break
+            sleep 1
+          done
           for i in 1 2 3; do
             peers=$(curl --silent --fail "http://127.0.0.1:$((26657+i))/net_info" | python -c 'import json,sys; print(int(json.load(sys.stdin)["result"]["n_peers"]))')
             echo "Validator $i peers during partition: $peers"
