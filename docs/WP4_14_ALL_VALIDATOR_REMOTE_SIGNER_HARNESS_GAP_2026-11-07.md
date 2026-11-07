@@ -532,3 +532,30 @@ contention and the injected crash-after-state-save boundary are covered by
 these process-level probes. Neither test establishes distributed multi-host
 fencing, a durable consensus-backed ownership lease, hardware-backed key
 custody, or production disaster recovery; those remain open.
+
+
+## Recovery catch-up snapshot race diagnosis and correction (2026-11-07)
+
+A later validator-4 external-signer run failed after durable ABCI restart
+recovery, at the post-catch-up assertion comparing CometBFT height with the
+HND ABCI application's last executed height. The preceding recovery evidence
+showed the application restored at its pre-stop height and retained the
+expected app hash and balances. The failure occurred in the harness's
+post-catch-up sampling: it checked consensus convergence, sampled only
+validator 4's ABCI height in the wait predicate, then separately re-read
+application hashes and validator 4's ABCI info after the predicate returned.
+CometBFT can advance while these separate RPC samples are collected, making
+the final assertion compare values from different moments.
+
+Commit `a3618b395185d94d566b75140b0970eaecce3b43` changes the wait predicate
+to require one coherent four-validator snapshot: all CometBFT nodes agree on
+height and block hash; each of the four ABCI applications has executed that
+same height; and all four application hashes match. The predicate returns
+the sampled application records so the later assertion does not re-read a
+moving height/hash value. Account balances are still checked against the
+expected post-recovery state.
+
+The failing workflow remains a recorded failure; the correction is pending
+fresh CI. No recovery invariant was weakened. The intended acceptance check
+is stronger: all four consensus and application replicas must be observed at
+one consistent height before recovery is marked successful.
