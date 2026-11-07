@@ -205,7 +205,7 @@ def test_memory_authority_compare_and_swap_allows_only_one_concurrent_successor(
 def test_checkpoint_signature_domain_uses_a_real_zero_byte_separator():
     from hnd_ledger.rollback_checkpoint import CHECKPOINT_SIGNATURE_DOMAIN
 
-    assert CHECKPOINT_SIGNATURE_DOMAIN.endswith(b"\\x00")
+    assert CHECKPOINT_SIGNATURE_DOMAIN.endswith(bytes([0]))
     assert b"\\\\x00" not in CHECKPOINT_SIGNATURE_DOMAIN
 
 
