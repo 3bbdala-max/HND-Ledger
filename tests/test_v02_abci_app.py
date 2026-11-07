@@ -422,6 +422,20 @@ class TestV02ABCIApplication(unittest.TestCase):
         with self.assertRaisesRegex(ABCIApplicationError, "network mismatch"):
             self.make_app()
 
+    def test_persisted_store_from_wrong_max_amount_is_rejected(self):
+        alternate_config = ProtocolConfig(
+            self.config.network_id,
+            self.config.protocol_version,
+            self.config.max_amount + 1,
+        )
+        with self.assertRaisesRegex(ABCIApplicationError, "max_amount mismatch"):
+            HNDABCIApplication(
+                config=alternate_config,
+                manifest=self.manifest,
+                expected_genesis_hash=self.genesis_hash,
+                state_path=self.state_path,
+            )
+
     def test_persisted_store_from_wrong_genesis_is_rejected(self):
         payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         payload["genesis_hash"] = "0" * 64
