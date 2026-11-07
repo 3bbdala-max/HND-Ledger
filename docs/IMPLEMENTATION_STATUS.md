@@ -31,7 +31,11 @@
 
 ## Verification status
 
-The test suite is committed but has not yet been run successfully in a controlled environment. The current execution environment lacks the `cbor2` dependency, and no passing GitHub Actions result has been observed. A workflow definition is not evidence of a passing run.
+- GitHub Actions run `42342012227` completed successfully on commit `6319630828ab0893e981bacc8472f60741245bf2`.
+- Python 3.12 dependency installation completed successfully.
+- The full pytest suite completed successfully: **30 tests passed**.
+- The passing suite includes protocol and state validation, chain append/recovery, multiple sequential transactions in one block, genesis supply-cap binding, canonical storage checks, tamper detection, and block transaction-count/encoded-size limits.
+- This is automated prototype verification only; it is not an independent security audit or a distributed-network test.
 
 ## Important scope limitation
 
