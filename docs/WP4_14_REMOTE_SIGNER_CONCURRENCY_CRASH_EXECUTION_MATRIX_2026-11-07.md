@@ -1,7 +1,7 @@
 # WP4.14 — Remote signer concurrency and crash test execution matrix
 
 Date: 2026-11-07  
-Status: **test-plan only; not implemented or executed**  
+Status: **partial negative probe implemented and executed; full concurrency/crash matrix remains open**  
 Target branch: `phase-0.2-planning`  
 Scope: documentation only. No source, test, workflow, key, or production configuration changes are authorized by this document.
 
@@ -86,8 +86,21 @@ Each negative control must be rejected or detected. Do not weaken production che
 
 ## 8. Current status
 
-- Existing CI run `42315066638` completed successfully for both `hnd-v02-tests` and `cometbft-single-node-smoke`.
-- Existing process probe covers sequential restart, not simultaneous signer processes.
+- The original cases in Sections 3–4 remain the full acceptance plan; they are not all implemented or executed.
 - Existing anti-rollback reference model uses an in-memory synthetic anchor, not a durable external anchor.
-- The cases in Sections 3–4 are proposed acceptance tests; **none is claimed implemented or executed by this document**.
 - No protocol freeze, production signing authorization, token issuance, or public-network launch approval is granted.
+
+## 9. Addendum — partial negative reproduction (2026-11-07)
+
+A separate disposable Go probe was added at `scripts/cometbft_v040_remote_signer_process_probe.go` and wired into `.github/workflows/hnd-v02-tests.yml`.
+
+Evidence:
+- Tested commit: `f769dcb2890085497bbd275e325e974eff793b6e`
+- CI run: `42323914517` — both workflow jobs completed successfully.
+- Step: `Reproduce shared FilePV multi-process dual-sign risk (expected unsafe behavior)` — completed / success.
+- Evidence record: `docs/WP4_14_SHARED_FILEPV_MULTIPROCESS_DUAL_SIGN_REPRODUCTION_2026-11-07.md`.
+
+The probe launches two separate OS signer processes against the same key and state paths. Both load the same initial state before either signing request. Process 0 signs a vote; process 1 then signs a conflicting vote at the same height, round, and vote type using its stale in-memory state. Both returned signatures are independently verified against the validator public key.
+
+This is a **negative security reproduction**, not a passing safety test. It establishes that the tested shared FilePV path does not enforce cross-process exclusive ownership. Requests are sequential after both processes load state, so this is not claimed as the simultaneous-request RS-CON-02 acceptance test, a multi-host fencing test, or a crash-boundary test. The comprehensive RS-CON and RS-CRASH matrix remains open.
+
