@@ -112,7 +112,30 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
                 value = self.application.account_view(account_id)
                 value = {"account_id": account_id, **value}
             elif request.path == "/evidence":
-                value = {"evidence": self.application.evidence_journal}
+                if request.data:
+                    try:
+                        page_request = json.loads(request.data.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                        raise ABCIApplicationError("evidence page request must be canonical JSON") from exc
+                    if (
+                        type(page_request) is not dict
+                        or set(page_request) != {"offset", "limit"}
+                        or canonical_json(page_request) != request.data
+                    ):
+                        raise ABCIApplicationError("evidence page request schema or canonical encoding")
+                    offset = page_request["offset"]
+                    limit = page_request["limit"]
+                else:
+                    offset, limit = 0, 100
+                evidence, total = self.application.evidence_page(offset=offset, limit=limit)
+                next_offset = offset + len(evidence) if offset + len(evidence) < total else None
+                value = {
+                    "evidence": evidence,
+                    "offset": offset,
+                    "limit": limit,
+                    "total_count": total,
+                    "next_offset": next_offset,
+                }
             else:
                 return types_pb2.ResponseQuery(
                     code=1,
