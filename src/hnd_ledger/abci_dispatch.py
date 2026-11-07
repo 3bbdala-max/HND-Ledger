@@ -34,8 +34,8 @@ def _bytes(payload: dict[str, Any], field: str, *, required: bool = True) -> byt
         raise IPCError(f"{field} is not valid base64") from exc
 
 
-def _integer(payload: dict[str, Any], field: str, *, minimum: int = 0) -> int:
-    value = payload.get(field)
+def _integer(payload: dict[str, Any], field: str, *, minimum: int = 0, default: int | None = None) -> int:
+    value = payload.get(field, default)
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise IPCError(f"{field} must be an integer >= {minimum}")
     return value
@@ -136,7 +136,7 @@ class ABCIDispatcher:
         return {"code": 0}
 
     def _handle_ReapTxs(self, payload: dict[str, Any]) -> dict[str, Any]:
-        max_bytes = _integer(payload, "max_bytes")
+        max_bytes = _integer(payload, "max_bytes", default=0)
         with self._mempool_lock:
             selected = []
             used = 0
@@ -148,7 +148,7 @@ class ABCIDispatcher:
         return {"txs": selected}
 
     def _handle_PrepareProposal(self, payload: dict[str, Any]) -> dict[str, Any]:
-        max_bytes = _integer(payload, "max_tx_bytes")
+        max_bytes = _integer(payload, "max_tx_bytes", default=0)
         selected = self.application.prepare_proposal(_tx_list(payload))
         bounded = []
         used = 0
