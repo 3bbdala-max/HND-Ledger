@@ -32,7 +32,9 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - [Threat model](docs/THREAT_MODEL.md)
 - [Validator and consensus design gate](docs/VALIDATOR_CONSENSUS_DESIGN.md)
 - [Consensus test matrix](docs/CONSENSUS_TEST_MATRIX.md)
-- [CometBFT integration decision](docs/COMETBFT_INTEGRATION_DECISION.md)\n- [ABCI application lifecycle boundary](docs/ABCI_APPLICATION_BOUNDARY.md)\n- [ABCI transport design](docs/ABCI_TRANSPORT_DESIGN.md)
+- [CometBFT integration decision](docs/COMETBFT_INTEGRATION_DECISION.md)
+- [ABCI application lifecycle boundary](docs/ABCI_APPLICATION_BOUNDARY.md)
+- [ABCI transport design](docs/ABCI_TRANSPORT_DESIGN.md)
 
 ## Safety and launch status
 
