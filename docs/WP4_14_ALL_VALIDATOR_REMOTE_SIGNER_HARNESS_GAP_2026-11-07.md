@@ -335,3 +335,18 @@ The all-four mode now emits a machine-readable
 after all four signer connections, Genesis public-key matches, local-key
 absence checks, and distinct signer key/state paths have been verified.
 This marker is an assertion result, not a production-readiness claim.
+
+
+## Remote signer transport policy hardening (2026-11-07)
+
+The remote-only provider now accepts only:
+- absolute local `unix://` socket paths; or
+- authenticated `noise://peer-id@host:port` endpoints with a non-empty peer
+  identity and valid numeric TCP port.
+
+Unauthenticated `tcp://` and other endpoint schemes are rejected before node
+construction. CI now includes a negative test that configures a TCP signer
+endpoint, expects the explicit rejection, and verifies no local consensus
+key/state files are created. The Unix and Noise positive integration tests
+cover the two allowed transports. This transport policy change is awaiting
+fresh pinned-source CI.
