@@ -167,7 +167,8 @@ jobs:
           cd "$RUNNER_TEMP/cometbft-src"
           go build -o "$RUNNER_TEMP/hnd-noise-remote-signer" "$GITHUB_WORKSPACE/scripts/cometbft_v040_noise_remote_signer_helper.go"
       - name: Verify Noise signer same-host state-lock contention rejection
-        run: "$RUNNER_TEMP/hnd-noise-remote-signer" --state-lock-contention-probe
+        run: |
+          "$RUNNER_TEMP/hnd-noise-remote-signer" --state-lock-contention-probe
       - name: Reject missing Noise anti-double-sign state in recovery mode
         run: |
           "$RUNNER_TEMP/hnd-noise-remote-signer" --missing-state-recovery-probe
