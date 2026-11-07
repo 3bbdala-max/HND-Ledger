@@ -89,6 +89,11 @@ def main() -> None:
     app_state = {
         "genesis_hash": manifest_hash,
         "manifest": manifest,
+        "protocol_config": {
+            "network_id": config.network_id,
+            "protocol_version": config.protocol_version,
+            "max_amount": config.max_amount,
+        },
     }
 
     with tempfile.TemporaryDirectory(prefix="hnd-cometbft-v040-4val-preflight-") as tmp:
