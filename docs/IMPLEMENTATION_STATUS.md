@@ -18,9 +18,9 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 
 ## Verified evidence
 
-- Python tests: run 42361314253 on commit d0832723ee533e7c27f47e62bcdedc7c5d1e3149, success (70 tests).
-- One-node CometBFT restart: run 42361234790 on commit f08e0e053920a989b8b7b200c4ee856d6cefee54, success.
-- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42361234762 on the same commit, success.
+- Python tests: run 42362574022 on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf, success (75 tests). Includes funded-genesis retry/conflict after restart, rejection of non-canonical base64 payloads, and atomic rejection when pre-existing state exceeds the supply cap.
+- One-node CometBFT restart: run 42362573986 on the same commit, success.
+- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42362574012 on the same commit, success.
 - Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
 
 The test suite includes SQLite trigger failures and child-process termination during block insertion and during both pre- and post-insert portions of the funded-genesis marker transaction. Reopening the database verifies transaction rollback, the original genesis snapshot, and absence of partial block or marker state. It also verifies that identical funded-genesis retries remain idempotent after restart, conflicting genesis is rejected without state mutation, and non-canonical base64 encodings are rejected. These are targeted process-crash and input-canonicalization tests, not a complete power-loss or adversarial-network campaign.
