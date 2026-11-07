@@ -251,6 +251,11 @@ def main() -> None:
         app_state = canonical_json({
             "genesis_hash": genesis_hash,
             "manifest": manifest,
+            "protocol_config": {
+                "network_id": config.network_id,
+                "protocol_version": config.protocol_version,
+                "max_amount": config.max_amount,
+            },
         }).decode("utf-8")
         genesis_text = json.dumps(genesis, indent=2)
         marker = '"app_state": {}'
