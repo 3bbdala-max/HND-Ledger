@@ -108,9 +108,12 @@ def create_transaction(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
+    sender_id = account_id(pub)
+    if sender_id == recipient:
+        raise ProtocolError("self-transfer is not allowed")
     tx = Transaction(
         chain_id=chain_id,
-        sender=account_id(pub),
+        sender=sender_id,
         recipient=recipient,
         amount=amount,
         nonce=nonce,
