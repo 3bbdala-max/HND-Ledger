@@ -164,3 +164,42 @@ def test_duplicate_transaction_in_one_proposal_is_rejected_atomically(tmp_path):
     assert app.chain.state.balances[alice_id] == 100
     assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
     app.chain.close()
+
+def test_replay_after_commit_is_rejected_without_state_change(tmp_path):
+    app, alice, bob_id, alice_id = _app(tmp_path)
+    raw = encode_transaction(create_transaction(alice, bob_id, 25, 0))
+    app.finalize_block([raw])
+    app.commit()
+    committed_hash = app.app_hash
+
+    assert not app.process_proposal([raw])
+    with pytest.raises(ChainError, match="incorrect nonce"):
+        app.finalize_block([raw])
+
+    assert app.height == 1
+    assert app.app_hash == committed_hash
+    assert app.chain.state.balances[alice_id] == 75
+    assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 1
+    app.chain.close()
+
+
+def test_conflicting_same_nonce_spends_are_rejected_atomically(tmp_path):
+    app, alice, bob_id, alice_id = _app(tmp_path)
+    charlie = Ed25519PrivateKey.generate()
+    charlie_id = _account(charlie)
+    first = encode_transaction(create_transaction(alice, bob_id, 60, 0))
+    conflicting = encode_transaction(create_transaction(alice, charlie_id, 50, 0))
+    original_hash = app.app_hash
+
+    assert not app.process_proposal([first, conflicting])
+    with pytest.raises(ChainError, match="incorrect nonce"):
+        app.finalize_block([first, conflicting])
+
+    assert app.height == 0
+    assert app.app_hash == original_hash
+    assert app.chain.state.balances[alice_id] == 100
+    assert app.chain.state.balances.get(bob_id, 0) == 0
+    assert app.chain.state.balances.get(charlie_id, 0) == 0
+    assert app.chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    app.chain.close()
+
