@@ -63,13 +63,14 @@ func remoteOnlyNewNode(config *cfg.Config, logger log.Logger) (*node.Node, error
 
 func main() {
 	rootCmd := cmd.RootCmd
+	// Keep this CLI intentionally narrow. In particular, do not register
+	// InitFilesCmd, GenValidatorCmd, ResetPrivValidatorCmd, TestnetFilesCmd,
+	// or other commands that can create, replace, or reset consensus keys.
 	rootCmd.AddCommand(
-		cmd.GenValidatorCmd, cmd.InitFilesCmd, cmd.LightCmd, cmd.ReplayCmd,
-		cmd.ReplayConsoleCmd, cmd.ResetAllCmd, cmd.ResetPrivValidatorCmd,
-		cmd.ResetStateCmd, cmd.ShowValidatorCmd, cmd.TestnetFilesCmd,
-		cmd.ShowNodeIDCmd, cmd.ReIndexEventCmd, cmd.GenNodeKeyCmd,
-		cmd.VersionCmd, cmd.RollbackStateCmd, cmd.CompactGoLevelDBCmd,
-		cmd.InspectCmd, debug.DebugCmd, cli.NewCompletionCmd(rootCmd, true),
+		cmd.ShowNodeIDCmd,
+		cmd.VersionCmd,
+		debug.DebugCmd,
+		cli.NewCompletionCmd(rootCmd, true),
 	)
 	rootCmd.AddCommand(cmd.NewRunNodeCmd(remoteOnlyNewNode))
 	root := cli.PrepareBaseCmd(rootCmd, "CMT", os.ExpandEnv(filepath.Join("$HOME", cfg.DefaultCometDir)))
