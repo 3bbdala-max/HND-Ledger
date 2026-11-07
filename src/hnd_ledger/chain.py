@@ -12,7 +12,7 @@ from .protocol import CHAIN_ID, PROTOCOL_VERSION, Transaction, canonical_cbor, d
 from .state import LedgerError, LedgerState
 
 BLOCK_PREFIX = b"HND-BLOCK-ID-V2\x00"
-STATE_PREFIX = b"HND-STATE-V2\x00"
+STATE_PREFIX = b"HND-STATE-V3\x00"
 GENESIS_PREFIX = b"HND-GENESIS-V2\x00"
 MAX_BLOCK_TRANSACTIONS = 1_000
 MAX_BLOCK_BYTES = 65_536
@@ -28,7 +28,9 @@ def state_commitment(state: LedgerState) -> bytes:
         [account, state.balances.get(account, 0), state.next_nonces.get(account, 0)]
         for account in accounts
     ]
-    return hashlib.sha256(STATE_PREFIX + canonical_cbor(rows)).digest()
+    # Commit to every consensus-relevant state parameter, not only account rows.
+    payload = [PROTOCOL_VERSION, state.chain_id, state.supply_cap, rows]
+    return hashlib.sha256(STATE_PREFIX + canonical_cbor(payload)).digest()
 
 
 @dataclass(frozen=True, slots=True)
