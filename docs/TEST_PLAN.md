@@ -46,6 +46,15 @@ Go tests cover IPC request correlation, malformed/mismatched responses, typed er
 
 ## Latest exact-commit CI evidence
 
+All five workflows completed successfully on code commit `95f6ffb996e77661c809f536981461558d56640a`:
+- HND tests run `42380149853`: PASS.
+- Go adapter and FilePV process-exit test run `42380149848`: PASS; `go test ./...`, `go vet ./...`, and `internal/consensusguard` passed.
+- One-node CometBFT restart run `42380149862`: PASS.
+- Three-validator integration run `42380149798`: PASS.
+- Four-validator liveness/partition recovery run `42380149833`: PASS.
+
+The docs-only follow-up commit `2f235ce9bdbf4cd82f4bf2dbd3e1b4ae024e4bd4` also completed all five workflows successfully: HND tests `42380193749`, one-node `42380193790`, three-validator `42380193834`, four-validator `42380193851`; the Go adapter is unchanged from the passing `95f6ffb...` code commit.
+
 All five CI paths completed successfully on commit `54229259b05ed322f94deaaf87abf532c788c5b3`:
 - Python tests run `42378294082`: PASS.
 - Go adapter tests and `go vet` run `42378294015`: PASS; logs show `internal/consensusguard` tests passed.
@@ -53,7 +62,7 @@ All five CI paths completed successfully on commit `54229259b05ed322f94deaaf87ab
 - Three-validator integration run `42378294043`: PASS.
 - Four-validator liveness and live partition/recovery run `42378294063`: PASS.
 
-The Go suite on `54229259...` includes a FilePV reload unit test proving same-vote signature reuse and conflicting-vote rejection. A stronger follow-up test was added on `95f6ffb996e77661c809f536981461558d56640a`: a child signing process exits immediately after signing/persisting, then a parent process reloads the FilePV and checks same-vote reuse plus conflict rejection. CI evidence for this follow-up is pending. Neither unit test completes the separate full CometBFT node crash/restart integration requirement.
+The Go suite on `54229259...` includes a FilePV reload unit test proving same-vote signature reuse and conflicting-vote rejection. The follow-up on `95f6ffb996e77661c809f536981461558d56640a` passed in Go adapter run `42380149848` (job `128425864594`): a child signing process exits immediately after signing/persisting, then a parent reloads FilePV state, verifies identical signature reuse, and confirms a conflicting vote is rejected. `go test ./...` and `go vet ./...` both passed. This remains a targeted FilePV process-exit test, not a full CometBFT node crash/restart integration test.
 
 All four workflows completed successfully on code commit `a76cee10eabafc7d27f36dbd66910f0f7feea790`:
 - Python tests run `42368248628`: PASS (77 tests).
