@@ -149,3 +149,15 @@ helpers. It does not change the upstream CometBFT source or establish
 cross-host locking, durable distributed fencing, resistance to privileged
 bypass, or linearizable signer authorization. Production ownership remains
 NOT APPROVED.
+
+
+### Consolidated CI confirmation
+
+Workflow run `42337449661` completed both jobs successfully with the
+same-host lock tests, anti-double-sign restart, post-state-save crash
+recovery, and all-four Unix/Noise signer integrations enabled. The HND helper
+lock is now verified in both transports. This still does not change the
+audit's production conclusion: upstream CometBFT FilePV has no distributed
+exclusive-ownership primitive, and the HND helper's local advisory lock is
+not a cross-host fencing mechanism. Production signer ownership remains
+unapproved.
