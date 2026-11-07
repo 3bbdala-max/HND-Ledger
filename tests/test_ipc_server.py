@@ -153,14 +153,14 @@ def test_concurrent_ipc_clients_receive_correlated_responses(tmp_path):
             client.close()
 
     try:
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            responses = list(pool.map(request, range(16)))
-        assert len(responses) == 16
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            responses = list(pool.map(request, range(32)))
+        assert len(responses) == 32
         assert all(response["ok"] is True for response in responses)
         assert {response["id"] for response in responses} == {
-            f"client-{number}" for number in range(16)
+            f"client-{number}" for number in range(32)
         }
-        assert {response["result"]["client"] for response in responses} == set(range(16))
+        assert {response["result"]["client"] for response in responses} == set(range(32))
     finally:
         server.close()
         thread.join(timeout=2)
