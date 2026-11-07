@@ -430,3 +430,26 @@ Unix-signer step after the harness was generalized to support both Unix and
 Noise for all four validators. This confirms the shared signer-record and
 startup logic did not regress the Unix path. The same workflow is continuing
 through the authenticated Noise tests, including the new all-four Noise step.
+
+
+## All-four authenticated Noise signer integration passed
+
+Workflow run `42335547079` on commit
+`588a9465f36d431e735e7746aa09ef72e047a63b` completed successfully across
+both jobs. The dedicated step
+`Run four independent authenticated Noise signers with no local consensus keys`
+passed, in addition to the all-four Unix step and the validator-4 Unix/Noise
+recovery integrations.
+
+The all-four Noise mode uses four distinct signer identities, four distinct
+Noise endpoints, and four signer-owned key/state records. It verifies every
+signer connection, every signer public key against Genesis, absence of local
+consensus key/state files for every validator, and rejection of unauthorized
+peer identities for each signer. The existing validator-4 outage/recovery
+path also passed while the other three signer processes remained online.
+
+**Result:** simultaneous external signing for all four validators is now
+covered by successful CI over both Unix sockets and authenticated Noise.
+This closes the all-four signer-mode integration test milestone, not the
+separate production operations, multi-host fencing, HSM/key custody, and
+release assurance requirements.
