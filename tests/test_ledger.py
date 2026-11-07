@@ -1,6 +1,6 @@
 import pytest
 
-from hnd_ledger import Ledger, LedgerError, Transaction, address_from_public_key, generate_keypair, sign_transaction
+from hnd_ledger_legacy import Ledger, LedgerError, Transaction, address_from_public_key, generate_keypair, sign_transaction
 
 NETWORK = "hnd-local-testnet"
 
