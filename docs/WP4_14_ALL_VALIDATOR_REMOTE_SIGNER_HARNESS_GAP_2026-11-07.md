@@ -371,3 +371,15 @@ does not yet prove production deployment, multi-host fencing, signer hardware
 security, or authenticated Noise for all four simultaneously. The dedicated
 machine-readable all-four marker was added after this run and awaits its
 next CI confirmation.
+
+
+## All-four authenticated Noise signer extension (implementation pending)
+
+The all-four signer harness has been extended to support four independent
+authenticated Noise endpoints as well as Unix sockets. Each validator receives
+its own Noise identity, peer ID, endpoint, signer-owned consensus key, and
+anti-double-sign state. The harness checks every connection marker, matches
+each signer key to Genesis, probes unauthorized peer rejection for every
+signer, and retains the validator-4 outage/recovery scenario. A dedicated
+all-four Noise CI step is now wired; no successful result is claimed until
+that run completes.
