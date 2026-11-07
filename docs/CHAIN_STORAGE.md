@@ -16,7 +16,7 @@ The genesis identifier commits to protocol version, chain identifier, supply cap
 
 ## Persistence and recovery
 
-SQLite stores the canonical genesis snapshot and each encoded block. Blocks are limited to 1,000 transactions and 1 MiB of encoded payload. On reopen, the implementation starts from the stored genesis state and replays every block in height order. It checks canonical CBOR, block-header types and lengths, the parent link, transaction signatures and chain ID, nonce and balance rules, state commitment, block identifier, and agreement between the block-table hash and payload commitment before accepting recovered state.
+SQLite stores the canonical genesis snapshot and each encoded block. Blocks are limited to 1,000 transactions and 64 KiB of encoded payload. On reopen, the implementation starts from the stored genesis state and replays every block in height order. It checks canonical CBOR, block-header types and lengths, the parent link, transaction signatures and chain ID, nonce and balance rules, state commitment, block identifier, and agreement between the block-table hash and payload commitment before accepting recovered state.
 
 A block is validated against a candidate copy of state before the database transaction is committed. Count and encoded-size limits are checked before persistence. A rejected block must not alter the live state or append to the database.
 
