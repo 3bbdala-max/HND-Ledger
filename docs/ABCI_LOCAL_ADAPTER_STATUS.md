@@ -1,120 +1,34 @@
 # ABCI local adapter status
 
-## Implemented in v0.2
+## Architecture
 
-The Python application is exposed through a bounded, newline-delimited JSON
-IPC server over a Unix-domain socket. The Go adapter uses the matching
-`hnd-ipc/1` envelope and delegates ABCI requests to that Python process.
+CometBFT v0.40.0 communicates with a thin Go ABCI socket adapter. The Go adapter delegates HND application methods to a Python process over a private Unix-domain JSONL IPC socket. Python owns transaction validation, state transitions, state commitments, and SQLite persistence.
 
-Implemented application methods:
+## Implemented ABCI methods
 
-- `Info` reports the committed height and application hash.
-- `InitChain` accepts only the fixed `HND-LOCAL-V2` chain ID and a
-  pristine height-zero ledger. Its optional allocation payload is a canonical
-  JSON envelope (version 2) containing a Base64 canonical-CBOR payload with
-  the supply cap and strictly sorted, unique account allocations. It records
-  a persistent genesis marker and rejects a conflicting marker. Empty app
-  state remains a zero-allocation development genesis.
-- `CheckTx` performs signature/encoding admission only.
-- `InsertTx` and `ReapTxs` maintain a bounded, in-memory, disposable
-  mempool queue. The queue is not consensus state.
-- `PrepareProposal` and `ProcessProposal` apply deterministic
-  state-dependent transaction ordering and validation.
-- `FinalizeBlock` computes an in-memory candidate without durable writes.
-- `Commit` persists the finalized block and removes included transactions
-  from the mempool.
+- Info: committed height and app hash.
+- InitChain: validates HND-LOCAL-V2 and a bounded canonical JSON/CBOR genesis envelope. Genesis state and CometBFT marker are persisted atomically.
+- Query: read-only latest-state paths /hnd/v1/info and /hnd/v1/account; proofs and historical heights are rejected.
+- CheckTx: encoding, chain ID, and signature admission only.
+- InsertTx / ReapTxs: bounded disposable in-memory mempool.
+- PrepareProposal / ProcessProposal: deterministic proposal selection and full state-dependent validation.
+- FinalizeBlock: candidate calculation without durable writes.
+- Commit: persists the finalized block and evicts included mempool transactions.
 
-The Python IPC server handles one request at a time on the SQLite-owning
-thread. This deliberately serializes application access while the local
-prototype uses a single SQLite connection; it favors deterministic
-correctness over concurrent throughput. The IPC server rejects malformed
-JSON, duplicate JSON fields, unsupported protocol versions, unknown envelope
-fields, oversized frames, invalid request IDs, and unsupported ABCI methods.
-The Unix socket is created with mode 0600. It does not expose a Python TCP
-listener.
+Unsupported snapshot, state-sync, and vote-extension methods fail closed.
 
-## Verified CometBFT integration
+## Transport controls
 
-The pinned CometBFT v0.40.0 node, Go ABCI socket adapter, and Python engine
-have passed both one-validator and three-validator GitHub Actions integration
-runs.
+- Python IPC is Unix-domain only, mode 0600, 1 MiB frame cap, strict JSON envelope, duplicate-key rejection, and sequential handling on the SQLite-owning thread.
+- Go ABCI listener is restricted to loopback TCP addresses.
+- Go IPC client handles partial writes and zero-progress write errors.
 
-- One-validator smoke and restart recovery: run `42358936782`, commit
-  `02a3b7f21f1b3b0d80e4b73a8952e55dfef27617`, success.
-- Three-validator funded-genesis and signed-transfer integration: run
-  `42358936778`, same commit, success.
-- Python test workflow on that commit: run `42358936848`, success.
-- Strengthened three-validator integration: run `42359196690`, commit
-  `b5f773951702d3ef4b28b10a9289de7a07ecaa2a`, success. It checks the
-  post-transfer CometBFT header app hash at height H+1, then restarts validator
-  0 and verifies the persisted transfer, balances, nonce, and matching header
-  app hashes.
-- Matching one-node restart smoke: run `42359196625`, same commit, success.
-- Python test workflow: run `42359196613`, same commit, success (63 tests).
+## Verified baseline
 
-The three-validator run initialized a deterministic test-only funded genesis,
-started three independent Python SQLite applications and Go ABCI adapters,
-and waited for all CometBFT validators to reach height 3. It then submitted
-a real Ed25519-signed transfer through CometBFT RPC at block height 4.
-Each validator's local ledger contained exactly one copy of the transfer;
-the sender balance was 750,000, recipient balance 250,000, and sender nonce
-1. All three post-transfer local state commitments matched:
+The one-node and three-validator integrations passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af (runs 42359852690 and 42359852656). The three-validator test committed a signed transfer at height 4, compared local state commitments and CometBFT app hashes at header height 5, restarted validator 0, and verified its persisted transfer, balances, nonce, and matching app hash.
 
-`6d0ec53f821cb3f96333785415f991b8640e3fd64622de8317e495652eb02ba3`.
+Python Query unit tests passed on commit a6c5250905d0861c5d3a62dd766d957742080b1c (run 42360521258). The new end-to-end CometBFT RPC Query check is still being validated and must not be treated as passed until its workflow completes successfully.
 
-The run also stopped and restarted validator 0 with its CometBFT home and
-SQLite database retained. The restarted node recovered and all three nodes
-continued to report matching CometBFT header app hashes at the height checked
-by that workflow. A subsequent workflow change now strengthens this check
-to compare the post-transfer header app hash and revalidate the restarted
-validator's balances and nonce; that strengthened workflow must pass before
-those additional properties are considered verified.
+## Compatibility and remaining work
 
-These results demonstrate a working controlled CI integration and signed
-transaction agreement in the tested three-validator configuration. They do
-not demonstrate Byzantine fault tolerance under adversarial validators,
-production readiness, economic security, or independent security
-certification.
-
-## Explicit development-genesis requirement
-
-A new database is never initialized implicitly. To create a local,
-zero-allocation development database, the operator must explicitly pass
-`--init-empty-dev-genesis`. The HND supply cap is a protocol ceiling, not
-an issued balance. No private keys, account allocations, validator identities,
-or token distribution are generated by this command.
-
-Example after installing the package:
-
-```sh
-hnd-abci-python --chain-db ./data/hnd.sqlite --socket ./run/hnd-python.sock --init-empty-dev-genesis
-```
-
-On later restarts, omit `--init-empty-dev-genesis` and reuse the same
-database and socket path. The Go ABCI adapter must be configured to connect to
-that Unix socket.
-
-## Remaining work before broader validation
-
-- Define a cross-version compatibility and migration policy before persistent
-  network upgrades. The state commitment scheme is being upgraded to include
-  chain ID and supply cap; pre-v3 local databases are disposable development
-  data and are not compatible with the new state-root format.
-- Add crash-injection coverage around the FinalizeBlock/Commit boundary and
-  verify deterministic recovery after process termination at each boundary.
-- Audit every ABCI method invoked by the exact CometBFT configuration,
-  especially Query, snapshots, and vote extensions; unsupported methods must
-  continue to fail closed.
-- Extend replay and same-nonce double-spend unit coverage into the
-  three-validator integration, and test overspending, mempool pressure,
-  eviction, and resource-exhaustion behavior under adversarial load.
-- Perform an independent protocol, cryptographic, and implementation security
-  review before considering any public-network deployment.
-
-The genesis handler accepts only the bounded canonical v2 JSON/CBOR allocation
-envelope documented above. The integration uses deterministic test-only keys
-and allocations; it is not a production issuance process. A reviewed genesis
-allocation policy, validator/key-management procedure, and independent audit
-are still required before any public balances are issued. This local prototype
-is not a public network, not a token launch, and not evidence of independent
-decentralization or security certification.
+Pre-v3 state roots are incompatible with the current v3 commitment format. Crash injection, Query RPC verification, Query proofs and historical reads, snapshots/state sync, adversarial consensus testing, mempool resource-exhaustion testing, and production validator/key-management procedures remain open.
