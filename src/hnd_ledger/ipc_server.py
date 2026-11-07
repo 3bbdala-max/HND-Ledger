@@ -17,6 +17,7 @@ from typing import Any, Callable
 
 PROTOCOL_VERSION = "hnd-ipc/1"
 MAX_FRAME_BYTES = 1 << 20
+REQUEST_READ_TIMEOUT_SECONDS = 5.0
 _ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _METHOD_RE = re.compile(r"^[A-Z][A-Za-z0-9]{0,63}$")
 
@@ -95,7 +96,15 @@ class _UnixServer(socketserver.UnixStreamServer):
 
 class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
-        raw = self.rfile.readline(MAX_FRAME_BYTES + 1)
+        # The dispatcher is intentionally single-threaded around SQLite.
+        # Bound incomplete client writes so one local peer cannot hold the
+        # application loop indefinitely before sending a complete frame.
+        self.request.settimeout(REQUEST_READ_TIMEOUT_SECONDS)
+        try:
+            raw = self.rfile.readline(MAX_FRAME_BYTES + 1)
+        except TimeoutError:
+            logging.warning("HND IPC client timed out before completing a request frame")
+            return
         request_id = "invalid"
         method = "unknown"
         try:
