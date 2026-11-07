@@ -34,6 +34,8 @@ jobs:
           tests.test_v02_four_abci_replica_evidence
           tests.test_v02_four_replica_state_convergence
           tests.test_v02_tcp_peer_relay
+          tests.test_v02_anti_rollback_reference
+          tests.test_v02_recovery_controls
 
   cometbft-single-node-smoke:
     needs: hnd-v02-tests
