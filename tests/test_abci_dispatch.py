@@ -1,4 +1,5 @@
 import base64
+import json
 
 import cbor2
 
@@ -29,6 +30,14 @@ def _dispatcher(tmp_path, *, funded=True):
 
 def _b64(raw):
     return base64.b64encode(raw).decode("ascii")
+
+
+def _genesis_bytes(value):
+    payload = cbor2.dumps(value, canonical=True)
+    return json.dumps(
+        {"version": 2, "payload": base64.b64encode(payload).decode("ascii")},
+        sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def test_info_and_init_chain_are_explicit(tmp_path):
@@ -132,7 +141,7 @@ def test_init_chain_installs_canonical_genesis_allocations_once(tmp_path):
     dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path, funded=False)
     bob_id = _key_account(bob)
     allocations = sorted([[alice_id, 700], [bob_id, 300]], key=lambda row: row[0])
-    app_state = cbor2.dumps([2, 1_000, allocations], canonical=True)
+    app_state = _genesis_bytes([2, 1_000, allocations])
     encoded = _b64(app_state)
 
     assert dispatcher("InitChain", {
@@ -146,7 +155,7 @@ def test_init_chain_installs_canonical_genesis_allocations_once(tmp_path):
     assert dispatcher("InitChain", {
         "chain_id": "HND-LOCAL-V2", "app_state_bytes": encoded,
     }) == {"validators": []}
-    other_state = _b64(cbor2.dumps([2, 1_000, [[alice_id, 999]]], canonical=True))
+    other_state = _b64(_genesis_bytes([2, 1_000, [[alice_id, 999]]]))
     try:
         dispatcher("InitChain", {
             "chain_id": "HND-LOCAL-V2", "app_state_bytes": other_state,
@@ -176,7 +185,7 @@ def test_init_chain_rejects_unsorted_duplicate_and_over_cap_allocations(tmp_path
         try:
             dispatcher("InitChain", {
                 "chain_id": "HND-LOCAL-V2",
-                "app_state_bytes": _b64(cbor2.dumps(value, canonical=True)),
+                "app_state_bytes": _b64(_genesis_bytes(value)),
             })
             assert False, "invalid genesis allocations must fail"
         except ValueError:
