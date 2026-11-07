@@ -131,6 +131,33 @@ def test_weak_mempool_admission_filters_overspend_before_proposal(tmp_path):
     chain.close()
 
 
+def test_check_tx_recheck_revalidates_against_committed_state(tmp_path):
+    dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path)
+    bob_id = _key_account(bob)
+
+    # A new submission is weakly admitted, even if its balance validity will
+    # depend on transactions that commit before it is rechecked.
+    stale = encode_transaction(create_transaction(alice, bob_id, 50, 1))
+    assert dispatcher("CheckTx", {"type": 0, "tx": _b64(stale)})["code"] == 0
+
+    first = encode_transaction(create_transaction(alice, bob_id, 60, 0))
+    dispatcher("FinalizeBlock", {"height": 1, "txs": [_b64(first)]})
+    dispatcher("Commit", {})
+    assert chain.state.balances[alice_id] == 40
+
+    # Recheck is state-aware: the now-unfunded transaction is rejected, while
+    # a correctly signed transaction that fits the new state is retained.
+    assert dispatcher("CheckTx", {"type": 1, "tx": _b64(stale)})["code"] == 1
+    still_valid = encode_transaction(create_transaction(alice, bob_id, 30, 1))
+    assert dispatcher("CheckTx", {"type": 1, "tx": _b64(still_valid)})["code"] == 0
+
+    # Recheck must not mutate the committed state.
+    assert chain.state.balances[alice_id] == 40
+    assert chain.state.balances[bob_id] == 60
+    assert chain.state.next_nonces[alice_id] == 1
+    chain.close()
+
+
 def test_invalid_proposal_is_rejected_and_unsupported_methods_fail_closed(tmp_path):
     dispatcher, chain, alice, bob, _ = _dispatcher(tmp_path)
     invalid = encode_transaction(create_transaction(alice, _key_account(bob), 101, 0))
