@@ -92,7 +92,7 @@ jobs:
           # Give validator 0 a dedicated OS identity so its P2P traffic can be
           # isolated without dropping traffic among validators 1, 2, and 3.
           sudo useradd --system --no-create-home --shell /usr/sbin/nologin hnd-validator0
-          sudo chmod o+x /home/runner/work /home/runner/work/_temp "$ROOT"
+          sudo chmod o+x /home/runner /home/runner/work /home/runner/work/_temp "$ROOT"
           sudo chown -R hnd-validator0 "$ROOT/node0"
           VALIDATOR0_UID=$(id -u hnd-validator0)
           declare -a PY_PIDS GO_PIDS NODE_PIDS
