@@ -4,7 +4,7 @@
 
 A block ID is a domain-separated SHA-256 digest over canonical CBOR of [2, height, previous_hash, transaction_bytes[], state_root].
 
-The state commitment uses HND-STATE-V3 and canonical CBOR of [2, chain_id, supply_cap, sorted_account_rows]. Each account row contains account ID, balance, and next expected nonce. Chain ID and supply cap are therefore part of the application hash.
+The state commitment uses HND-STATE-V3 and canonical CBOR of [2, chain_id, supply_cap, sorted_account_rows]. Each account row contains account ID, balance, and next expected nonce. Chain ID and supply cap are part of the application hash.
 
 ## Genesis and persistence
 
@@ -13,6 +13,8 @@ SQLite stores the canonical genesis snapshot, genesis hash, CometBFT genesis mar
 Blocks are limited to 1,000 transactions and 64 KiB of encoded payload. On reopen, the implementation starts from the stored genesis snapshot and replays blocks in height order, checking canonical CBOR, parent link, transaction signatures and chain ID, nonce/balance rules, state commitment, block identifier, and stored hash agreement.
 
 A candidate block is validated against a copy of state before database persistence. The committed in-memory state is advanced only after the SQLite transaction succeeds. A rejected or failed block write must not alter committed state.
+
+The Python test suite injects a SQLite trigger failure during block insertion, verifies rollback of the transaction and in-memory state, then reopens the database and confirms the genesis state remains intact. This is a deterministic write-failure test, not a process-kill or power-loss durability campaign.
 
 ## Compatibility and limitations
 

@@ -18,18 +18,16 @@ Status: deterministic Python ledger integrated with CometBFT v0.40.0 for control
 
 ## Verified evidence
 
-On commit 90f49448e553a0fae386b7dfc18c14e8f082d2a7:
-- Python tests: run 42360867069, success.
-- One-node CometBFT restart: run 42360867084, success.
-- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42360867085, success.
+- Python tests: run 42361150494 on commit 3b97907a9b484144e67a9386620fd30e0ad45a6c, success (69 tests).
+- One-node CometBFT restart: run 42360867084 on commit 90f49448e553a0fae386b7dfc18c14e8f082d2a7, success.
+- Three-validator signed transfer, RPC Query, overspend filtering, post-transfer app-hash comparison, and restart recovery: run 42360867085 on the same commit, success.
+- Go adapter tests/static analysis: run 42359852685 on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, success.
 
-The three-validator integration checked sender balance 750,000, recipient balance 250,000, sender next nonce 1, and state commitment 78b774640f86986f70e5528d94aee5e8aa56fa5b79320dc6bc99b50b1bfa5438. It then submitted a validly signed 800,000-unit spend from the sender using nonce 1. CheckTx admitted its encoding/signature; PrepareProposal excluded it because the committed balance was only 750,000. All three ledgers retained the original balances and nonce and did not include the invalid transaction in any committed block. RPC queries confirmed state on all three nodes. Validator 0 restarted and retained the valid transfer and app hash.
-
-Go adapter tests/static analysis passed on commit 1c62d3cad548315b8cecb811edd76ee6b93808af, run 42359852685. No Go adapter code changed in the subsequent Python/query integration work.
+The SQLite failure-injection test forces an abort during block insertion. The test confirms no height, tip hash, balance, nonce, in-memory block, or database block row advances, then reopens the database and confirms the original genesis state is intact. This is not a full process-kill or power-loss campaign.
 
 ## Remaining work
 
-- Crash injection at FinalizeBlock/Commit and SQLite persistence boundaries.
+- Process-level crash injection around FinalizeBlock/Commit and power-loss durability testing.
 - Adversarial proposals, equivocation, partitions, delayed/reordered messages, and Byzantine voting-power tests.
 - Snapshots, state sync, Query proofs, historical queries, and validator-set changes.
 - Production key custody, validator admission, backup/restore, upgrades, monitoring, and incident response.
