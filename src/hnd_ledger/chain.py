@@ -39,7 +39,6 @@ class Block:
 
 
 def _block_hash(height: int, previous_hash: bytes, transactions: tuple[bytes, ...], state_root: bytes) -> bytes:
-    txids = [hashlib.sha256(b"HND-TX-ID-V2\x00" + raw[0:0]).digest() for raw in ()]
     # The block commits to the exact canonical signed transaction bytes.
     payload = [PROTOCOL_VERSION, height, previous_hash, list(transactions), state_root]
     return hashlib.sha256(BLOCK_PREFIX + canonical_cbor(payload)).digest()
@@ -90,6 +89,8 @@ class LocalChain:
                 raise ChainError("initial state must not be supplied when reopening a chain")
             import cbor2
             decoded = cbor2.loads(row[0])
+            if cbor2.dumps(decoded, canonical=True) != row[0]:
+                raise ChainError("non-canonical persisted genesis state")
             if not isinstance(decoded, list) or len(decoded) != 4 or decoded[0] != 2:
                 raise ChainError("invalid persisted genesis state")
             _, chain_id, supply_cap, rows = decoded
@@ -99,6 +100,9 @@ class LocalChain:
                 chain_id=chain_id,
                 supply_cap=supply_cap,
             )
+            genesis_row = self.db.execute("SELECT value FROM metadata WHERE key='genesis_hash'").fetchone()
+            if genesis_row is None or genesis_row[0] != _genesis_hash(self.state.chain_id, self.state):
+                raise ChainError("persisted genesis commitment mismatch")
         self.blocks: list[Block] = []
         self._restore()
 
