@@ -76,15 +76,18 @@ def grpc_info(port):
 
 
 def assert_source_pin(source):
-    try:
-        tag = subprocess.run(
-            ["git", "describe", "--tags", "--exact-match"],
-            cwd=source, check=True, capture_output=True, text=True,
-        ).stdout.strip()
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError("CometBFT source is not exactly a tagged release") from exc
-    if tag != "v0.40.0":
-        raise RuntimeError(f"Expected CometBFT v0.40.0, found {tag}")
+    # CI fetches the immutable commit directly with --depth 1, which does not
+    # include tag refs. Verify the exact source commit rather than requiring
+    # local tag metadata that is intentionally absent from a shallow fetch.
+    expected = "0880b4d378f347ab16e54ec677ff50d803f37d62"
+    actual = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    if actual != expected:
+        raise RuntimeError(
+            f"Expected pinned CometBFT commit {expected}, found {actual}"
+        )
 
 
 def patch_upstream_test(source_file):
