@@ -18,12 +18,13 @@ from typing import Any, Mapping
 from .ledger import HNDLedger, LedgerError
 from .transaction import ProtocolConfig, canonical_json
 
-APP_STORE_VERSION = 3
+APP_STORE_VERSION = 4
 MAX_BLOCK_TRANSACTIONS = 1000
 _STORE_KEYS = {
     "schema_version",
     "network_id",
     "protocol_version",
+    "max_amount",
     "genesis_hash",
     "last_committed_height",
     "ledger_snapshot",
@@ -180,7 +181,9 @@ class HNDABCIApplication:
             payload = _decode_canonical_object(app_state_bytes, label="application Genesis")
             if set(payload) != {"genesis_hash", "manifest"}:
                 raise ABCIApplicationError("application Genesis schema")
-            if payload["genesis_hash"] != self.expected_genesis_hash:
+            if type(payload["max_amount"]) is not int or payload["max_amount"] != self.config.max_amount:
+            raise ABCIApplicationError("application state max_amount mismatch")
+        if payload["genesis_hash"] != self.expected_genesis_hash:
                 raise ABCIApplicationError("application Genesis hash mismatch")
             if canonical_json(payload["manifest"]) != canonical_json(self.manifest):
                 raise ABCIApplicationError("application Genesis manifest mismatch")
@@ -385,6 +388,7 @@ class HNDABCIApplication:
             "schema_version": APP_STORE_VERSION,
             "network_id": self.config.network_id,
             "protocol_version": self.config.protocol_version,
+            "max_amount": self.config.max_amount,
             "genesis_hash": self.expected_genesis_hash,
             "last_committed_height": height,
             "ledger_snapshot": snapshot,
