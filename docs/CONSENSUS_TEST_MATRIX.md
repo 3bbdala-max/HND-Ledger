@@ -40,3 +40,13 @@ The three-validator test used separate processes and data directories on one CI 
 ## Evidence required
 
 Each adversarial run must record CometBFT version, source commit, genesis hash, validator-set hash, node identities, voting power, scenario configuration, logs, finalized height, block hash, and application state commitment. Reports must distinguish passed, failed, skipped, timed out, pending, and not run.
+
+| C-17 | Unsupported vote-extension and snapshot methods fail closed in the Python dispatcher | Commit `0ab7294c52f12366aea99a55564b063896e82294`, Python run `42381330354`; exact-commit Python rerun on `41c4eeb4cb61c34b8f1caf4f454de346a06a3a60`, run `42382470345` | PASS |
+| C-18 | Four-validator mesh readiness waits for all three P2P peers per validator before partition test; quorum, isolation, recovery scenario completes | Commit `41c4eeb4cb61c34b8f1caf4f454de346a06a3a60`, run `42382470318` | PASS (single CI host) |
+
+## v0.2 consensus scope boundary
+
+- Validator membership is fixed by the initial CometBFT genesis configuration for this release candidate. Dynamic validator-set updates are not implemented or claimed.
+- Vote extensions and snapshot/state-sync methods are explicitly unsupported and fail closed; state sync and snapshot restoration are not release features.
+- Four-validator liveness and live partition/healing evidence is limited to four separate processes and data directories on one CI runner. Independent hosts, operators, network paths, and production deployment remain unverified.
+- Passing local integration tests do not constitute an independent security audit or production-readiness approval.
