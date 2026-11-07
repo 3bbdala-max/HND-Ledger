@@ -44,8 +44,13 @@ runs.
 - Three-validator funded-genesis and signed-transfer integration: run
   `42358936778`, same commit, success.
 - Python test workflow on that commit: run `42358936848`, success.
-- Expanded replay/double-spend unit tests: run `42359102914`, commit
-  `1ebb13029516dfd053641a91c1c217cfc1b01aa7`, success (63 tests).
+- Strengthened three-validator integration: run `42359196690`, commit
+  `b5f773951702d3ef4b28b10a9289de7a07ecaa2a`, success. It checks the
+  post-transfer CometBFT header app hash at height H+1, then restarts validator
+  0 and verifies the persisted transfer, balances, nonce, and matching header
+  app hashes.
+- Matching one-node restart smoke: run `42359196625`, same commit, success.
+- Python test workflow: run `42359196613`, same commit, success (63 tests).
 
 The three-validator run initialized a deterministic test-only funded genesis,
 started three independent Python SQLite applications and Go ABCI adapters,
@@ -91,9 +96,10 @@ that Unix socket.
 
 ## Remaining work before broader validation
 
-- Complete the strengthened post-transfer CometBFT header app-hash
-  comparison and verify the restarted validator's persisted transfer,
-  balances, and nonce on the same committed height.
+- Define a cross-version compatibility and migration policy before persistent
+  network upgrades. The state commitment scheme is being upgraded to include
+  chain ID and supply cap; pre-v3 local databases are disposable development
+  data and are not compatible with the new state-root format.
 - Add crash-injection coverage around the FinalizeBlock/Commit boundary and
   verify deterministic recovery after process termination at each boundary.
 - Audit every ABCI method invoked by the exact CometBFT configuration,
@@ -105,8 +111,10 @@ that Unix socket.
 - Perform an independent protocol, cryptographic, and implementation security
   review before considering any public-network deployment.
 
-The current genesis handler intentionally refuses non-empty app state. A
-reviewed allocation schema and validator/key-management procedure must be
-designed before any balances are issued. This local prototype is not a public
-network, not a token launch, and not evidence of independent decentralization
-or security certification.
+The genesis handler accepts only the bounded canonical v2 JSON/CBOR allocation
+envelope documented above. The integration uses deterministic test-only keys
+and allocations; it is not a production issuance process. A reviewed genesis
+allocation policy, validator/key-management procedure, and independent audit
+are still required before any public balances are issued. This local prototype
+is not a public network, not a token launch, and not evidence of independent
+decentralization or security certification.
