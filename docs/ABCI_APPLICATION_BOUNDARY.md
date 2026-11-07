@@ -26,9 +26,9 @@ The ABCI dispatcher adds Info, InitChain, Query, CheckTx, InsertTx, ReapTxs, Pre
 
 ## Verification
 
-Python tests passed on commit d0832723ee533e7c27f47e62bcdedc7c5d1e3149, run 42361314253 (70 tests). The suite includes a SQLite trigger failure and a child process forcibly terminated during block insertion; reopening the database restores the original genesis state.
+Python tests passed on commit d81c8fb5033fec1b369658df5671c1e3e45bfdcf, run 42362574022 (75 tests). The suite includes SQLite rollback and child-process crash injection during block and genesis-marker writes, idempotent funded-genesis retry after restart, conflicting-genesis rejection, canonical base64 enforcement, and supply-cap failure atomicity.
 
-Three-validator signed transfer, account/ledger-info RPC queries, signed overspend filtering, post-transfer app-hash agreement, and restart recovery passed in run 42361234762. One-node restart passed in run 42361234790.
+Three-validator signed transfer, account/ledger-info RPC queries, signed overspend filtering, post-transfer app-hash agreement, and restart recovery passed in run 42362574012. One-node restart passed in run 42362573986.
 
 ## Explicit limitations
 
