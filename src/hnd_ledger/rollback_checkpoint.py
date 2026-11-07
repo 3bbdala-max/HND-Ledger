@@ -409,6 +409,7 @@ def publish_checkpoint(
         return candidate
     validate_successor(current, candidate)
 
+    cas_error = None
     try:
         accepted = authority.compare_and_swap(
             expected_sequence=None if current is None else current.sequence,
@@ -416,7 +417,10 @@ def publish_checkpoint(
             new_checkpoint=signed_candidate,
         )
     except Exception as exc:
-        raise CheckpointError("checkpoint authority compare-and-swap failed") from exc
+        # A timeout can happen after the authority committed but before the
+        # acknowledgement reached us. Resolve the outcome by reading again.
+        cas_error = exc
+        accepted = False
     if not isinstance(accepted, bool):
         raise CheckpointError("checkpoint authority returned an invalid CAS result")
     if accepted:
@@ -429,12 +433,20 @@ def publish_checkpoint(
     except Exception as exc:
         raise CheckpointError(
             "checkpoint CAS outcome is unknown; authority reread failed"
-        ) from exc
+        ) from (cas_error or exc)
     if not isinstance(latest_raw, bytes):
+        if cas_error is not None:
+            raise CheckpointError(
+                "checkpoint CAS outcome is unknown; no accepted record was returned"
+            ) from cas_error
         raise CheckpointError("checkpoint CAS conflict; no matching accepted record")
     latest = verify_signed_checkpoint(latest_raw, trusted_public_key)
     if (latest.chain_id == candidate.chain_id
             and latest.genesis_hash == candidate.genesis_hash
             and latest.digest == candidate.digest):
         return candidate
+    if cas_error is not None:
+        raise CheckpointError(
+            "checkpoint CAS outcome is unknown; authority contains a different record"
+        ) from cas_error
     raise CheckpointError("checkpoint compare-and-swap conflict")

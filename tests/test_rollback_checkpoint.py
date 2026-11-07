@@ -580,11 +580,18 @@ def test_publish_checkpoint_rejects_non_successor_and_conflicting_cas():
         publish_checkpoint(authority, public_key, skipped)
 
     class ConflictingAuthority(MemoryAuthorityForTest):
+        def __init__(self, trusted_public_key):
+            super().__init__(trusted_public_key)
+            self.force_conflict = False
+
         def compare_and_swap(self, **kwargs):
-            return False
+            if self.force_conflict:
+                return False
+            return super().compare_and_swap(**kwargs)
 
     conflict_authority = ConflictingAuthority(public_key)
     publish_checkpoint(conflict_authority, public_key, first)
+    conflict_authority.force_conflict = True
     conflicting = sign_checkpoint(make_checkpoint(sequence=2, height=2), key).encode()
     with pytest.raises(CheckpointError, match="compare-and-swap conflict"):
         publish_checkpoint(conflict_authority, public_key, conflicting)
@@ -605,3 +612,43 @@ def test_publish_checkpoint_fails_closed_when_authority_is_unavailable():
     candidate = sign_checkpoint(make_checkpoint(), key).encode()
     with pytest.raises(CheckpointError, match="read failed before publish"):
         publish_checkpoint(UnavailableAuthority(), public_key, candidate)
+
+
+
+def test_publish_checkpoint_resolves_lost_ack_after_remote_commit():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+
+    class CommitThenLoseAckAuthority(MemoryAuthorityForTest):
+        def compare_and_swap(self, **kwargs):
+            accepted = super().compare_and_swap(**kwargs)
+            if accepted:
+                raise OSError("simulated lost acknowledgement after commit")
+            return accepted
+
+    authority = CommitThenLoseAckAuthority(public_key)
+    candidate = sign_checkpoint(make_checkpoint(), key).encode()
+    accepted = publish_checkpoint(authority, public_key, candidate)
+    assert accepted == SignedRollbackCheckpoint.decode(candidate).checkpoint
+    stored = SignedRollbackCheckpoint.decode(
+        authority.read(b"C" * 32, b"G" * 32)
+    ).checkpoint
+    assert stored == accepted
+
+
+def test_publish_checkpoint_reports_unknown_outcome_if_cas_throws_without_commit():
+    from hnd_ledger.rollback_checkpoint import publish_checkpoint
+
+    key = Ed25519PrivateKey.generate()
+    public_key = key.public_key().public_bytes_raw()
+
+    class FailBeforeCommitAuthority(MemoryAuthorityForTest):
+        def compare_and_swap(self, **kwargs):
+            raise OSError("simulated request failure before commit")
+
+    authority = FailBeforeCommitAuthority(public_key)
+    candidate = sign_checkpoint(make_checkpoint(), key).encode()
+    with pytest.raises(CheckpointError, match="outcome is unknown"):
+        publish_checkpoint(authority, public_key, candidate)
