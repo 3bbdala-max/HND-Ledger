@@ -234,19 +234,17 @@ func runConcurrentSharedFilePVProbe() {
 			fail("wait for shared FilePV signer %d connection: %v", i, err)
 		}
 	}
-	pubKeys := make([]cmttypes.PubKey, 2)
-	for i := range signers {
-		pubKey, err := signers[i].client.GetPubKey()
-		if err != nil { fail("get shared FilePV signer %d public key: %v", i, err) }
-		pubKeys[i] = pubKey
-	}
-	if !bytes.Equal(pubKeys[0].Bytes(), pubKeys[1].Bytes()) {
+	pubKey0, err := signers[0].client.GetPubKey()
+	if err != nil { fail("get shared FilePV signer 0 public key: %v", err) }
+	pubKey1, err := signers[1].client.GetPubKey()
+	if err != nil { fail("get shared FilePV signer 1 public key: %v", err) }
+	if !bytes.Equal(pubKey0.Bytes(), pubKey1.Bytes()) {
 		fail("shared FilePV signer processes do not expose the same validator key")
 	}
 
 	makeVote := func(label string) *cmtproto.Vote {
 		return (&cmttypes.Vote{
-			ValidatorAddress: cmttypes.Address(pubKeys[0].Address()),
+			ValidatorAddress: cmttypes.Address(pubKey0.Address()),
 			ValidatorIndex: 0, Height: 77, Round: 3, Type: cmtproto.PrevoteType,
 			Timestamp: cmttime.Now(), BlockID: blockID(label),
 		}).ToProto()
@@ -268,7 +266,7 @@ func runConcurrentSharedFilePVProbe() {
 
 	for i := range votes {
 		if errs[i] != nil { fail("shared FilePV signer %d rejected concurrent vote: %v", i, errs[i]) }
-		if len(votes[i].Signature) == 0 || !pubKeys[i].VerifySignature(cmttypes.VoteSignBytes(chainID, votes[i]), votes[i].Signature) {
+		if len(votes[i].Signature) == 0 || !pubKey0.VerifySignature(cmttypes.VoteSignBytes(chainID, votes[i]), votes[i].Signature) {
 			fail("shared FilePV signer %d did not return a valid conflicting signature", i)
 		}
 	}
