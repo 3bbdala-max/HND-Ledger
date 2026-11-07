@@ -78,3 +78,14 @@ Replace the singleton values (`signer`, `signer_log`, `signer_socket`, `signer_k
 This harness refactor does not solve cross-process or cross-host signer ownership, durable fencing, stale-leader rejection, signature-release linearization, signer authorization TOCTOU, or production key custody. It must not be described as proving those properties. The existing CI invocation also needs separate private-only and all-remote-signer modes so the ordinary private smoke path remains a regression guard and the all-signer mode is independently visible in logs.
 
 **Disposition after this review:** implementation remains OPEN. No source change was made because the lifecycle and identity refactor must be delivered atomically with its assertions and full CI execution; a partial loop conversion would create misleading coverage.
+
+
+## Pinned CometBFT v0.40.0 startup-path confirmation (2026-11-07)
+
+The exact CometBFT source revision pinned by CI, `0880b4d378f347ab16e54ec677ff50d803f37d62`, was inspected after the lifecycle blueprint was written.
+
+- In `node/node.go`, `NewNodeWithContext` checks `config.PrivValidatorListenAddr != ""`. When set, it replaces the supplied `privValidator` with `createAndStartPrivValidatorSocketClient(...)`; an error creating the external client aborts node construction. This confirms that the remote-signer endpoint is the selected validator implementation on this path, rather than an additive second signer.
+- In `config/config.go`, `BaseConfig` independently retains default local FilePV key and state paths (`priv_validator_key.json` and `priv_validator_state.json`) even when a remote listen address is configured. Therefore, an external-signer deployment must explicitly ensure local key material is not provisioned and must verify the actual startup configuration; the mere existence of the default path fields is not proof of fallback.
+- In `privval/file.go`, `LoadFilePV` exits if either the key or state file cannot be read. `LoadOrGenFilePV` generates a new local FilePV if the key file is absent. This is a material reason to test the actual CLI/startup path with missing local key files, rather than assuming absence is safe or assuming it causes fallback. The node's external-listener branch and the CLI's construction of the initial validator object must be exercised together.
+
+**Evidence boundary:** this is source inspection of the pinned revision, not an executed negative startup test. It confirms the external-client replacement branch and the dangerous local load-or-generate behavior as separate code paths. The all-validator harness must prove that the exact node command, config, and startup sequence select the external client for every validator and never create or retain a local private key. The proposed downgrade matrix remains open until executed.
