@@ -176,3 +176,25 @@ remote-signer startup/no-local-file result is claimed. The validator-4 lifecycle
 test still uses the stock binary until that runtime integration is adapted and
 verified. The all-four signer refactor, distributed fencing, and production
 signer approval remain OPEN.
+
+
+## Partition regression diagnosis and correction (2026-11-07)
+
+A completed Unix external-signer CI run passed the signer outage/restart and
+validator-4 durable ABCI/CometBFT recovery checks, then failed later in the
+3/1 partition assertion. The diagnostics showed the three-node quorum at
+height 76 while the isolated validator was still at height 8; its own
+pre-partition baseline was height 8, whereas the assertion incorrectly
+compared it with the quorum's height 9 baseline. This was a harness assertion
+bug: a lagging isolated validator must remain at its own last committed
+height/hash, not be required to match a faster quorum at the instant the relay
+cut is observed.
+
+Commit `08d5cfad55777e67829faf104c603d327a125e8c` changes the partition
+invariant to capture and compare the isolated validator's own baseline height
+and block hash, while retaining the separate quorum baseline for expected
+transaction-state checks. The corrected partition test is pending fresh CI
+execution. The prior run remains recorded as **FAILED**; it is not retroactively
+counted as passing. This correction does not relax the safety assertion: the
+isolated node's height, block hash, application hash, and account state must
+remain unchanged from its own pre-partition baseline.
