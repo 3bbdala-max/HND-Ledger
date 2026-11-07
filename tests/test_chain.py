@@ -826,3 +826,36 @@ def test_initialize_genesis_fails_closed_if_tip_metadata_is_removed_while_open(
         "SELECT COUNT(*) FROM metadata WHERE key=?", (missing_key,)
     ).fetchone()[0] == 0
     chain.close()
+
+
+
+def test_checkpoint_ancestor_commitments_match_genesis_and_replayed_blocks(tmp_path):
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_id, bob_id = account(alice), account(bob)
+    initial = LedgerState(balances={alice_id: 20}, supply_cap=20)
+    chain = LocalChain(tmp_path / "checkpoint-ancestors.sqlite", initial)
+
+    genesis_hash, genesis_app_hash = chain.checkpoint_ancestor_commitments(0)
+    assert genesis_hash == chain.tip_hash
+    assert genesis_app_hash == state_commitment(initial)
+
+    block = chain.append([create_transaction(alice, bob_id, 5, 0)])
+    block_hash, app_hash = chain.checkpoint_ancestor_commitments(1)
+    assert block_hash == block.block_hash
+    assert app_hash == block.state_root
+    chain.close()
+
+
+def test_checkpoint_ancestor_commitments_reject_invalid_or_future_heights(tmp_path):
+    chain = LocalChain(
+        tmp_path / "checkpoint-ancestor-bounds.sqlite",
+        LedgerState(supply_cap=100),
+    )
+    with pytest.raises(ChainError, match="non-negative integer"):
+        chain.checkpoint_ancestor_commitments(True)
+    with pytest.raises(ChainError, match="non-negative integer"):
+        chain.checkpoint_ancestor_commitments(-1)
+    with pytest.raises(ChainError, match="exceeds local chain height"):
+        chain.checkpoint_ancestor_commitments(1)
+    chain.close()

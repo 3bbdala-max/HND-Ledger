@@ -183,6 +183,51 @@ class LocalChain:
     def height(self) -> int:
         return len(self.blocks)
 
+    def checkpoint_ancestor_commitments(self, height: int) -> tuple[bytes, bytes]:
+        """Return (block hash, app hash) at a locally replayed height.
+
+        Height zero is represented by the genesis hash and the genesis-state
+        commitment. Positive heights use the verified block hash and state
+        root reconstructed during chain replay.
+        """
+        if isinstance(height, bool) or not isinstance(height, int) or height < 0:
+            raise ChainError("checkpoint ancestor height must be a non-negative integer")
+        if height > self.height:
+            raise ChainError("checkpoint ancestor height exceeds local chain height")
+        if height == 0:
+            import cbor2
+
+            row = self.db.execute(
+                "SELECT value FROM metadata WHERE key='genesis_state'"
+            ).fetchone()
+            if row is None:
+                raise ChainError("persisted genesis state is missing")
+            try:
+                decoded = cbor2.loads(row[0])
+                if (not isinstance(decoded, list) or len(decoded) != 4
+                        or decoded[0] != 2 or not isinstance(decoded[3], list)):
+                    raise ChainError("persisted genesis state is malformed")
+                _, chain_id, supply_cap, rows = decoded
+                genesis_state = LedgerState(
+                    balances={item[0]: item[1] for item in rows if item[1] != 0},
+                    next_nonces={item[0]: item[2] for item in rows if item[2] != 0},
+                    chain_id=chain_id,
+                    supply_cap=supply_cap,
+                )
+                genesis_hash = _genesis_hash(chain_id, genesis_state)
+                stored_hash = self.db.execute(
+                    "SELECT value FROM metadata WHERE key='genesis_hash'"
+                ).fetchone()
+                if stored_hash is None or stored_hash[0] != genesis_hash:
+                    raise ChainError("persisted genesis commitment mismatch")
+                return genesis_hash, state_commitment(genesis_state)
+            except ChainError:
+                raise
+            except Exception as exc:
+                raise ChainError("unable to read genesis checkpoint commitments") from exc
+        block = self.blocks[height - 1]
+        return block.block_hash, block.state_root
+
     def _assert_tip_metadata(self) -> None:
         import cbor2
 
