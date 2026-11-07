@@ -194,8 +194,19 @@ func runRemoteAntiDoubleSignProbe() {
 	if err := client.SignVote(chainID, conflict); err == nil { fail("remote signer accepted conflicting vote at identical H/R/type") }
 	if err := child.Process.Signal(syscall.SIGTERM); err != nil { fail("stop first remote signer: %v", err) }
 	if err := child.Wait(); err != nil { fail("wait for first remote signer exit: %v", err) }
-	deadline := time.Now().Add(5*time.Second)
-	for client.IsConnected() && time.Now().Before(deadline) { time.Sleep(25*time.Millisecond) }
+	// Recreate the node-side listener/client after the child exits. Reusing a
+	// stale endpoint can leave a broken pipe even when the signer has restarted.
+	if err := client.Close(); err != nil { fail("close first anti-double-sign client: %v", err) }
+	if err := rawListener.Close(); err != nil { fail("close first anti-double-sign listener: %v", err) }
+	_ = os.Remove(socketPath)
+	rawListener, err = net.Listen("unix", socketPath)
+	if err != nil { fail("reopen anti-double-sign listener: %v", err) }
+	defer rawListener.Close()
+	if err := os.Chmod(socketPath, 0o600); err != nil { fail("restrict restarted anti-double-sign socket: %v", err) }
+	endpoint = privval.NewSignerListenerEndpoint(log.NewNopLogger(), privval.NewUnixListener(rawListener))
+	client, err = privval.NewSignerClient(endpoint, chainID)
+	if err != nil { fail("create restarted anti-double-sign client: %v", err) }
+	defer client.Close()
 	child = startChild(true)
 	if err := client.WaitForConnection(10*time.Second); err != nil { fail("wait for restarted anti-double-sign signer: %v", err) }
 	restartedPub, err := client.GetPubKey()
