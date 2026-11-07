@@ -36,6 +36,7 @@ jobs:
       - name: Build HND ABCI socket adapter
         run: |
           cd abci-adapter
+          go mod tidy
           go build -o "$RUNNER_TEMP/hnd-abci" ./cmd/hnd-abci
 
       - name: Generate a single-validator development network
