@@ -114,11 +114,28 @@ class ABCIDispatcher:
 
         if app_state:
             try:
-                decoded = cbor2.loads(app_state)
-                if cbor2.dumps(decoded, canonical=True) != app_state:
-                    raise ValueError("non-canonical genesis CBOR")
+                # CometBFT transports app_state as raw JSON bytes. Use a
+                # canonical JSON envelope around the canonical CBOR payload.
+                envelope = json.loads(app_state)
+                canonical_envelope = json.dumps(
+                    envelope, sort_keys=True, separators=(",", ":")
+                ).encode("utf-8")
+                if canonical_envelope != app_state:
+                    raise ValueError("non-canonical genesis JSON envelope")
+                if (not isinstance(envelope, dict)
+                        or set(envelope) != {"payload", "version"}
+                        or envelope.get("version") != 2
+                        or not isinstance(envelope.get("payload"), str)):
+                    raise ValueError("genesis envelope must contain version 2 and base64 payload")
+                try:
+                    cbor_payload = base64.b64decode(envelope["payload"], validate=True)
+                except (binascii.Error, ValueError) as exc:
+                    raise ValueError("genesis payload is not valid base64") from exc
+                decoded = cbor2.loads(cbor_payload)
+                if cbor2.dumps(decoded, canonical=True) != cbor_payload:
+                    raise ValueError("non-canonical genesis CBOR payload")
                 if not isinstance(decoded, list) or len(decoded) != 3 or decoded[0] != 2:
-                    raise ValueError("genesis must be [2, supply_cap, allocations]")
+                    raise ValueError("genesis payload must be [2, supply_cap, allocations]")
                 _, supply_cap, allocations = decoded
                 if (isinstance(supply_cap, bool) or not isinstance(supply_cap, int)
                         or supply_cap < 0 or supply_cap > MAX_SUPPLY):
