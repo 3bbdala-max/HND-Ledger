@@ -380,3 +380,21 @@ def test_mempool_enforces_item_and_byte_limits_and_releases_committed_capacity(t
     assert dispatcher("InsertTx", {"tx": _b64(second)}) == {"code": 0}
     assert dispatcher._mempool_bytes == len(second)
     chain.close()
+
+def test_unsupported_consensus_and_snapshot_methods_fail_closed(tmp_path):
+    dispatcher, chain, *_ = _dispatcher(tmp_path, funded=False)
+    unsupported = (
+        "ExtendVote",
+        "VerifyVoteExtension",
+        "ListSnapshots",
+        "OfferSnapshot",
+        "LoadSnapshotChunk",
+        "ApplySnapshotChunk",
+    )
+    for method in unsupported:
+        try:
+            dispatcher(method, {})
+            assert False, f"{method} must not fabricate an ABCI success response"
+        except NotImplementedError as exc:
+            assert method in str(exc)
+    chain.close()
