@@ -250,6 +250,10 @@ def main():
                 try: diagnostics["signer_log"]=(root/"signer4.log").read_text(errors="replace")[-12000:]
                 except Exception as log_exc: diagnostics["signer_log"]=repr(log_exc)
                 raise RuntimeError("initial consensus diagnostics: "+json.dumps(diagnostics,sort_keys=True)) from exc
+            if signer_binary:
+                wait(lambda: ("HND_NOISE_REMOTE_SIGNER_CONNECTED" if noise_mode else "HND_REMOTE_SIGNER_CONNECTED") in (root/"signer4.log").read_text(errors="replace"),"external signer connection marker",30)
+                if (homes[3]/"config"/"priv_validator_key.json").exists() or (homes[3]/"data"/"priv_validator_state.json").exists():
+                    raise AssertionError("remote-only validator created local consensus key/state files after RPC startup")
             if noise_mode:
                 wait(lambda: "HND_NOISE_REMOTE_SIGNER_CONNECTED" in (root/"signer4.log").read_text(errors="replace"),"authenticated Noise signer connection marker",30)
                 rejection=cmd([str(Path(signer_binary).resolve()),"--probe-unauthorized",noise_addr,str(homes[3]/"config/node_key.json")])
@@ -441,6 +445,8 @@ def main():
                 wait(restarted_signer_connected,"new remote signer process connected to restarted validator",45)
             # The HTTP endpoint was intentionally offline while the node was stopped.
             wait(lambda: rpc_status(urls[3]),"restarted CometBFT RPC readiness",60)
+            if signer_binary and ((homes[3]/"config"/"priv_validator_key.json").exists() or (homes[3]/"data"/"priv_validator_state.json").exists()):
+                raise AssertionError("remote-only validator recreated local consensus key/state files after RPC recovery")
             restored_info=abci_info(urls[3])
             restored_alice=account(urls[3],aid)["balance"]
             restored_bob=account(urls[3],bid)["balance"]
