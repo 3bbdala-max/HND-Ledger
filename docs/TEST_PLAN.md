@@ -211,3 +211,8 @@ Added end-to-end unit tests for `assess_local_chain`: exact genesis match, local
 ## Local-tip-bound checkpoint publication
 
 Added `publish_local_chain_checkpoint` on the implementation branch. It verifies the signed checkpoint against the replay-verified local chain's exact chain ID, genesis hash, height, block hash, and application-state commitment before delegating to provider-neutral CAS publication. Tests reject wrong height, block hash, application hash, and an untrusted signer. This helper does not establish consensus finality or atomicity with SQLite and is not wired into ABCI commit. Production external authority remains unconfigured.
+
+
+## Startup-gate authority race tests
+
+On test commit `39d52b861fbeb2fb9e843500b8a222bd64a9bf1a`, two regression cases verify that the exact-match gate rejects (1) an authority checkpoint that advances between the assessment read and the final read, and (2) an authority outage on that final read. These tests prove rejection of those two simulated races only. They do not prove safety against an authority advancing after the gate returns; runtime leases/fencing and provider-side coordination remain open.
