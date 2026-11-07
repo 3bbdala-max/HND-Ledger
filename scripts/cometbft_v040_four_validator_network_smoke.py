@@ -135,9 +135,10 @@ def set_partition(relays, groups):
 
 def main():
     ap=argparse.ArgumentParser()
-    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary"); ap.add_argument("--remote-only-binary")
-    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or a.remote_signer_binary; noise_mode=bool(a.noise_remote_signer_binary); remote_only_binary=str(Path(a.remote_only_binary).resolve()) if a.remote_only_binary else None
+    ap.add_argument("--binary",required=True); ap.add_argument("--cometbft-source",required=True); ap.add_argument("--remote-signer-binary"); ap.add_argument("--noise-remote-signer-binary"); ap.add_argument("--remote-only-binary"); ap.add_argument("--all-remote-signers",action="store_true")
+    a=ap.parse_args(); binary=str(Path(a.binary).resolve()); source=Path(a.cometbft_source).resolve(); signer_binary=a.noise_remote_signer_binary or a.remote_signer_binary; noise_mode=bool(a.noise_remote_signer_binary); all_signers_mode=bool(a.all_remote_signers); remote_only_binary=str(Path(a.remote_only_binary).resolve()) if a.remote_only_binary else None
     if signer_binary and not remote_only_binary: ap.error("external signer mode requires --remote-only-binary")
+    if all_signers_mode and (noise_mode or not a.remote_signer_binary): ap.error("--all-remote-signers currently requires the Unix --remote-signer-binary transport")
     if not Path(binary).is_file() or not (source/"go.mod").is_file(): ap.error("missing pinned CometBFT binary/source")
     if remote_only_binary and not Path(remote_only_binary).is_file(): ap.error("missing remote-only CometBFT binary")
     node_binary=remote_only_binary if signer_binary else binary
@@ -166,24 +167,29 @@ def main():
         if '"app_state": {}' not in gtext: raise RuntimeError("Genesis app_state placeholder not found")
         gbytes=(gtext.replace('"app_state": {}','"app_state": '+canonical_json(appstate).decode())+"\n").encode()
         for h in homes: (h/"config/genesis.json").write_bytes(gbytes)
+        signer_records={}
         signer_socket = root/"validator4-privval.sock"
         signer_key_path = root/"signer4"/"priv_validator_key.json"
         signer_state_path = root/"signer4"/"priv_validator_state.json"
         if signer_binary:
-            (root/"signer4").mkdir(mode=0o700)
-            # Move both halves of CometBFT's FilePV into signer ownership.
-            # LoadFilePV is deliberately fail-closed: it must never silently
-            # create a fresh anti-double-sign state during signer startup.
-            signer_state_source = homes[3]/"data"/"priv_validator_state.json"
-            if not signer_state_source.is_file():
-                raise RuntimeError(f"validator 4 initial FilePV state missing: {signer_state_source}")
-            shutil.move(str(homes[3]/"config/priv_validator_key.json"), str(signer_key_path))
-            shutil.move(str(signer_state_source), str(signer_state_path))
-            os.chmod(signer_key_path, 0o600)
-            os.chmod(signer_state_path, 0o600)
-            # The initial state digest is only a baseline; FilePV advances this file
-            # as it signs. Recovery pins the final digest after the signer is stopped.
-            initial_signer_state_digest = sha256_file(signer_state_path)
+            signer_indices=range(N) if all_signers_mode else [3]
+            for i in signer_indices:
+                signer_dir=root/f"signer{i+1}"
+                signer_dir.mkdir(mode=0o700)
+                key_path=signer_dir/"priv_validator_key.json"
+                state_path=signer_dir/"priv_validator_state.json"
+                state_source=homes[i]/"data"/"priv_validator_state.json"
+                if not state_source.is_file():
+                    raise RuntimeError(f"validator {i+1} initial FilePV state missing: {state_source}")
+                shutil.move(str(homes[i]/"config/priv_validator_key.json"),str(key_path))
+                shutil.move(str(state_source),str(state_path))
+                os.chmod(key_path,0o600); os.chmod(state_path,0o600)
+                signer_records[i]={"directory":signer_dir,"socket":root/f"validator{i+1}-privval.sock","key":key_path,"state":state_path}
+            signer_key_path=signer_records[3]["key"]
+            signer_state_path=signer_records[3]["state"]
+            signer_socket=signer_records[3]["socket"]
+            # This baseline is retained for validator-4 recovery diagnostics.
+            initial_signer_state_digest=sha256_file(signer_state_path)
         eps=[{"p2p":f"127.0.0.1:{BASE+3*i}","rpc":f"http://127.0.0.1:{BASE+3*i+1}","abci":f"127.0.0.1:{BASE+3*i+2}"} for i in range(N)]
         relays={}
         try:
