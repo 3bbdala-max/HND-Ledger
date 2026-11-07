@@ -80,3 +80,16 @@ The existing consensus matrix also records a four-validator partition/healing te
 4. Wire the gate into the actual CometBFT lifecycle so no consensus writes can occur before successful verification and after an unacknowledged checkpoint update.
 5. Test adversarial proposals, equivocation, delayed/reordered messages, Byzantine voting-power boundaries, power-loss durability, and independent multi-host operators.
 6. Complete independent protocol, cryptographic, application-security, economic, and legal reviews before any public launch.
+
+
+## Verified update — external authority contract and exact-SHA CI (2026-11-08)
+
+The implementation-status refresh commit `338ffc32a0db05b7232086daaab3d366f6bb562c` completed all four workflows successfully on that exact commit:
+- HND Python tests: run `42413770023`.
+- CometBFT one-node restart: run `42413769994`.
+- CometBFT three-validator smoke: run `42413770141`.
+- CometBFT four-validator liveness/recovery: run `42413770170`.
+
+The new design contract is documented in `docs/EXTERNAL_CHECKPOINT_AUTHORITY_CONTRACT.md` (documentation commit `6d92241551979a5453a926b1ae456fb0ba2ca330`). It specifies the required independent trust boundary, linearizable monotonic compare-and-swap, authenticated transport and authorization, KMS/HSM-backed signing-key custody, consensus-safe publication evidence, crash/recovery behavior, fencing requirements, and real-provider conformance tests.
+
+This document is a specification, not an implemented service. No provider was selected or provisioned, and no credentials or signing secrets were added. The Go CometBFT adapter remains a transport adapter to the Python application; checkpoint startup and commit enforcement remain unwired. Production anti-rollback protection remains unimplemented and unclaimed.
