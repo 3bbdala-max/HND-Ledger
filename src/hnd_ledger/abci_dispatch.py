@@ -165,14 +165,17 @@ class ABCIDispatcher:
             except (ValueError, TypeError, cbor2.CBORDecodeError) as exc:
                 raise IPCError(f"invalid HND genesis app_state_bytes: {exc}") from exc
             try:
-                self.application.chain.initialize_genesis(genesis_state)
+                self.application.chain.initialize_genesis(genesis_state, marker=marker)
             except ValueError as exc:
                 raise IPCError(f"unable to install HND genesis allocations: {exc}") from exc
-        with self.application.chain.db:
-            self.application.chain.db.execute(
-                "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
-                (marker,),
-            )
+        else:
+            # Empty genesis has no state allocation to install; its marker is
+            # still persisted so identical InitChain retries remain idempotent.
+            with self.application.chain.db:
+                self.application.chain.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('cometbft_genesis_marker',?)",
+                    (marker,),
+                )
         return {"validators": []}
 
     def _handle_CheckTx(self, payload: dict[str, Any]) -> dict[str, Any]:
