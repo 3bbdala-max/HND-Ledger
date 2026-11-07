@@ -192,8 +192,7 @@ func runRemoteAntiDoubleSignProbe() {
 	if !bytes.Equal(firstSig, retry.Signature) { fail("identical remote retry did not reuse persisted signature") }
 	conflict := makeVote("anti-double-B")
 	if err := client.SignVote(chainID, conflict); err == nil { fail("remote signer accepted conflicting vote at identical H/R/type") }
-	if err := child.Process.Signal(syscall.SIGTERM); err != nil { fail("stop first remote signer: %v", err) }
-	if err := child.Wait(); err != nil { fail("wait for first remote signer exit: %v", err) }
+	stopSignerProcess(child, "first remote anti-double-sign signer")
 	// Recreate the node-side listener/client after the child exits. Reusing a
 	// stale endpoint can leave a broken pipe even when the signer has restarted.
 	if err := client.Close(); err != nil { fail("close first anti-double-sign client: %v", err) }
@@ -217,8 +216,7 @@ func runRemoteAntiDoubleSignProbe() {
 	if !bytes.Equal(firstSig, retryAfterRestart.Signature) { fail("restarted remote signer did not reuse persisted signature") }
 	conflictAfterRestart := makeVote("anti-double-B")
 	if err := client.SignVote(chainID, conflictAfterRestart); err == nil { fail("restarted remote signer accepted conflicting vote") }
-	_ = child.Process.Signal(syscall.SIGTERM)
-	_ = child.Wait()
+	stopSignerProcess(child, "restarted remote anti-double-sign signer")
 	fmt.Println("COMETBFT_V040_REMOTE_SIGNER_ANTI_DOUBLE_SIGN_RESTART_OK")
 }
 
