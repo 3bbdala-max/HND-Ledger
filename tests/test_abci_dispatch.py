@@ -462,3 +462,30 @@ def test_mempool_concurrent_batch_admission_and_commit_accounting(tmp_path):
     assert len(dispatcher._mempool) == 0
     assert dispatcher._mempool_bytes == 0
     chain.close()
+
+
+def test_concurrent_duplicate_mempool_submissions_are_accounted_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    dispatcher, chain, alice, bob, _ = _dispatcher(tmp_path)
+    raw = encode_transaction(create_transaction(alice, _key_account(bob), 1, 0))
+    encoded = _b64(raw)
+    submissions = 128
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        responses = list(pool.map(
+            lambda _: dispatcher("InsertTx", {"tx": encoded}),
+            range(submissions),
+        ))
+
+    assert len(responses) == submissions
+    assert all(response["code"] == 0 for response in responses)
+    assert list(dispatcher._mempool) == [raw]
+    assert dispatcher._mempool_bytes == len(raw)
+    assert dispatcher("ReapTxs", {"max_bytes": len(raw)}) == {"txs": [encoded]}
+
+    dispatcher("FinalizeBlock", {"height": 1, "txs": [encoded]})
+    dispatcher("Commit", {})
+    assert dispatcher._mempool_bytes == 0
+    assert list(dispatcher._mempool) == []
+    chain.close()
