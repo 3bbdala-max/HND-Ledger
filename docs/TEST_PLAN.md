@@ -38,7 +38,8 @@ Go tests cover IPC request correlation, malformed/mismatched responses, typed er
 | INT-10 | Identical funded-genesis retry after application restart | PASS, 42362574022 |
 | INT-11 | Conflicting funded-genesis request rejected after restart without state mutation | PASS, 42362574022 |
 | INT-12 | Non-canonical base64 genesis payload rejected without writing marker or allocations | PASS, 42362574022 |
-| INT-13 | Mempool item/byte caps, duplicate accounting, and committed-entry capacity release | PASS, 42365173568 |\n| INT-14 | CheckTx RECHECK rejects stale balance/nonce transactions after commit without mutating state | PASS, 42365759445 |
+| INT-13 | Mempool item/byte caps, duplicate accounting, and committed-entry capacity release | PASS, 42365173568 |
+| INT-14 | CheckTx RECHECK rejects stale balance/nonce transactions after commit without mutating state | PASS, Python regression suite run 42365922063 on c91bb147 |
 
 ## Latest exact-commit CI evidence
 
