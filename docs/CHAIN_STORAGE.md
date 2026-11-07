@@ -14,10 +14,10 @@ Blocks are limited to 1,000 transactions and 64 KiB of encoded payload. On reope
 
 A candidate block is validated against a copy of state before database persistence. The committed in-memory state is advanced only after the SQLite transaction succeeds. A rejected or failed block write must not alter committed state.
 
-The Python test suite injects a SQLite trigger failure during block insertion, verifies rollback of the transaction and in-memory state, then reopens the database and confirms the genesis state remains intact. This is a deterministic write-failure test, not a process-kill or power-loss durability campaign.
+The Python test suite includes a SQLite trigger abort and a child process forcibly terminated from inside an uncommitted block-insert transaction. Reopening the database rolls back the incomplete transaction and restores the original genesis state with no block row. This is one tested crash point, not a full process-kill/power-loss campaign.
 
 ## Compatibility and limitations
 
 Pre-v3 state-root databases are incompatible with the current v3 state commitment. No automatic migration is implemented; treat old local development databases as disposable.
 
-No full crash-injection campaign, backup/restore procedure, database migration, snapshot/state sync, or external rollback checkpoint is complete. SQLite is a per-validator local store, not a shared multi-writer database.
+No complete crash-injection campaign, backup/restore procedure, database migration, snapshot/state sync, or external rollback checkpoint is complete. SQLite is a per-validator local store, not a shared multi-writer database.

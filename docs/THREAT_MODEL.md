@@ -21,6 +21,7 @@ Wallet/private-key holder to transaction decoder; untrusted mempool to proposer;
 | Supply inflation | Genesis cap and invariant; cap included in state commitment v3 | No issuance governance or public allocation policy |
 | Non-canonical encoding | Canonical CBOR re-encoding check | Fuzzing/sustained malformed-input campaign remains |
 | Block/database tampering | Parent linkage, replay, state-root and block-hash verification | No external trusted checkpoint or rollback detection |
+| Crash during block write | SQLite transaction rollback; trigger failure and child-process termination test | Other crash points and power-loss durability remain untested |
 | Malicious proposer | ProcessProposal and FinalizeBlock validate ordered transactions | No adversarial proposer/round campaign |
 | Validator equivocation | CometBFT voting/signing protocol | No HND-specific slashing/evidence policy or double-sign campaign |
 | Network partition | CometBFT quorum consensus | Partition/healing tests not executed |
@@ -32,10 +33,10 @@ Wallet/private-key holder to transaction decoder; untrusted mempool to proposer;
 
 ## Consensus assumptions
 
-CometBFT v0.40.0 is integrated in local CI. Three validators run as separate processes with separate node homes, identities, Python apps, SQLite databases, and IPC sockets, but are co-located on one CI runner. The tests demonstrate ordinary proposal/commit, application-hash agreement, query responses, overspend filtering, and restart recovery. They do not test Byzantine validators, conflicting quorums, partitions, independent operators, or multi-host operation.
+CometBFT v0.40.0 is integrated in local CI. Three validators run as separate processes with separate node homes, identities, Python apps, SQLite databases, and IPC sockets, but are co-located on one CI runner. Tests demonstrate ordinary proposal/commit, application-hash agreement, query responses, overspend filtering, and restart recovery. They do not test Byzantine validators, conflicting quorums, partitions, independent operators, or multi-host operation.
 
 ## Mandatory release gates
 
-Independent protocol/cryptographic review; adversarial consensus tests; multi-host independently operated validators; validator key custody and anti-double-signing; crash injection, backup/restore and upgrades; resource-exhaustion tests; monitoring and incident response; independent security, economic, and jurisdiction-specific legal review.
+Independent protocol/cryptographic review; adversarial consensus tests; multi-host independently operated validators; validator key custody and anti-double-signing; crash injection at all persistence boundaries; backup/restore and upgrades; resource-exhaustion tests; monitoring and incident response; independent security, economic, and jurisdiction-specific legal review.
 
 This document does not establish decentralization, production security, fault tolerance under adversarial conditions, audit status, legal approval, or readiness for public launch.
