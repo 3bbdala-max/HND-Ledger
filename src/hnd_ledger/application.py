@@ -17,7 +17,7 @@ from .chain import (
     LocalChain,
     state_commitment,
 )
-from .protocol import Transaction, decode_transaction, encode_transaction
+from .protocol import Transaction, decode_transaction, encode_transaction, verify_transaction
 from .state import LedgerState
 
 
@@ -83,13 +83,14 @@ class LedgerApplication:
         return {"last_block_height": self.height, "last_block_app_hash": self.app_hash}
 
     def check_tx(self, raw_transaction: bytes) -> None:
-        """Admission check against committed state; does not reserve a nonce."""
+        """Weak mempool admission: validate encoding, chain ID, and signature only.
+
+        Balance and nonce validity depend on transaction ordering and may change
+        before proposal execution. ProcessProposal/FinalizeBlock enforce those
+        state-dependent rules against the complete ordered block.
+        """
         tx = decode_transaction(raw_transaction, self.chain.state.chain_id)
-        candidate = _copy_state(self.chain.state)
-        try:
-            candidate.apply(tx)
-        except ValueError as exc:
-            raise ChainError(f"transaction rejected: {exc}") from exc
+        verify_transaction(tx, self.chain.state.chain_id)
 
     def prepare_proposal(self, raw_transactions: Iterable[bytes]) -> tuple[bytes, ...]:
         """Select a valid ordered prefix without changing committed state."""
