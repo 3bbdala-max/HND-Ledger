@@ -350,35 +350,40 @@ def test_mempool_enforces_item_and_byte_limits_and_releases_committed_capacity(t
     dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path)
     bob_id = _key_account(bob)
     first = encode_transaction(create_transaction(alice, bob_id, 10, 0))
-    second = encode_transaction(create_transaction(bob, alice_id, 1, 0))
+    second = encode_transaction(create_transaction(alice, bob_id, 1, 1))
+    third = encode_transaction(create_transaction(alice, bob_id, 1, 2))
 
     monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_BYTES", len(first) - 1)
     assert dispatcher("InsertTx", {"tx": _b64(first)}) == {"code": 2}
     assert dispatcher._mempool_bytes == 0
     assert list(dispatcher._mempool) == []
 
-    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_BYTES", len(first))
-    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_ITEMS", 1)
+    # Each transaction fits by itself, but the aggregate byte budget does not
+    # allow all three. Duplicate submissions must not consume extra capacity.
+    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_BYTES", len(first) + len(second) - 1)
+    monkeypatch.setattr(dispatch_module, "MAX_MEMPOOL_ITEMS", 3)
     assert dispatcher("InsertTx", {"tx": _b64(first)}) == {"code": 0}
     assert dispatcher("InsertTx", {"tx": _b64(first)}) == {"code": 0}
-    assert dispatcher._mempool_bytes == len(first)
-    assert list(dispatcher._mempool) == [first]
+    assert dispatcher("InsertTx", {"tx": _b64(second)}) == {"code": 0}
+    assert dispatcher._mempool_bytes == len(first) + len(second)
+    assert list(dispatcher._mempool) == [first, second]
+    assert dispatcher("InsertTx", {"tx": _b64(third)}) == {"code": 2}
+    assert dispatcher._mempool_bytes == len(first) + len(second)
 
-    # A second distinct, correctly signed transaction is rejected by the
-    # item limit, without changing the byte accounting for the first one.
-    assert dispatcher("InsertTx", {"tx": _b64(second)}) == {"code": 2}
-    assert dispatcher._mempool_bytes == len(first)
-    assert list(dispatcher._mempool) == [first]
-
+    # Commit removes only included transactions and releases their bytes.
     dispatcher("FinalizeBlock", {"height": 1, "txs": [_b64(first)]})
+    dispatcher("Commit", {})
+    assert dispatcher._mempool_bytes == len(second)
+    assert list(dispatcher._mempool) == [second]
+
+    dispatcher("FinalizeBlock", {"height": 2, "txs": [_b64(second)]})
     dispatcher("Commit", {})
     assert dispatcher._mempool_bytes == 0
     assert list(dispatcher._mempool) == []
 
-    # Committed capacity is reusable; weak admission allows a valid signature
-    # here and proposal execution will later enforce the sender's balance.
-    assert dispatcher("InsertTx", {"tx": _b64(second)}) == {"code": 0}
-    assert dispatcher._mempool_bytes == len(second)
+    # Capacity is reusable after committed entries are evicted.
+    assert dispatcher("InsertTx", {"tx": _b64(third)}) == {"code": 0}
+    assert dispatcher._mempool_bytes == len(third)
     chain.close()
 
 def test_unsupported_consensus_and_snapshot_methods_fail_closed(tmp_path):
