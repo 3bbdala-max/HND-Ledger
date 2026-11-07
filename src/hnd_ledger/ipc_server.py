@@ -90,6 +90,9 @@ def encode_response(request_id: str, *, result: Any = None,
 
 
 class _UnixServer(socketserver.UnixStreamServer):
+    # Keep a bounded burst of local clients queued while the SQLite-backed
+    # dispatcher processes requests serially.
+    request_queue_size = 64
     daemon_threads = True
     allow_reuse_address = False
 
