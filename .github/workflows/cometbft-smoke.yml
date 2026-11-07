@@ -53,53 +53,110 @@ jobs:
               json.dump(genesis, stream, separators=(",", ":"))
           PY
 
-      - name: Start Python engine, Go adapter, and CometBFT node
+      - name: Start services, produce blocks, restart, and verify recovery
         shell: bash
         run: |
           set -euo pipefail
           SOCKET="$RUNNER_TEMP/hnd-python.sock"
           DB="$RUNNER_TEMP/hnd-ledger.sqlite"
           NET="$RUNNER_TEMP/hnd-net/node0"
+          PY_LOG="$RUNNER_TEMP/python-engine.log"
+          GO_LOG="$RUNNER_TEMP/go-adapter.log"
+          NODE_LOG="$RUNNER_TEMP/cometbft.log"
 
-          hnd-abci-python --chain-db "$DB" --socket "$SOCKET" --init-empty-dev-genesis             >"$RUNNER_TEMP/python-engine.log" 2>&1 &
-          PY_PID=$!
+          start_engine() {
+            hnd-abci-python --chain-db "$DB" --socket "$SOCKET" \
+              "${1:-}" >"$PY_LOG" 2>&1 &
+            PY_PID=$!
+            for _ in $(seq 1 30); do
+              [[ -S "$SOCKET" ]] && return 0
+              kill -0 "$PY_PID" 2>/dev/null || { cat "$PY_LOG"; return 1; }
+              sleep 1
+            done
+            echo "Python IPC socket did not appear"
+            cat "$PY_LOG"
+            return 1
+          }
 
-          for _ in $(seq 1 30); do
-            [[ -S "$SOCKET" ]] && break
+          start_adapter() {
+            HND_IPC_SOCKET="$SOCKET" HND_ABCI_LISTEN="tcp://127.0.0.1:26658" \
+              "$RUNNER_TEMP/hnd-abci" >"$GO_LOG" 2>&1 &
+            GO_PID=$!
             sleep 1
-          done
-          [[ -S "$SOCKET" ]]
+            kill -0 "$GO_PID"
+          }
 
-          HND_IPC_SOCKET="$SOCKET" HND_ABCI_LISTEN="tcp://127.0.0.1:26658"             "$RUNNER_TEMP/hnd-abci" >"$RUNNER_TEMP/go-adapter.log" 2>&1 &
-          GO_PID=$!
+          start_node() {
+            cometbft start --home "$NET" >"$NODE_LOG" 2>&1 &
+            NODE_PID=$!
+          }
 
-          cometbft start --home "$NET" >"$RUNNER_TEMP/cometbft.log" 2>&1 &
-          NODE_PID=$!
-
-          cleanup() {
+          stop_services() {
             kill "$NODE_PID" "$GO_PID" "$PY_PID" 2>/dev/null || true
             wait "$NODE_PID" "$GO_PID" "$PY_PID" 2>/dev/null || true
           }
-          trap cleanup EXIT
+          trap stop_services EXIT
 
-          reached_height=0
+          # First boot explicitly creates only a zero-allocation development ledger.
+          hnd-abci-python --chain-db "$DB" --socket "$SOCKET" --init-empty-dev-genesis \
+            >"$PY_LOG" 2>&1 &
+          PY_PID=$!
+          for _ in $(seq 1 30); do
+            [[ -S "$SOCKET" ]] && break
+            kill -0 "$PY_PID" 2>/dev/null || { cat "$PY_LOG"; exit 1; }
+            sleep 1
+          done
+          [[ -S "$SOCKET" ]]
+          start_adapter
+          start_node
+
+          first_height=0
           for _ in $(seq 1 90); do
             if curl --silent --fail http://127.0.0.1:26657/status -o "$RUNNER_TEMP/status.json"; then
-              reached_height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status.json")
-              if [[ "$reached_height" -ge 1 ]]; then
-                echo "CometBFT reached height $reached_height"
+              first_height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status.json")
+              if [[ "$first_height" -ge 2 ]]; then
+                echo "Initial node reached height $first_height"
+                break
+              fi
+            fi
+            kill -0 "$NODE_PID" 2>/dev/null || { echo "Initial CometBFT process exited"; cat "$NODE_LOG"; exit 1; }
+            sleep 1
+          done
+          [[ "$first_height" -ge 2 ]] || { echo "Initial node did not reach height 2"; cat "$PY_LOG" "$GO_LOG" "$NODE_LOG"; exit 1; }
+
+          # Stop all three processes and retain both the SQLite ledger and node home.
+          kill "$NODE_PID"
+          wait "$NODE_PID" || true
+          kill "$GO_PID" "$PY_PID"
+          wait "$GO_PID" "$PY_PID" 2>/dev/null || true
+          rm -f "$SOCKET"
+          echo "Stopped all processes at committed node height $first_height"
+
+          # Restart against the existing database: no genesis flag and no data deletion.
+          hnd-abci-python --chain-db "$DB" --socket "$SOCKET" >"$PY_LOG" 2>&1 &
+          PY_PID=$!
+          for _ in $(seq 1 30); do
+            [[ -S "$SOCKET" ]] && break
+            kill -0 "$PY_PID" 2>/dev/null || { cat "$PY_LOG"; exit 1; }
+            sleep 1
+          done
+          [[ -S "$SOCKET" ]]
+          start_adapter
+          start_node
+
+          recovered_height=0
+          for _ in $(seq 1 90); do
+            if curl --silent --fail http://127.0.0.1:26657/status -o "$RUNNER_TEMP/status.json"; then
+              recovered_height=$(python -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["result"]["sync_info"]["latest_block_height"]))' "$RUNNER_TEMP/status.json")
+              if [[ "$recovered_height" -gt "$first_height" ]]; then
+                echo "Recovery verified: node advanced from $first_height to $recovered_height"
                 exit 0
               fi
             fi
-            if ! kill -0 "$NODE_PID" 2>/dev/null; then
-              echo "CometBFT process exited before producing a block"
-              break
-            fi
+            kill -0 "$NODE_PID" 2>/dev/null || { echo "CometBFT failed during restart"; cat "$PY_LOG" "$GO_LOG" "$NODE_LOG"; exit 1; }
             sleep 1
           done
 
-          echo "One-node smoke test did not reach height 1"
-          cat "$RUNNER_TEMP/python-engine.log" || true
-          cat "$RUNNER_TEMP/go-adapter.log" || true
-          cat "$RUNNER_TEMP/cometbft.log" || true
+          echo "Restart recovery did not advance beyond height $first_height"
+          cat "$PY_LOG" "$GO_LOG" "$NODE_LOG"
           exit 1
