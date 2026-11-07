@@ -274,6 +274,43 @@ jobs:
           print(f"All validators committed the signed transfer at height {meta['height']}; balances, nonce, and app hash agree: {hashes[0].hex()}")
           PY
 
+          # Exercise the public CometBFT RPC -> Go adapter -> Python read-only
+          # Query path on every validator, not just the in-process dispatcher.
+          python - "$RUNNER_TEMP" <<'PY'
+          import base64
+          import json
+          import pathlib
+          import sys
+          import urllib.parse
+          import urllib.request
+
+          root = pathlib.Path(sys.argv[1])
+          meta = json.loads((root / "hnd-data" / "transfer.json").read_text())
+          for i in range(3):
+              base = f"http://127.0.0.1:{26657+i}/abci_query"
+              for path in ("/hnd/v1/account", "/hnd/v1/info"):
+                  params = {
+                      "path": path,
+                      "height": "0",
+                      "prove": "false",
+                  }
+                  if path == "/hnd/v1/account":
+                      params["data"] = "0x" + meta["alice"]
+                  url = base + "?" + urllib.parse.urlencode(params)
+                  with urllib.request.urlopen(url, timeout=15) as response:
+                      result = json.loads(response.read())["result"]["response"]
+                  if result["code"] != 0:
+                      raise SystemExit(f"validator {i} query {path} failed: {result}")
+                  value = json.loads(base64.b64decode(result["value"]))
+                  if path == "/hnd/v1/account":
+                      if value["balance"] != 750_000 or value["next_nonce"] != 1:
+                          raise SystemExit(f"validator {i} account query mismatch: {value}")
+                  else:
+                      if value["chain_id"] != "HND-LOCAL-V2" or value["total_supply"] != 1_000_000:
+                          raise SystemExit(f"validator {i} ledger info query mismatch: {value}")
+          print("ABCI account and ledger-info queries returned the committed state on all three validators")
+          PY
+
           # CometBFT publishes the app hash committed at H in header H+1.
           target_header_height=$((tx_height + 1))
           header_ready=false
