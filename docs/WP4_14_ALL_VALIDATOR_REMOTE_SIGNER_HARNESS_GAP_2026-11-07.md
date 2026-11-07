@@ -2,8 +2,33 @@
 
 **Date:** 2026-11-07  
 **Branch:** `phase-0.2-planning`  
-**Status:** Engineering review; no all-validator implementation claimed  
+**Current status:** All-four remote-signer test harness implemented and CI-validated over Unix and authenticated Noise; production signer operations and distributed fencing remain OPEN  
 **Scope:** Disposable four-validator CometBFT integration harness
+
+## Current acceptance status (latest evidence, 2026-11-07)
+
+This summary supersedes the earlier dated sections below, which record the
+initial discovery and intermediate implementation stages.
+
+- Four independent external signer processes for all four validators: **CI PASS**.
+- Remote-only CometBFT provider used by all four nodes: **CI PASS**.
+- No local consensus key/state files for all four validators after startup: **CI PASS**.
+- Independent signer key/state records and Genesis public-key identity matching: **CI PASS**.
+- All-four signer transport over Unix sockets: **CI PASS**.
+- All-four signer transport over authenticated Noise: **CI PASS**.
+- Unauthorized Noise peer rejection for every signer: **CI PASS**.
+- Validator-4 signer outage/restart while the other three remain online: **CI PASS**.
+- Four-validator transaction, partition, reconnection, and recovery checks in
+  the all-four signer runs: **CI PASS**.
+- Remote-only CLI rejects missing signer, key-generation commands, and
+  unauthenticated TCP endpoints: **CI PASS**.
+- Multi-host exclusive ownership, durable distributed fencing, stale-leader
+  rejection, and production-grade failover: **OPEN**.
+- Production key custody/HSM, operational approval, signed releases,
+  independent audit, and deployment/recovery evidence: **OPEN**.
+
+The CI evidence is a disposable integration harness using test keys and
+process-local signer helpers. It is not a production deployment approval.
 
 ## Finding
 
