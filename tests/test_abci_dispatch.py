@@ -74,6 +74,7 @@ def test_proposal_finalize_and_commit_flow(tmp_path):
     dispatcher, chain, alice, bob, alice_id = _dispatcher(tmp_path)
     raw = encode_transaction(create_transaction(alice, _key_account(bob), 25, 0))
     assert dispatcher("CheckTx", {"tx": _b64(raw)})["code"] == 0
+    assert dispatcher("InsertTx", {"tx": _b64(raw)}) == {"code": 0}
     prepared = dispatcher("PrepareProposal", {
         "max_tx_bytes": 65_536, "txs": [_b64(raw)],
     })
@@ -88,6 +89,7 @@ def test_proposal_finalize_and_commit_flow(tmp_path):
     assert dispatcher("Commit", {}) == {"retain_height": 0}
     assert chain.height == 1
     assert chain.state.balances[alice_id] == 75
+    assert dispatcher("ReapTxs", {"max_bytes": 65_536}) == {"txs": []}
     chain.close()
 
 
