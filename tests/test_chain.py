@@ -72,6 +72,40 @@ def test_genesis_state_and_marker_persist_atomically(tmp_path):
     chain.close()
 
 
+
+def test_block_persistence_failure_rolls_back_without_state_advance(tmp_path):
+    key = Ed25519PrivateKey.generate()
+    recipient_key = Ed25519PrivateKey.generate()
+    sender_id = account(key)
+    recipient_id = account(recipient_key)
+    initial = LedgerState(balances={sender_id: 100}, supply_cap=100)
+    chain = LocalChain(tmp_path / "atomic-block.sqlite", initial)
+    before_hash = chain.tip_hash
+    tx = create_transaction(key, recipient_id, 40, 0)
+
+    chain.db.execute(
+        """
+        CREATE TRIGGER reject_block_insert
+        BEFORE INSERT ON blocks
+        BEGIN
+            SELECT RAISE(ABORT, 'simulated block write failure');
+        END
+        """
+    )
+    chain.db.commit()
+
+    with pytest.raises(ChainError, match="block persistence conflict"):
+        chain.append([tx])
+
+    assert chain.height == 0
+    assert chain.tip_hash == before_hash
+    assert chain.state.balances == {sender_id: 100}
+    assert chain.state.next_nonces == {}
+    assert chain.blocks == []
+    assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
+    chain.close()
+
+
 def test_append_and_restore_preserves_state(tmp_path):
     alice = Ed25519PrivateKey.generate()
     bob = Ed25519PrivateKey.generate()
