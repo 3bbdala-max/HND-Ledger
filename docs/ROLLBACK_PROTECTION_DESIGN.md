@@ -177,3 +177,10 @@ This remains an explicit primitive, not an automatic CometBFT startup hook. The 
 ## Startup-gate authority race regression
 
 The exact-match startup helper performs a second authenticated authority read after its initial local assessment and compares the checkpoint against the local tip again. Regression tests simulate the authority advancing between those reads and becoming unavailable on the final read; both cases are rejected. This narrows the read/assessment race but does not provide a lease or fencing token: the authority can still advance immediately after the helper returns. Production runtime safety therefore still requires an authority protocol that coordinates validator identity, checkpoint advancement, and write authorization; this helper alone is not a continuous anti-rollback guarantee.
+
+
+## Restart regression: local commit completed, checkpoint publication interrupted
+
+Test commit `0aa49d823c252fc8214cd1ed9aa0f96fe4c551e8` adds a restart-level regression for the distributed commit window: the SQLite block append succeeds, the process closes before publishing the next external checkpoint, and a fresh `LocalChain` reopens the database. The external authority still holds the genesis checkpoint. The reopened chain is classified `LOCAL_AHEAD_UNVERIFIED`; the exact-match startup gate rejects it. The test also verifies that matching checkpoint ancestry alone does not authorize writes.
+
+This is a deterministic process/reopen simulation against the volatile in-memory authority test double. It does not simulate power loss, a production remote authority, consensus commit evidence, or an authorized recovery workflow. No automatic recovery or checkpoint advancement is performed.
