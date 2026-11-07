@@ -106,7 +106,7 @@ def test_block_persistence_failure_rolls_back_without_state_advance(tmp_path):
     assert chain.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] == 0
     chain.close()
 
-    reopened = LocalChain(path, initial)
+    reopened = LocalChain(path)
     assert reopened.height == 0
     assert reopened.state.balances == {sender_id: 100}
     assert reopened.state.next_nonces == {}
