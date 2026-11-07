@@ -104,3 +104,28 @@ The probe launches two separate OS signer processes against the same key and sta
 
 This is a **negative security reproduction**, not a passing safety test. It establishes that the tested shared FilePV path does not enforce cross-process exclusive ownership. Requests are sequential after both processes load state, so this is not claimed as the simultaneous-request RS-CON-02 acceptance test, a multi-host fencing test, or a crash-boundary test. The comprehensive RS-CON and RS-CRASH matrix remains open.
 
+
+
+## 10. Same-host advisory lock mitigation added (2026-11-07)
+
+The disposable Unix and Noise signer helpers now acquire a non-blocking
+OS-level advisory lock derived from the signer anti-double-sign state path
+before loading FilePV state. Lock files use no-follow open semantics, mode
+0600, regular-file validation, and current-UID ownership checks. The old
+shared-FilePV negative probe has been converted to verify the intended
+same-host behavior:
+
+1. signer process A acquires the state-path lock and signs a vote;
+2. signer process B using the same key/state path is rejected while A is live;
+3. after A exits, B may acquire the lock only using the new persisted state
+   digest;
+4. B must reject a conflicting vote at the same H/R/type.
+
+A parallel Noise-helper lock-contention probe is also wired into CI.
+
+**Evidence status:** implementation and workflow wiring are committed, but
+fresh CI results are pending. This mitigates only cooperating helper
+processes on the same host and local filesystem. It is not a distributed
+lease, a durable fencing token, or a protection against other software that
+does not honor the lock. The RS-CON and RS-CRASH matrix, multi-host failover,
+and signer-side authorization linearization remain OPEN.
