@@ -15,7 +15,7 @@ BLOCK_PREFIX = b"HND-BLOCK-ID-V2\x00"
 STATE_PREFIX = b"HND-STATE-V2\x00"
 GENESIS_PREFIX = b"HND-GENESIS-V2\x00"
 MAX_BLOCK_TRANSACTIONS = 1_000
-MAX_BLOCK_BYTES = 1_048_576
+MAX_BLOCK_BYTES = 65_536
 
 
 class ChainError(ValueError):
@@ -132,6 +132,8 @@ class LocalChain:
         if len(txs) > MAX_BLOCK_TRANSACTIONS:
             raise ChainError("block transaction count exceeds limit")
         encoded = tuple(encode_transaction(tx) for tx in txs)
+        if sum(len(raw) for raw in encoded) > MAX_BLOCK_BYTES:
+            raise ChainError("encoded block exceeds byte limit")
         for tx in txs:
             candidate.apply(tx)
         height = self.height + 1
