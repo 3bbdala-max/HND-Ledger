@@ -11,7 +11,7 @@ The HND state machine must not persist speculative proposal state. Proposal prep
 `LedgerApplication` in `src/hnd_ledger/application.py` exposes:
 
 - `info()`: committed height and state commitment.
-- `check_tx(raw)`: validate one transaction against committed state without reserving a nonce or mutating state.
+- `check_tx(raw)`: weak mempool admission check for canonical encoding, chain ID, and signature only; deliberately does not reject state-dependent balance/nonce conditions or mutate state.
 - `prepare_proposal(raw_transactions)`: build an ordered valid selection against an isolated state copy, bounded by the current transaction-count and byte limits.
 - `process_proposal(raw_transactions)`: deterministically validate the complete proposal against committed state.
 - `finalize_block(raw_transactions)`: calculate the resulting application hash in memory and retain one pending finalized candidate.
@@ -19,7 +19,7 @@ The HND state machine must not persist speculative proposal state. Proposal prep
 
 ## Invariants
 
-1. `check_tx`, `prepare_proposal`, and `process_proposal` never mutate committed state or write a block.
+1. `check_tx`, `prepare_proposal`, and `process_proposal` never mutate committed state or write a block. CheckTx is intentionally weaker than block execution because nonce and balance validity depend on ordered state.
 2. A proposal retry starts from the same committed state; a rejected or abandoned candidate cannot leak balances or nonces.
 3. `finalize_block` does not persist data.
 4. A second finalization or proposal preparation while a finalized candidate awaits commit is rejected.
@@ -33,7 +33,7 @@ The HND state machine must not persist speculative proposal state. Proposal prep
 - No durable write before commit.
 - Abandoned candidate leaves committed state unchanged.
 - Proposal retries do not mutate committed state.
-- Invalid proposal and CheckTx rejection are read-only.
+- Invalid proposal rejection is read-only; CheckTx accepts well-formed future-nonce transactions and leaves state-dependent validity to proposal execution.
 - Commit/finalize lifecycle preconditions.
 
 These are automated tests awaiting a successful CI run on the exact commit. The test that discards a candidate simulates loss of the in-memory process state; it is not a full CometBFT crash/recovery test.
