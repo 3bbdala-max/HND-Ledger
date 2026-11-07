@@ -407,7 +407,7 @@ def test_mempool_concurrent_batch_admission_and_commit_accounting(tmp_path):
     recipient = Ed25519PrivateKey.generate()
     sender_id = _key_account(sender)
     recipient_id = _key_account(recipient)
-    count = 128
+    count = 256
     chain = LocalChain(
         tmp_path / "mempool-batch.sqlite",
         LedgerState(balances={sender_id: count}, supply_cap=count),
