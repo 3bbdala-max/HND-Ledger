@@ -120,3 +120,18 @@ The mempool capacity regression was strengthened on code/test commit `f4d4400746
 ## Maximum byte-bounded concurrent mempool batch
 
 On code/test commit `a70217e61756391c9ab0a4c37245d7d05715eae8`, all four exact-commit workflows passed: Python tests run `42399167647`, one-node CometBFT run `42399167635`, three-validator run `42399167682`, and four-validator liveness/recovery run `42399167636`. The regression constructs nonce-ordered signed transfers until the complete canonical CBOR block would reach its configured byte ceiling, concurrently inserts the batch with 32 workers, verifies exact mempool byte accounting and proposal nonce order, then finalizes and commits the full batch and checks balances/nonces and mempool eviction. The test measures the encoded block envelope as well as transaction bytes. This is bounded maximum-byte regression coverage, not a sustained throughput benchmark, a 1,000-transaction proof, or an adversarial flood-resistance test.
+
+
+## Chain-tip metadata migration and corruption regressions
+
+On code/test commit `9a38f5b008f198c4039b76454ef41b2c48985488`, the Python suite adds:
+- Legacy database migration when both `chain_tip` and `chain_tip_version` are absent; verifies the reconstructed anchor matches the replayed chain and that version 1 is written.
+- Rejection of malformed CBOR bytes in either `chain_tip` or `chain_tip_version`.
+
+All four workflows passed on that exact commit:
+- HND Python tests run `42401168591`: PASS.
+- CometBFT one-node smoke run `42401168559`: PASS.
+- CometBFT three-validator smoke run `42401168669`: PASS.
+- CometBFT four-validator liveness/recovery run `42401168614`: PASS.
+
+The metadata anchor and version marker are stored in the same SQLite database. Deletion or coordinated replacement of both markers cannot be detected by this in-database mechanism alone; an independently stored checkpoint or signed external backup is required for that threat model.
