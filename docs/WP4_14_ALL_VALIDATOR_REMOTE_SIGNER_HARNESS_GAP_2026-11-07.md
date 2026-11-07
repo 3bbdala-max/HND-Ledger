@@ -105,3 +105,19 @@ A further source trace closed the ambiguity left by the previous section. In the
 **Required engineering response:** do not treat deletion of the local key file as a safe configuration for the stock CLI provider. The all-validator harness must either use a deliberately constructed custom `node.Provider` that supplies a non-local placeholder/appropriate validator object without invoking `LoadOrGenFilePV`, or use a patched/approved upstream startup path whose behavior is explicitly tested. Any custom provider must be reviewed against all call sites that may dereference the initially supplied validator before the remote-client substitution. Tests must assert that no local `priv_validator_key.json` is created and that the remote signer public key is the only validator identity used by consensus.
 
 **Evidence boundary:** this conclusion is a static call-path trace across the pinned source files, not yet an executed CLI negative test. The harness refactor and negative startup test remain OPEN. It does not establish that the current HND harness invokes the stock CLI provider; that must be checked in the HND test runner itself before applying this finding to its runtime behavior.
+
+
+### Applicability to the current HND four-validator smoke harness
+
+The HND harness was then traced against the same finding. In `scripts/cometbft_v040_four_validator_network_smoke.py`:
+
+- The harness initializes every home with `[binary, "init", "--home", ...]`, capturing the initial public validator identity from each generated `config/priv_validator_key.json`.
+- For validator 4, the remote-signer setup moves the original key and state files out of the node home.
+- The harness later starts every node with `[binary, "node", "--home", ...]` (line 225 in the reviewed branch version), with no custom provider injected.
+- In the pinned CometBFT CLI, `node` is an alias of the standard `start` command; `cmd/cometbft/main.go` wires that command to `nm.DefaultNewNode`.
+
+**Direct implication for this harness:** validator 4's missing local key causes the stock CLI's `DefaultNewNode` to generate a replacement local FilePV before `NewNodeWithContext` swaps in the remote signer. The remote signer still supplies the active validator identity, which explains why consensus can pass while an unwanted local private key is present. The current smoke test therefore does not prove no-local-fallback resistance; it currently permits local key regeneration for validator 4. Validators 1–3 intentionally continue using their local FilePV.
+
+This is now a concrete, HND-harness-specific coverage gap, not merely a generic upstream concern. Before changing the test to assert absence, the harness must adopt a reviewed startup provider/path that does not call `LoadOrGenFilePV` for externally signed validators, and prove it against the exact pinned binary. Do not paper over this by deleting the regenerated key after startup: the private key has already been created and its presence would invalidate the security assertion.
+
+**Status:** current external signer routing for validator 4 remains exercised; no-local-private-key guarantee for validator 4 is **NOT SATISFIED** by the present stock-CLI test path. All-validator remote signing remains **NOT IMPLEMENTED**.
