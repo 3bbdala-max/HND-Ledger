@@ -41,6 +41,8 @@ Go tests cover IPC request correlation, malformed/mismatched responses, typed er
 | INT-13 | Mempool item/byte caps, duplicate accounting, and committed-entry capacity release | PASS, run 42365173568 |
 | INT-14 | CheckTx RECHECK rejects stale balance/nonce transactions after commit without mutating state | PASS, Python regression suite run 42365922063 |
 | INT-15 | Four-validator quorum continues with one validator stopped; restarted validator catches up and all app hashes agree | PASS, run 42368248630, commit a76cee10; common height 5, app hash 2FA595F9328078EB77A6EE62BDAD3743D619B1371BB82DD78AD0D98FAECC03A9 |
+| INT-16 | Live network partition: validator 0 remains running but has zero peers; validators 1–3 retain two peers each and advance from height 7 to 12 | PASS, run 42377936382, commit 747560b396344d89d3fb223fe12ee29c95684a0c; single CI runner | 
+| INT-17 | Heal partition; validator 0 catches up and all four app hashes agree at height 12 | PASS, run 42377936382, commit 747560b396344d89d3fb223fe12ee29c95684a0c; app hash 2FA595F9328078EB77A6EE62BDAD3743D619B1371BB82DD78AD0D98FAECC03A9 |
 
 ## Latest exact-commit CI evidence
 
@@ -50,6 +52,10 @@ All four workflows completed successfully on code commit `a76cee10eabafc7d27f36d
 - Three-validator integration run `42368248612`: PASS; signed transfer, RPC queries, overspend filtering, state/app-hash consistency, and restart recovery.
 - Four-validator liveness run `42368248630`: PASS; three validators continued producing blocks while the fourth was stopped, and the restarted validator caught up with matching app hash.
 
+## Live partition evidence
+
+On commit `747560b396344d89d3fb223fe12ee29c95684a0c`, workflow run `42377936382` completed successfully. The four validators ran as separate processes and data directories on one GitHub Actions runner. Validator 0 stayed running with zero P2P peers at height 7; validators 1–3 each retained two peers and advanced to height 12. After the partition healed, validator 0 caught up and all four app hashes matched at height 12 (`2FA595F9328078EB77A6EE62BDAD3743D619B1371BB82DD78AD0D98FAECC03A9`). This proves the tested local scenario only, not independent-host fault tolerance.
+
 ## Remaining adversarial and operational tests
 
-Network partition and healing (distinct from process shutdown), conflicting proposals, equivocation, replayed votes, Byzantine voting-power scenarios, validator crash after signing, validator-set updates, state sync, snapshot integrity, database rollback detection, backup/restore, multi-host deployment, mempool flooding, per-peer quotas, CPU/memory exhaustion, and crash injection around every SQLite commit boundary remain unverified.
+Live partition and healing are now verified on one CI runner (INT-16/INT-17); independent multi-host partition testing remains unverified. Conflicting proposals, equivocation, replayed votes, Byzantine voting-power scenarios, validator crash after signing, validator-set updates, state sync, snapshot integrity, database rollback detection, backup/restore, multi-host deployment, mempool flooding, per-peer quotas, CPU/memory exhaustion, and crash injection around every SQLite commit boundary remain unverified.
