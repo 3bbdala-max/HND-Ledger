@@ -27,6 +27,51 @@ def test_state_commitment_covers_chain_id_and_supply_cap():
     assert state_commitment(different_chain) != base_hash
 
 
+
+def test_genesis_state_and_marker_persist_atomically(tmp_path):
+    import sqlite3
+
+    key = Ed25519PrivateKey.generate()
+    account_id_value = account(key)
+    path = tmp_path / "atomic-genesis.sqlite"
+    chain = LocalChain(path, LedgerState(supply_cap=100))
+    before_state = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0]
+    before_hash = chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0]
+    chain.db.execute(
+        """
+        CREATE TRIGGER reject_genesis_marker
+        BEFORE INSERT ON metadata
+        WHEN NEW.key = 'cometbft_genesis_marker'
+        BEGIN
+            SELECT RAISE(ABORT, 'simulated marker write failure');
+        END
+        """
+    )
+    chain.db.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="simulated marker"):
+        chain.initialize_genesis(
+            LedgerState(balances={account_id_value: 50}, supply_cap=100),
+            marker=b"M" * 32,
+        )
+
+    assert chain.state.total_supply == 0
+    assert chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_state'"
+    ).fetchone()[0] == before_state
+    assert chain.db.execute(
+        "SELECT value FROM metadata WHERE key='genesis_hash'"
+    ).fetchone()[0] == before_hash
+    assert chain.db.execute(
+        "SELECT COUNT(*) FROM metadata WHERE key='cometbft_genesis_marker'"
+    ).fetchone()[0] == 0
+    chain.close()
+
+
 def test_append_and_restore_preserves_state(tmp_path):
     alice = Ed25519PrivateKey.generate()
     bob = Ed25519PrivateKey.generate()
