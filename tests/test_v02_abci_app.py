@@ -1,6 +1,8 @@
 """Tests for the HND v0.2 application lifecycle used by the ABCI adapter."""
 import copy
 import json
+import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -348,8 +350,8 @@ class TestV02ABCIApplication(unittest.TestCase):
         finalized = self.app.finalize_block(height=1, transactions=[raw])
         real_replace = __import__("os").replace
 
-        def replace_then_simulate_process_loss(source, destination):
-            real_replace(source, destination)
+        def replace_then_simulate_process_loss(source, destination, **kwargs):
+            real_replace(source, destination, **kwargs)
             raise OSError("simulated process loss after durable rename")
 
         with patch("hnd_v02.abci_app.os.replace", side_effect=replace_then_simulate_process_loss):
@@ -410,6 +412,58 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.state_path.write_text(raw, encoding="utf-8")
         with self.assertRaisesRegex(ABCIApplicationError, "cannot be decoded"):
             self.make_app()
+
+    @unittest.skipUnless(os.name == "posix", "POSIX state permission policy")
+    def test_state_directory_must_be_owned_and_mode_0700(self):
+        os.chmod(self.temp.name, 0o770)
+        try:
+            with self.assertRaisesRegex(ABCIApplicationError, "mode 0700"):
+                self.make_app()
+        finally:
+            os.chmod(self.temp.name, 0o700)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX state permission policy")
+    def test_state_file_with_group_or_other_access_is_rejected(self):
+        os.chmod(self.state_path, 0o640)
+        try:
+            with self.assertRaisesRegex(ABCIApplicationError, "mode 0600"):
+                self.make_app()
+        finally:
+            os.chmod(self.state_path, 0o600)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX no-follow state policy")
+    def test_state_file_symlink_is_rejected(self):
+        target = self.state_path.with_name("state-target.json")
+        self.state_path.rename(target)
+        try:
+            self.state_path.symlink_to(target.name)
+            with self.assertRaisesRegex(ABCIApplicationError, "must not be a symlink"):
+                self.make_app()
+        finally:
+            if self.state_path.is_symlink():
+                self.state_path.unlink()
+            target.rename(self.state_path)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX no-follow state policy")
+    def test_state_directory_symlink_is_rejected(self):
+        real_directory = Path(self.temp.name) / "real-state-directory"
+        real_directory.mkdir(mode=0o700)
+        linked_directory = Path(self.temp.name) / "linked-state-directory"
+        linked_directory.symlink_to(real_directory, target_is_directory=True)
+        with self.assertRaisesRegex(ABCIApplicationError, "state directory"):
+            HNDABCIApplication(
+                config=self.config,
+                manifest=self.manifest,
+                expected_genesis_hash=self.genesis_hash,
+                state_path=linked_directory / "state.json",
+            )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX state permission policy")
+    def test_state_file_remains_mode_0600_after_atomic_commit_replace(self):
+        self.assertEqual(stat.S_IMODE(self.state_path.stat().st_mode), 0o600)
+        self.app.finalize_block(height=1, transactions=[])
+        self.app.commit()
+        self.assertEqual(stat.S_IMODE(self.state_path.stat().st_mode), 0o600)
 
     def test_recovery_mode_requires_existing_durable_state(self):
         missing = Path(self.temp.name) / "missing-recovery-state.json"
