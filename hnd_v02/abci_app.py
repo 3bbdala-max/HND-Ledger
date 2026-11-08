@@ -129,7 +129,7 @@ class HNDABCIApplication:
         self._pending: dict[str, Any] | None = None
         self._initialized = False
 
-        if self.state_path.exists():
+        if existing_state is not None:
             self._load_store()
 
     def _open_state_directory(self) -> int:
@@ -569,7 +569,9 @@ class HNDABCIApplication:
             )
             temp_name = None
             # Verify the installed entry and persist the directory rename.
-            self._stat_state_file(directory_fd)
+            installed_state = self._stat_state_file(directory_fd)
+            if installed_state is None:
+                raise ABCIApplicationError("application state file missing after atomic replacement")
             os.fsync(directory_fd)
         finally:
             if temp_fd is not None:
