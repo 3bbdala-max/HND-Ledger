@@ -6,10 +6,12 @@ version-pinned ABCI server can call.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
-import tempfile
+import secrets
+import stat
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,10 +103,18 @@ class HNDABCIApplication:
         self.state_path = Path(state_path)
         if type(require_existing_state) is not bool:
             raise TypeError("require_existing_state must be a bool")
-        if require_existing_state and not self.state_path.is_file():
-            raise ABCIApplicationError("recovery mode requires an existing application state file")
-        if not self.state_path.parent.exists() or not self.state_path.parent.is_dir():
-            raise FileNotFoundError("application state directory must already exist")
+        if self.state_path.name in ("", ".", ".."):
+            raise ABCIApplicationError("application state path must name a file")
+
+        directory_fd = self._open_state_directory()
+        try:
+            existing_state = self._stat_state_file(directory_fd)
+            if require_existing_state and existing_state is None:
+                raise ABCIApplicationError(
+                    "recovery mode requires an existing application state file"
+                )
+        finally:
+            os.close(directory_fd)
 
         self._lock = threading.RLock()
         self._committed_ledger = HNDLedger(
@@ -121,6 +131,94 @@ class HNDABCIApplication:
 
         if self.state_path.exists():
             self._load_store()
+
+    def _open_state_directory(self) -> int:
+        """Open the dedicated POSIX state directory without following its final symlink."""
+        if (
+            os.name != "posix"
+            or not hasattr(os, "O_NOFOLLOW")
+            or not hasattr(os, "O_DIRECTORY")
+        ):
+            raise ABCIApplicationError(
+                "secure application state storage requires POSIX O_NOFOLLOW and directory-relative I/O"
+            )
+        try:
+            directory_fd = os.open(
+                self.state_path.parent,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            )
+        except OSError as exc:
+            if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                raise ABCIApplicationError(
+                    "application state directory must be a real directory, not a symlink"
+                ) from exc
+            raise
+
+        try:
+            info = os.fstat(directory_fd)
+            if not stat.S_ISDIR(info.st_mode):
+                raise ABCIApplicationError("application state parent is not a directory")
+            if info.st_uid != os.geteuid():
+                raise ABCIApplicationError(
+                    "application state directory must be owned by the service user"
+                )
+            if stat.S_IMODE(info.st_mode) != 0o700:
+                raise ABCIApplicationError(
+                    "application state directory must have mode 0700"
+                )
+            return directory_fd
+        except Exception:
+            os.close(directory_fd)
+            raise
+
+    @staticmethod
+    def _validate_state_file_stat(info: os.stat_result) -> None:
+        if stat.S_ISLNK(info.st_mode):
+            raise ABCIApplicationError("application state file must not be a symlink")
+        if not stat.S_ISREG(info.st_mode):
+            raise ABCIApplicationError("application state path must be a regular file")
+        if info.st_uid != os.geteuid():
+            raise ABCIApplicationError(
+                "application state file must be owned by the service user"
+            )
+        if stat.S_IMODE(info.st_mode) != 0o600:
+            raise ABCIApplicationError("application state file must have mode 0600")
+        if info.st_nlink != 1:
+            raise ABCIApplicationError("application state file must not have hard links")
+
+    def _stat_state_file(self, directory_fd: int) -> os.stat_result | None:
+        """Inspect the state entry without following symlinks."""
+        try:
+            info = os.stat(
+                self.state_path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return None
+        self._validate_state_file_stat(info)
+        return info
+
+    def _open_state_file(self, directory_fd: int) -> int:
+        """Open and validate the state file relative to its already-open directory."""
+        try:
+            file_fd = os.open(
+                self.state_path.name,
+                os.O_RDONLY | os.O_NOFOLLOW,
+                dir_fd=directory_fd,
+            )
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise ABCIApplicationError(
+                    "application state file must not be a symlink"
+                ) from exc
+            raise
+        try:
+            self._validate_state_file_stat(os.fstat(file_fd))
+            return file_fd
+        except Exception:
+            os.close(file_fd)
+            raise
 
     def _clone_committed(self) -> HNDLedger:
         return HNDLedger.restore(
@@ -433,50 +531,76 @@ class HNDABCIApplication:
             indent=2,
             allow_nan=False,
         ) + "\n"
+
+        directory_fd = self._open_state_directory()
         temp_name: str | None = None
+        temp_fd: int | None = None
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=self.state_path.parent,
-                prefix=f".{self.state_path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as handle:
-                temp_name = handle.name
+            # Refuse to replace an unsafe pre-existing entry.
+            self._stat_state_file(directory_fd)
+            for _ in range(16):
+                candidate = f".hnd-state-{secrets.token_hex(12)}.tmp"
+                try:
+                    temp_fd = os.open(
+                        candidate,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                        0o600,
+                        dir_fd=directory_fd,
+                    )
+                    temp_name = candidate
+                    break
+                except FileExistsError:
+                    continue
+            if temp_fd is None or temp_name is None:
+                raise FileExistsError("could not allocate a unique application state temp file")
+
+            os.fchmod(temp_fd, 0o600)
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as handle:
+                temp_fd = None
                 handle.write(encoded)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(temp_name, self.state_path)
+
+            os.replace(
+                temp_name,
+                self.state_path.name,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+            )
             temp_name = None
-            # Persist the directory entry as well as the file contents. Without
-            # this, a power loss can lose the rename even after the file fsync.
-            if os.name == "posix":
-                directory_fd = os.open(
-                    self.state_path.parent,
-                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-                )
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+            # Verify the installed entry and persist the directory rename.
+            self._stat_state_file(directory_fd)
+            os.fsync(directory_fd)
         finally:
+            if temp_fd is not None:
+                os.close(temp_fd)
             if temp_name is not None:
                 try:
-                    os.unlink(temp_name)
+                    os.unlink(temp_name, dir_fd=directory_fd)
                 except FileNotFoundError:
                     pass
+            os.close(directory_fd)
 
     def _load_store(self) -> None:
+        directory_fd = self._open_state_directory()
+        file_fd: int | None = None
         try:
-            with self.state_path.open("r", encoding="utf-8") as handle:
+            file_fd = self._open_state_file(directory_fd)
+            with os.fdopen(file_fd, "r", encoding="utf-8") as handle:
+                file_fd = None
                 payload = json.load(
                     handle,
                     parse_constant=_reject_json_constant,
                     object_pairs_hook=_reject_duplicate_json_keys,
                 )
+        except ABCIApplicationError:
+            raise
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise ABCIApplicationError("application state file cannot be decoded") from exc
+        finally:
+            if file_fd is not None:
+                os.close(file_fd)
+            os.close(directory_fd)
 
         if type(payload) is not dict or set(payload) != _STORE_KEYS:
             raise ABCIApplicationError("application state file schema")
