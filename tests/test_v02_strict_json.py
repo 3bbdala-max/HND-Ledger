@@ -33,6 +33,14 @@ class TestStrictJSON(unittest.TestCase):
         with self.assertRaisesRegex(StrictJSONError, "invalid UTF-8"):
             strict_json_loads(b'{"value":"\xff"}', label="test")
 
+    def test_excessive_nesting_is_wrapped_as_strict_json_error(self):
+        raw = b"[" * 20000 + b"0" + b"]" * 20000
+        with self.assertRaisesRegex(
+            StrictJSONError,
+            "JSON nesting exceeds parser safety limit",
+        ):
+            strict_json_loads(raw, label="deep input")
+
     def test_utf8_bom_is_rejected_explicitly(self):
         with self.assertRaisesRegex(StrictJSONError, "UTF-8 BOM"):
             strict_json_loads(b"\xef\xbb\xbf{}", label="test")
@@ -84,6 +92,27 @@ class TestStrictJSON(unittest.TestCase):
             self.assertEqual(raised.exception.code, 2)
             start.assert_not_called()
             self.assertNotIn(marker, stderr.getvalue())
+
+    def test_cli_rejects_excessively_nested_manifest_before_server_start(self):
+        raw = b"[" * 20000 + b"0" + b"]" * 20000
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "deep.json"
+            manifest_path.write_bytes(raw)
+            stderr = StringIO()
+            argv = [
+                "--manifest", str(manifest_path),
+                "--genesis-hash", "0" * 64,
+                "--network-id", "hnd-strict-json-test",
+                "--max-amount", "100",
+                "--state-path", str(Path(directory) / "state.json"),
+            ]
+            with patch("hnd_v02.cometbft_v040_server.start_grpc_server") as start:
+                with redirect_stderr(stderr):
+                    with self.assertRaises(SystemExit) as raised:
+                        abci_server_main(argv)
+            self.assertEqual(raised.exception.code, 2)
+            start.assert_not_called()
+            self.assertIn("JSON nesting exceeds parser safety limit", stderr.getvalue())
 
     def test_cli_rejects_non_object_manifest_before_server_start(self):
         with tempfile.TemporaryDirectory() as directory:
