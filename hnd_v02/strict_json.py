@@ -48,5 +48,10 @@ def strict_json_loads(raw: bytes, *, label: str = "JSON input") -> Any:
         )
     except StrictJSONError as exc:
         raise StrictJSONError(f"{label}: {exc}") from exc
+    except RecursionError as exc:
+        # Deeply nested input can exhaust the stdlib decoder's recursion budget.
+        # Normalize it at the trust boundary so CLI/ABCI callers fail closed
+        # instead of leaking an uncaught runtime exception.
+        raise StrictJSONError(f"{label}: JSON nesting exceeds parser safety limit") from exc
     except (json.JSONDecodeError, ValueError) as exc:
         raise StrictJSONError(f"{label}: invalid JSON") from exc
