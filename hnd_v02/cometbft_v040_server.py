@@ -34,6 +34,7 @@ except ImportError as exc:  # pragma: no cover - exercised by setup guidance
 from .abci_app import ABCIApplicationError, HNDABCIApplication
 from .genesis import genesis_manifest_hash
 from .transaction import ProtocolConfig, canonical_json
+from .strict_json import StrictJSONError, strict_json_loads
 
 APP_VERSION = "HND-v0.2"
 CODESPACE = "hnd"
@@ -339,8 +340,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--listen", default="127.0.0.1:26658")
     args = parser.parse_args(argv)
 
-    with Path(args.manifest).open("r", encoding="utf-8") as handle:
-        manifest = json.load(handle)
+    try:
+        manifest = strict_json_loads(
+            Path(args.manifest).read_bytes(),
+            label="manifest",
+        )
+    except (OSError, StrictJSONError) as exc:
+        parser.error(f"cannot load strict manifest JSON: {exc}")
+    if type(manifest) is not dict:
+        parser.error("manifest must be a JSON object")
     actual_genesis_hash = genesis_manifest_hash(manifest)
     if actual_genesis_hash != args.genesis_hash:
         parser.error("manifest does not match the independently supplied --genesis-hash")

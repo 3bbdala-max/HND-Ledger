@@ -159,6 +159,23 @@ class TestV02ABCIApplication(unittest.TestCase):
             )
             app.init_chain(chain_id=self.config.network_id, app_state_bytes=raw)
 
+    def test_init_chain_rejects_duplicate_json_keys_explicitly(self):
+        app = HNDABCIApplication(
+            config=self.config,
+            manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+            state_path=Path(self.temp.name) / "duplicate-genesis.json",
+        )
+        raw = app.application_genesis_bytes()
+        raw = raw.replace(
+            b'"genesis_hash":',
+            b'"genesis_hash":"' + self.genesis_hash.encode("ascii") + b'","genesis_hash":',
+            1,
+        )
+        with self.assertRaisesRegex(ABCIApplicationError, "duplicate JSON object key"):
+            app.init_chain(chain_id=self.config.network_id, app_state_bytes=raw)
+        self.assertFalse(app.state_path.exists())
+
     def test_check_tx_updates_only_the_mempool_view(self):
         before = self.app.account_view(self.alice_id)
         response = self.app.check_tx(self.raw(amount=100, nonce=0))

@@ -50,6 +50,7 @@ jobs:
           tests.test_v02_tcp_peer_relay
           tests.test_v02_anti_rollback_reference
           tests.test_v02_recovery_controls
+          tests.test_v02_strict_json
           tests.test_workflow_contract
 
   cometbft-single-node-smoke:
