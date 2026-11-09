@@ -6,6 +6,7 @@ on:
       - phase-0.2-planning
   pull_request:
     branches:
+      - phase-0.2-planning
       - main
 
 jobs:
@@ -49,6 +50,7 @@ jobs:
           tests.test_v02_tcp_peer_relay
           tests.test_v02_anti_rollback_reference
           tests.test_v02_recovery_controls
+          tests.test_workflow_contract
 
   cometbft-single-node-smoke:
     needs: hnd-v02-tests
