@@ -53,6 +53,40 @@ class SQLiteMonotonicAnchorTests(unittest.TestCase):
             ))
             self.assertEqual(anchor.read_state("trust-manifest"), current)
 
+    def test_backend_direct_calls_enforce_bootstrap_and_exact_successors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            anchor = SQLiteMonotonicAnchor(Path(directory) / "anchor.db")
+            with self.assertRaises(MonotonicAnchorConflict):
+                anchor.compare_and_advance(
+                    "trust-manifest", None, MonotonicRecord(1, "a" * 64)
+                )
+            self.assertTrue(anchor.compare_and_advance(
+                "trust-manifest", None, MonotonicRecord(0, "a" * 64)
+            ))
+            current = MonotonicRecord(0, "a" * 64)
+            for replay_or_skip in (
+                MonotonicRecord(0, "b" * 64),
+                MonotonicRecord(2, "b" * 64),
+            ):
+                with self.subTest(proposed=replay_or_skip):
+                    with self.assertRaises(MonotonicAnchorConflict):
+                        anchor.compare_and_advance(
+                            "trust-manifest", current, replay_or_skip
+                        )
+            self.assertEqual(anchor.read_state("trust-manifest"), current)
+
+            with self.assertRaises(MonotonicAnchorConflict):
+                anchor.compare_and_advance(
+                    "vsp-profile", None, MonotonicRecord(0, "c" * 64)
+                )
+            self.assertTrue(anchor.compare_and_advance(
+                "vsp-profile", None, MonotonicRecord(1, "c" * 64)
+            ))
+            self.assertTrue(anchor.compare_and_advance(
+                "vsp-profile", MonotonicRecord(1, "c" * 64),
+                MonotonicRecord(2, "d" * 64),
+            ))
+
     def test_rejects_memory_database_and_bad_records(self):
         with self.assertRaises(MonotonicAnchorError):
             SQLiteMonotonicAnchor(":memory:")
