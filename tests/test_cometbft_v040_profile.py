@@ -15,6 +15,11 @@ def schema():
             "consensus.timeout_commit": FieldRule(str, "shared", "1s", True),
             "p2p.max_num_inbound_peers": FieldRule(int, "shared", 40, True),
             "rpc.unsafe": FieldRule(bool, "shared", False, True),
+            "rpc.cors_allowed_origins": FieldRule(list, "shared", [], True, item_type=str),
+            "p2p.bootstrap_peers": FieldRule(list, "node_local", [], True, item_fields={
+                "id": FieldRule(str, "node_local"),
+                "host": FieldRule(str, "node_local"),
+            }),
         },
     )
 
@@ -66,6 +71,13 @@ class CometBFTProfileTests(unittest.TestCase):
         a = parse_cometbft_v040_profile(b'consensus.timeout_commit="1s"\n', s)
         b = parse_cometbft_v040_profile(b'consensus.timeout_commit="2s"\n', s)
         self.assertNotEqual(cometbft_v040_profile_digest(a, s), cometbft_v040_profile_digest(b, s))
+
+    def test_array_item_types_and_array_table_fields_are_strict(self):
+        s = schema()
+        with self.assertRaises(CometBFTProfileError):
+            parse_cometbft_v040_profile(b'rpc.cors_allowed_origins=[1]\n', s)
+        with self.assertRaises(CometBFTProfileError):
+            parse_cometbft_v040_profile(b'[[p2p.bootstrap_peers]]\\nid="peer"\\nhost="node:26656"\\nextra=true\\n', s)
 
     def test_integer_bool_confusion_is_rejected(self):
         with self.assertRaises(CometBFTProfileError):
