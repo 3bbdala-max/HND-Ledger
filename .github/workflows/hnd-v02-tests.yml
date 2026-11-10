@@ -86,6 +86,10 @@ jobs:
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
           go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
           "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
+      - name: Run strict pinned CometBFT v0.40.0 TOML profile parser self-test
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_profile_inspect.go" --self-test
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
         run: |
           home="$RUNNER_TEMP/hnd-remote-only-negative"
