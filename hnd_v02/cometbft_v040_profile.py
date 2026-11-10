@@ -47,6 +47,15 @@ def _validate_value(value: Any, rule: FieldRule, path: str) -> None:
         raise CometBFTProfileError(f"{path}: TOML value has wrong type")
     _validate_tree(value, path)
 
+def _table_paths(document: Mapping[str, Any], prefix: str = "") -> set[str]:
+    paths: set[str] = set()
+    for key, value in document.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            paths.add(path)
+            paths.update(_table_paths(value, path))
+    return paths
+
 def _flatten(document: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in document.items():
@@ -86,6 +95,9 @@ def parse_cometbft_v040_profile(raw: bytes, schema: ProfileSchema) -> dict[str, 
             raise CometBFTProfileError("invalid source-derived schema entry")
         if rule.has_default: _validate_value(rule.default, rule, path)
     supplied = _flatten(parsed)
+    allowed_tables = {".".join(path.split(".")[:i]) for path in schema.fields for i in range(1, len(path.split(".")))}
+    unknown_tables = _table_paths(parsed) - allowed_tables
+    if unknown_tables: raise CometBFTProfileError("unknown CometBFT TOML table: " + sorted(unknown_tables)[0])
     unknown = set(supplied) - set(schema.fields)
     if unknown: raise CometBFTProfileError("unknown CometBFT TOML field: " + sorted(unknown)[0])
     normalized = {}
