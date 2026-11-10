@@ -247,6 +247,15 @@ class TestV02Blocks(unittest.TestCase):
                 expected_genesis_hash=self.genesis_hash, snapshot=snapshot,
             )
 
+    def test_save_fsyncs_snapshot_file_and_parent_directory(self):
+        from unittest import mock
+        import os
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "chain.json"
+            with mock.patch("hnd_v02.blocks.os.fsync", wraps=os.fsync) as sync:
+                self.chain.save(path)
+            self.assertEqual(sync.call_count, 2)
+
     def test_file_save_and_load(self):
         self.chain.build_block([self.tx(10, 0)], timestamp_ms=10)
         with tempfile.TemporaryDirectory() as directory:
