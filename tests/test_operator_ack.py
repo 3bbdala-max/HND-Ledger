@@ -76,7 +76,7 @@ class OperatorAckTests(unittest.TestCase):
                 expected_operator_keys=keys)
 
     def test_noncanonical_and_invalid_inputs_fail_closed(self):
-        with self.assertRaisesRegex(OperatorAckError, "ACK-E-JSON"):
+        with self.assertRaisesRegex(OperatorAckError, "ACK-E-NONCANONICAL"):
             self.verify(self.raw + b" ")
         with self.assertRaises(OperatorAckError):
             self.verify(b"\xef\xbb\xbf" + self.raw)
