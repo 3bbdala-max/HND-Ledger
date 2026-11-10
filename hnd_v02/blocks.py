@@ -15,6 +15,7 @@ from typing import Any, Mapping
 
 from .genesis import validate_genesis_manifest
 from .ledger import HNDLedger, LedgerError
+from .strict_json import strict_json_loads
 from .transaction import ProtocolConfig, canonical_json
 
 BLOCK_VERSION = 1
@@ -335,9 +336,9 @@ class HNDChain:
         """Load a JSON chain snapshot and verify every block from Genesis."""
         try:
             with open(path, "r", encoding="utf-8") as handle:
-                snapshot = json.load(
-                    handle,
-                    parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
+                snapshot = strict_json_loads(
+                    handle.read(),
+                    label="chain snapshot",
                 )
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise BlockError("chain snapshot cannot be decoded") from exc
