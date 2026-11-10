@@ -269,7 +269,40 @@ def verify_trust_manifest_chain(
         "sequence": current["sequence"],
         "manifest_digest": current["manifest_digest"],
         "governance_key_ids": sorted(current["governance_public_keys"]),
+        "governance_public_keys": dict(current["governance_public_keys"]),
         "witness_ids": sorted(trusted_witness_keys),
         "threshold": 2,
         "rotation_count": len(manifests) - 1,
     }
+
+
+def verify_vsp_with_trust_manifest_chain(
+    vsp_raw: bytes,
+    manifests: Sequence[bytes],
+    *,
+    context: Mapping[str, Any],
+    trusted_witness_keys: Mapping[str, bytes],
+) -> dict[str, Any]:
+    """Verify a VSP using governance keys from the final verified manifest.
+
+    The full chain is verified from the externally pinned bootstrap witnesses;
+    only the resulting final governance key set is passed to the VSP verifier.
+    This remains an offline verifier and does not persist anti-rollback state.
+    """
+    required = {
+        "chain_id", "hnd_genesis_sha256", "cometbft_genesis_sha256",
+        "cometbft_source_commit",
+    }
+    if type(context) is not dict or not required.issubset(context):
+        _fail("TMR-E-VSP-CONTEXT")
+    chain_result = verify_trust_manifest_chain(
+        manifests,
+        expected_context={key: context[key] for key in required},
+        trusted_witness_keys=trusted_witness_keys,
+    )
+    from hnd_v02.vsp_verify import verify_vsp_envelope
+    vsp_result = verify_vsp_envelope(
+        vsp_raw, context=context,
+        governance_public_keys=chain_result["governance_public_keys"],
+    )
+    return {"trust_manifest_chain": chain_result, "vsp": vsp_result}
