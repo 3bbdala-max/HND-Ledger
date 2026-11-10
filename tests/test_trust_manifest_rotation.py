@@ -107,7 +107,7 @@ class TrustManifestRotationTests(unittest.TestCase):
         manifest["authorizations"] = old_entries
         manifest["witnesses"] = [
             {"witness_id": f"witness-{i+1}",
-             "signature": b64(key.sign(digest))}
+             "signature": b64(key.sign(witness_message(digest)))}
             for i, key in enumerate(self.witness_private)
         ]
         return rfc8785.dumps(manifest)
