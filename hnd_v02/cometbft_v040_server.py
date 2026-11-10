@@ -114,10 +114,10 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
                 value = {"account_id": account_id, **value}
             elif request.path == "/evidence":
                 if request.data:
-                    try:
-                        page_request = json.loads(request.data.decode("utf-8"))
-                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                        raise ABCIApplicationError("evidence page request must be canonical JSON") from exc
+                    page_request = strict_json_loads(
+                        request.data,
+                        label="evidence page request",
+                    )
                     if (
                         type(page_request) is not dict
                         or set(page_request) != {"offset", "limit"}
