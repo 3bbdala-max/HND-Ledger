@@ -60,11 +60,11 @@ class MonotonicAnchorContractTests(unittest.TestCase):
     def test_rejects_replay_skip_and_wrong_predecessor(self):
         anchor = MemoryAnchor()
         advance_monotonic_state(
-            anchor, "vsp-profile", sequence=0, digest="a" * 64,
+            anchor, "vsp-profile", sequence=1, digest="a" * 64,
             predecessor_digest=None,
         )
-        for sequence, predecessor in ((0, "a" * 64), (2, "a" * 64),
-                                      (1, "c" * 64)):
+        for sequence, predecessor in ((1, "a" * 64), (3, "a" * 64),
+                                      (2, "c" * 64)):
             with self.subTest(sequence=sequence, predecessor=predecessor):
                 with self.assertRaises(MonotonicAnchorConflict):
                     advance_monotonic_state(
@@ -111,7 +111,7 @@ class MonotonicAnchorContractTests(unittest.TestCase):
                 return False
         with self.assertRaises(MonotonicAnchorConflict):
             advance_monotonic_state(
-                RacingAnchor(), "vsp-profile", sequence=0,
+                RacingAnchor(), "vsp-profile", sequence=1,
                 digest="a" * 64, predecessor_digest=None,
             )
 
