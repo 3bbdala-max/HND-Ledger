@@ -37,6 +37,8 @@ class ActivationState:
     profile_digest: str
     activation_height: int
     operator_ack_set_sha256: str
+    previous_trust_manifest_digest: str | None
+    previous_profile_digest: str | None
 
 
 class AtomicActivationBackend(Protocol):
@@ -74,6 +76,9 @@ def _validate_state(state: ActivationState) -> None:
                   state.operator_ack_set_sha256):
         if type(value) is not str or not _HEX64.fullmatch(value):
             raise ActivationTransactionUnavailable("HND-ACT-E-STATE-DIGEST")
+    for value in (state.previous_trust_manifest_digest, state.previous_profile_digest):
+        if value is not None and (type(value) is not str or not _HEX64.fullmatch(value)):
+            raise ActivationTransactionUnavailable("HND-ACT-E-PREDECESSOR-DIGEST")
 
 
 def activate_verified_bundle(
@@ -112,6 +117,8 @@ def activate_verified_bundle(
         profile_digest=evidence["profile_digest"],
         activation_height=evidence["activation_height"],
         operator_ack_set_sha256=evidence["operator_ack_set_sha256"],
+        previous_trust_manifest_digest=evidence["previous_trust_manifest_digest"],
+        previous_profile_digest=evidence["previous_profile_digest"],
     )
     _validate_state(proposed)
 
@@ -127,8 +134,14 @@ def activate_verified_bundle(
             raise ActivationTransactionConflict("HND-ACT-E-PROFILE-SEQUENCE")
         if proposed.activation_height <= current.activation_height:
             raise ActivationTransactionConflict("HND-ACT-E-ACTIVATION-HEIGHT")
+        if proposed.previous_trust_manifest_digest != current.trust_manifest_digest:
+            raise ActivationTransactionConflict("HND-ACT-E-MANIFEST-PREDECESSOR")
+        if proposed.previous_profile_digest != current.profile_digest:
+            raise ActivationTransactionConflict("HND-ACT-E-PROFILE-PREDECESSOR")
     elif (proposed.trust_manifest_sequence != 0
-          or proposed.profile_sequence != 1):
+          or proposed.profile_sequence != 1
+          or proposed.previous_trust_manifest_digest is not None
+          or proposed.previous_profile_digest is not None):
         raise ActivationTransactionConflict("HND-ACT-E-BOOTSTRAP-SEQUENCE")
 
     try:
