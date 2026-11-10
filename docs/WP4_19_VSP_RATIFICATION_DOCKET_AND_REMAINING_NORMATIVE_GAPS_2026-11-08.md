@@ -193,3 +193,31 @@ The latest run is not a completed overall success at this inspection. Results mu
 - Do not create real keys or disclose any secret material.
 
 This report is documentation only. It changes no protocol source, tests, workflow, dependencies, trust manifest, keys, Genesis, validator configuration, CometBFT profile, branch settings or runtime behavior. It does not manually rerun CI or approve production signing, token issuance or public launch.
+
+
+---
+
+## 8. Project-owner decision record — 2026-11-10
+
+**Decision authority:** Project owner / HND-Ledger protocol design owner.  
+**Decision status:** The eight design directions below are approved as the project baseline for VSP v1 engineering. This records design approval; it does not claim that the specification has been fully implemented, independently audited, or approved for production.
+
+The prior open questions VSP-RAT-01 through VSP-RAT-08 are resolved at the design-policy level as follows:
+
+1. **CometBFT identity and profile binding.** VSP identity must bind the HND and CometBFT Genesis digests, the pinned CometBFT release/source/binary identity, and a deterministic digest of the complete version-specific consensus-affecting runtime configuration. Security-critical operational fields must be classified and bound where they can affect safety; local-only fields must be explicitly enumerated. Unknown fields or unsupported configuration versions fail closed. A version string or binary hash alone is insufficient.
+2. **Expiry.** VSP v1 has no expiry field. Replay and rollback protection use the authenticated monotonic profile sequence, predecessor digest, activation policy and durable anti-rollback state. No local wall-clock expiry check is introduced in v1.
+3. **Canonicalization and parsing.** Retain strict UTF-8 without BOM, duplicate-key rejection at every depth, exact field sets, canonical whole-envelope JCS byte equality, strict integer-token lexemes (reject floats, exponents, booleans and strings for integer fields), bounded input/depth/string sizes, and stable fail-closed errors. Golden vectors must be independently generated and cross-checked before implementation acceptance.
+4. **Independent counters.** Trust-manifest sequence and VSP profile sequence are separate monotonic namespaces. Each has its own digest, predecessor, bootstrap state and durable anti-rollback record. They must never be compared, substituted or advanced using the other's counter.
+5. **Governance key IDs.** Use the exact HND-GOV-KEY-v1 domain-separated derivation from the raw Ed25519 public key consistently in trust manifests, proof-of-possession records, signatures, rotation/revocation packages, audit records and acknowledgements. G1/G2/G3 remain custodian-role labels, not cryptographic key IDs.
+6. **Activation and acknowledgements.** Activation requires all configured validator operators to acknowledge the identical profile digest before activation. Any missing acknowledgement, conflicting digest, or divergent profile report blocks activation; do not use a majority to override a mismatch. The rollout remains halted until the mismatch is resolved and the required lead-time/height checks pass. Exact numeric lead-time and restart mechanics remain implementation acceptance details and must be specified before activation code is approved.
+7. **Catastrophic governance-key loss.** Loss or compromise of two governance keys has no unilateral, validator-majority, Git-based or operator-only bypass. Governance changes stop; if signing safety cannot be maintained, the affected network halts. Recovery requires a separately approved, independently witnessed protocol-owner process, with verified authority, witnesses, publication channels, delay, halt rules and new trust-root pinning. This remains a blocking pre-production operational gate until designed, rehearsed and evidenced.
+8. **Operator independence.** Operator IDs and attestation references are not proof. Before production, maintain an access-controlled evidence register and independently verify distinct accountable operators, custody/admin separation, infrastructure and failure domains, shared-control risks, evidence freshness, revocation and privacy minimization.
+
+### Consequences and implementation gates
+
+- The consolidated VSP candidate is now the approved project design baseline for these eight decisions; conflicting historical text is superseded only to the extent stated in this decision record.
+- This approval authorizes preparation and implementation work against the approved baseline. It does not attest that the VSP parser, cryptographic verifier, profile binding, trust-root ceremony, anti-rollback store, activation gate or signer integration already exists.
+- Before any production activation: complete the field-level CometBFT v0.40.0 configuration map; define numeric resource limits and activation lead time; implement full RFC 8785 and negative vectors with independent cross-language verification; implement durable anti-rollback and fail-closed startup/activation; approve and rehearse catastrophic recovery; verify operator independence; and obtain an independent security review.
+- No real governance keys, private keys, credentials or secrets are created or stored by this documentation update. No production signing, validator onboarding, token issuance or public launch is authorized.
+
+**Disposition:** PROJECT-OWNER DESIGN DECISIONS APPROVED — IMPLEMENTATION AND PRODUCTION GATES OPEN.

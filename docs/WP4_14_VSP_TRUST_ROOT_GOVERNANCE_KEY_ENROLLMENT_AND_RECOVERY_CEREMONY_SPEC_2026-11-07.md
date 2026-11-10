@@ -158,3 +158,22 @@ These are acceptance criteria, not evidence of implemented behavior or executed 
 
 ---
 This document is an engineering specification, not a security certification, legal opinion or launch authorization.
+
+
+---
+
+## 11. Project-owner VSP v1 policy clarification — 2026-11-10
+
+This section is a controlling clarification to §§4 and 7 where earlier wording conflicts with the approved VSP v1 design baseline.
+
+- **Expiry:** routine VSP v1 packages do not contain an expiry field. Remove expiry from the v1 required-field and rejection rules. Anti-replay and anti-rollback are enforced by the independent trust-manifest sequence and VSP profile sequence, each with its own predecessor digest and durable state. This does not preclude a future version from defining expiry under a separately approved trusted-clock policy.
+- **Counter separation:** trust-manifest sequence and VSP profile sequence are distinct monotonic namespaces. Each has its own bootstrap, digest, predecessor and anti-rollback record; no cross-counter comparison is permitted.
+- **Governance key IDs:** all ceremony, manifest, proof-of-possession, signature, rotation, revocation, audit and acknowledgement records use the candidate's exact HND-GOV-KEY-v1 derivation from the raw Ed25519 public key. G1/G2/G3 identify custodian roles only.
+- **Activation:** every configured validator operator must acknowledge the identical VSP digest before activation. Missing acknowledgement or any digest disagreement blocks activation; no majority override is allowed. Numeric lead time and restart mechanics remain required pre-activation implementation details.
+- **Catastrophic recovery:** two-key loss/compromise has no unilateral or validator-majority bypass. Stop governance changes and halt the affected network if signing safety cannot be maintained. Recovery requires a separately approved, independently witnessed and rehearsed protocol-owner process before production.
+- **CometBFT profile binding:** bind the CometBFT Genesis digest and complete version-specific consensus-affecting runtime configuration in addition to release/source/binary identity. Unknown or unsupported consensus-affecting configuration fields fail closed.
+- **Operator independence:** verify actual custody, administrative and infrastructure/failure-domain independence using controlled evidence; references alone do not establish independence.
+
+The above policy decisions are approved for the VSP v1 engineering baseline. They do not mean the ceremony has been performed, keys enrolled, recovery exercised, or production controls implemented. No private keys or secret material are to be generated in or committed to this repository.
+
+**Status remains:** design baseline approved; implementation, witnessed ceremony, recovery drill and independent security review outstanding; NOT APPROVED for production.
