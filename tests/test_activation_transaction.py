@@ -8,7 +8,7 @@ from hnd_v02.activation_transaction import (
 )
 
 
-def evidence(manifest_seq=0, profile_seq=1, height=100):
+def evidence(manifest_seq=0, profile_seq=1, height=100, previous_manifest=None, previous_profile=None):
     return {
         "trust_manifest_sequence": manifest_seq,
         "trust_manifest_digest": "1" * 64,
@@ -16,6 +16,8 @@ def evidence(manifest_seq=0, profile_seq=1, height=100):
         "profile_digest": "2" * 64,
         "activation_height": height,
         "operator_ack_set_sha256": "3" * 64,
+        "previous_trust_manifest_digest": previous_manifest,
+        "previous_profile_digest": previous_profile,
         "preflight_accepted": True,
         "activation_performed": False,
     }
@@ -62,7 +64,7 @@ class AtomicActivationTransactionTests(unittest.TestCase):
     def test_successor_requires_both_monotonic_sequences_and_height(self):
         current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
         backend = FakeAtomicBackend(current)
-        proposed = evidence(manifest_seq=1, profile_seq=2, height=101)
+        proposed = evidence(manifest_seq=1, profile_seq=2, height=101, previous_manifest="4" * 64, previous_profile="5" * 64)
         state = self.call_activate(backend, proposed)
         self.assertEqual(state.trust_manifest_sequence, 1)
         self.assertEqual(state.profile_sequence, 2)
@@ -72,21 +74,40 @@ class AtomicActivationTransactionTests(unittest.TestCase):
         current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
         backend = FakeAtomicBackend(current)
         with self.assertRaises(ActivationTransactionConflict):
-            self.call_activate(backend, evidence(manifest_seq=2, profile_seq=2, height=101))
+            self.call_activate(backend, evidence(manifest_seq=2, profile_seq=2, height=101, previous_manifest="4" * 64, previous_profile="5" * 64))
         self.assertEqual(backend.calls, [])
 
     def test_skipped_profile_sequence_is_rejected(self):
         current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
         backend = FakeAtomicBackend(current)
         with self.assertRaises(ActivationTransactionConflict):
-            self.call_activate(backend, evidence(manifest_seq=1, profile_seq=3, height=101))
+            self.call_activate(backend, evidence(manifest_seq=1, profile_seq=3, height=101, previous_manifest="4" * 64, previous_profile="5" * 64))
         self.assertEqual(backend.calls, [])
 
     def test_non_increasing_activation_height_is_rejected(self):
         current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
         backend = FakeAtomicBackend(current)
         with self.assertRaises(ActivationTransactionConflict):
-            self.call_activate(backend, evidence(manifest_seq=1, profile_seq=2, height=100))
+            self.call_activate(backend, evidence(manifest_seq=1, profile_seq=2, height=100, previous_manifest="4" * 64, previous_profile="5" * 64))
+        self.assertEqual(backend.calls, [])
+
+
+    def test_manifest_predecessor_digest_must_match_active_anchor(self):
+        current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
+        backend = FakeAtomicBackend(current)
+        with self.assertRaises(ActivationTransactionConflict):
+            self.call_activate(backend, evidence(
+                manifest_seq=1, profile_seq=2, height=101,
+                previous_manifest="9" * 64, previous_profile="5" * 64))
+        self.assertEqual(backend.calls, [])
+
+    def test_profile_predecessor_digest_must_match_active_anchor(self):
+        current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
+        backend = FakeAtomicBackend(current)
+        with self.assertRaises(ActivationTransactionConflict):
+            self.call_activate(backend, evidence(
+                manifest_seq=1, profile_seq=2, height=101,
+                previous_manifest="4" * 64, previous_profile="9" * 64))
         self.assertEqual(backend.calls, [])
 
     def test_backend_compare_and_activate_conflict_fails_closed(self):
