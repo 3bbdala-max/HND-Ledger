@@ -72,6 +72,12 @@ class TrustManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(TrustManifestError, "TM-E-UNTRUSTED-WITNESS"):
             self.parse(witness_keys={"witness-1": self.witness_keys["witness-1"]})
 
+    def test_rejects_same_public_key_for_two_witness_identities(self):
+        duplicate = {"witness-2": self.witness_keys["witness-1"]}
+        duplicate["witness-1"] = self.witness_keys["witness-1"]
+        with self.assertRaisesRegex(TrustManifestError, "TM-E-WITNESS-KEY-DUPLICATE"):
+            self.parse(witness_keys=duplicate)
+
     def test_rejects_tampered_witness_signature(self):
         changed = copy.deepcopy(self.manifest)
         changed["witnesses"][0]["signature"] = b64(bytes(64))
