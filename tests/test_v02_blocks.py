@@ -258,6 +258,20 @@ class TestV02Blocks(unittest.TestCase):
             )
         self.assertEqual(restored.snapshot(), self.chain.snapshot())
 
+    def test_duplicate_json_keys_in_chain_snapshot_are_rejected(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "chain.json"
+            snapshot = self.chain.snapshot()
+            encoded = json.dumps(snapshot, separators=(",", ":"))
+            duplicate = '{"network_id":' + json.dumps(snapshot["network_id"]) + ',' + encoded[1:]
+            path.write_text(duplicate, encoding="utf-8")
+            with self.assertRaisesRegex(BlockError, "cannot be decoded"):
+                HNDChain.load(
+                    path, manifest=self.manifest, config=self.config,
+                    expected_genesis_hash=self.genesis_hash,
+                )
+
     def test_malformed_chain_file_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "chain.json"
