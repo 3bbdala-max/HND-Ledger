@@ -96,6 +96,30 @@ class SQLiteAtomicActivationBackend:
             state.previous_trust_manifest_digest, state.previous_profile_digest,
         )
 
+    @staticmethod
+    def _validate_successor(current, proposed):
+        """Enforce monotonic transitions inside the same SQLite write transaction."""
+        if current is None:
+            valid_bootstrap = (
+                proposed.trust_manifest_sequence == 0
+                and proposed.profile_sequence == 1
+                and proposed.previous_trust_manifest_digest is None
+                and proposed.previous_profile_digest is None
+            )
+            if not valid_bootstrap:
+                raise ActivationTransactionError("HND-SQLITE-ACT-E-BOOTSTRAP-SEQUENCE")
+            return
+        if proposed.trust_manifest_sequence != current.trust_manifest_sequence + 1:
+            raise ActivationTransactionError("HND-SQLITE-ACT-E-MANIFEST-SEQUENCE")
+        if proposed.profile_sequence != current.profile_sequence + 1:
+            raise ActivationTransactionError("HND-SQLITE-ACT-E-PROFILE-SEQUENCE")
+        if proposed.activation_height <= current.activation_height:
+            raise ActivationTransactionError("HND-SQLITE-ACT-E-ACTIVATION-HEIGHT")
+        if proposed.previous_trust_manifest_digest != current.trust_manifest_digest:
+            raise ActivationTransactionError("HND-SQLITE-ACT-E-MANIFEST-PREDECESSOR")
+        if proposed.previous_profile_digest != current.profile_digest:
+            raise ActivationTransactionError("HND-SQLITE-ACT-E-PROFILE-PREDECESSOR")
+
     def read_active_state(self):
         try:
             db = self._connect()
@@ -134,12 +158,6 @@ class SQLiteAtomicActivationBackend:
             self._state_values(expected_current)
         if type(profile_artifact) is not bytes or not profile_artifact:
             raise ActivationTransactionError("HND-SQLITE-ACT-E-PROFILE")
-        try:
-            valid = self.profile_validator(profile_artifact, new_state.profile_digest)
-        except Exception as exc:
-            raise ActivationTransactionError("HND-SQLITE-ACT-E-PROFILE-VALIDATION") from exc
-        if valid is not True:
-            raise ActivationTransactionError("HND-SQLITE-ACT-E-PROFILE-DIGEST")
 
         try:
             db = self._connect()
@@ -155,6 +173,21 @@ class SQLiteAtomicActivationBackend:
                 if current != expected_current:
                     db.rollback()
                     return False
+
+                # This check is deliberately inside BEGIN IMMEDIATE. The backend
+                # must reject replay/rollback even when called outside the
+                # higher-level activate_verified_bundle() preflight wrapper.
+                self._validate_successor(current, new_state)
+
+                try:
+                    valid = self.profile_validator(profile_artifact, new_state.profile_digest)
+                except Exception as exc:
+                    raise ActivationTransactionError(
+                        "HND-SQLITE-ACT-E-PROFILE-VALIDATION"
+                    ) from exc
+                if valid is not True:
+                    raise ActivationTransactionError("HND-SQLITE-ACT-E-PROFILE-DIGEST")
+
                 if row is None:
                     db.execute("""
                         INSERT INTO active_activation VALUES(1,?,?,?,?,?,?,?,?,?)
@@ -174,5 +207,7 @@ class SQLiteAtomicActivationBackend:
                 raise
             finally:
                 db.close()
+        except ActivationTransactionError:
+            raise
         except sqlite3.Error as exc:
             raise ActivationTransactionError("HND-SQLITE-ACT-E-COMMIT") from exc
