@@ -247,14 +247,27 @@ class TestV02Blocks(unittest.TestCase):
                 expected_genesis_hash=self.genesis_hash, snapshot=snapshot,
             )
 
-    def test_save_fsyncs_snapshot_file_and_parent_directory(self):
+    def test_save_fsyncs_file_before_replace_and_directory_after_replace(self):
         from unittest import mock
         import os
+        import stat
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "chain.json"
-            with mock.patch("hnd_v02.blocks.os.fsync", wraps=os.fsync) as sync:
+            events = []
+            real_fsync, real_replace = os.fsync, os.replace
+            def record_fsync(fd):
+                events.append(("fsync", stat.S_ISDIR(os.fstat(fd).st_mode)))
+                return real_fsync(fd)
+            def record_replace(source, destination):
+                events.append(("replace", None))
+                return real_replace(source, destination)
+            with mock.patch("hnd_v02.blocks.os.fsync", side_effect=record_fsync), \
+                 mock.patch("hnd_v02.blocks.os.replace", side_effect=record_replace):
                 self.chain.save(path)
-            self.assertEqual(sync.call_count, 2)
+            expected = [("fsync", False), ("replace", None)]
+            if os.name == "posix":
+                expected.append(("fsync", True))
+            self.assertEqual(events, expected)
 
     def test_file_save_and_load(self):
         self.chain.build_block([self.tx(10, 0)], timestamp_ms=10)
