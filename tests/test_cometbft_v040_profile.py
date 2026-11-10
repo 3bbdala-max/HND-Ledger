@@ -41,7 +41,7 @@ class CometBFTProfileTests(unittest.TestCase):
 
     def test_unknown_empty_tables_fail_closed(self):
         with self.assertRaises(CometBFTProfileError):
-            parse_cometbft_v040_profile(b'[unknown_section]\\n', schema())
+            parse_cometbft_v040_profile(b'[unknown_section]\n', schema())
 
     def test_wrong_types_fail_closed(self):
         with self.assertRaises(CometBFTProfileError):
@@ -77,7 +77,7 @@ class CometBFTProfileTests(unittest.TestCase):
         with self.assertRaises(CometBFTProfileError):
             parse_cometbft_v040_profile(b'rpc.cors_allowed_origins=[1]\n', s)
         with self.assertRaises(CometBFTProfileError):
-            parse_cometbft_v040_profile(b'[[p2p.bootstrap_peers]]\\nid="peer"\\nhost="node:26656"\\nextra=true\\n', s)
+            parse_cometbft_v040_profile(b'[[p2p.bootstrap_peers]]\nid="peer"\nhost="node:26656"\nextra=true\n', s)
 
     def test_integer_bool_confusion_is_rejected(self):
         with self.assertRaises(CometBFTProfileError):
