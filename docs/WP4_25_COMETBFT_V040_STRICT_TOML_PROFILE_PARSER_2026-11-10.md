@@ -54,3 +54,12 @@ Implemented checks:
 This remains an offline verifier prototype. It does not establish that the external witness keys were provisioned through a real witnessed ceremony, prove human/custody independence, persist or pin the trust root, implement manifest rotation, connect to VSP startup verification, or enforce validator acknowledgements. Synthetic keys are generated only inside tests.
 
 **Acceptance boundary:** this implementation validates a candidate sequence-zero trust-manifest object only. It is not production bootstrap approval and does not close Station 2.
+
+
+## WP4.27 — Unanimous Operator Acknowledgement Verifier
+
+Added `hnd_v02/operator_ack.py` and `tests/test_operator_ack.py`, wired into CI.
+
+The offline verifier requires exactly one valid Ed25519 acknowledgement from every operator in an externally supplied expected-operator key set. Each acknowledgement binds the chain ID, exact VSP digest, activation height, operator ID and nonce. Missing, extra, duplicate, wrong-profile, wrong-height, non-canonical or invalidly signed acknowledgements fail closed. The result includes a digest of the verified acknowledgement set.
+
+This is a pure verification function only. It does not establish operator independence, collect acknowledgements from real operators, store them durably, coordinate a rollout, atomically activate a profile, or prevent a process from bypassing the verifier. Those require deployment integration and independent operational evidence.
