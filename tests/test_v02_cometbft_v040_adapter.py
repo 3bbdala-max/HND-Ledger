@@ -218,6 +218,15 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             )
             self.assertNotEqual(response.code, 0)
 
+    def test_evidence_query_rejects_excessive_nesting_without_uncaught_error(self):
+        raw = b"[" * 20000 + b"0" + b"]" * 20000
+        response = self.servicer.Query(
+            types_pb2.RequestQuery(path="/evidence", data=raw),
+            self.context,
+        )
+        self.assertNotEqual(response.code, 0)
+        self.assertIn("JSON nesting exceeds parser safety limit", response.log)
+
     def test_vote_extensions_are_explicitly_disabled(self):
         extended = self.servicer.ExtendVote(types_pb2.RequestExtendVote(), self.context)
         accepted = self.servicer.VerifyVoteExtension(
