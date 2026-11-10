@@ -37,8 +37,8 @@ class ActivationState:
     profile_digest: str
     activation_height: int
     operator_ack_set_sha256: str
-    previous_trust_manifest_digest: str | None
-    previous_profile_digest: str | None
+    previous_trust_manifest_digest: str | None = None
+    previous_profile_digest: str | None = None
 
 
 class AtomicActivationBackend(Protocol):
