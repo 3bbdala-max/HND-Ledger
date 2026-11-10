@@ -37,3 +37,20 @@ The added tests cover duplicate-key rejection, unknown/mistyped fields, BOM/inva
 5. Add negative integration tests proving malformed/unknown config and local-policy drift cannot bypass the startup gate.
 
 **Disposition:** Initial strict parser mechanism only. No full-profile digest claim, no trust-manifest activation, no production approval, and no Station 2 closure.
+
+
+## WP4.26 — Initial Trust Manifest Bootstrap Verifier
+
+The same feature branch now also contains an offline, fail-closed bootstrap verifier in `hnd_v02/trust_manifest.py`, with synthetic tests in `tests/test_trust_manifest.py` and a dedicated CI step.
+
+Implemented checks:
+- Exact manifest schema, strict UTF-8, duplicate JSON member rejection, canonical JCS bytes, and bounded input.
+- Initial-only sequence 0 and null predecessor; fixed 2-of-3 policy and exactly three distinct Ed25519 governance identities.
+- Governance key IDs recomputed from public keys and a domain-separated proof-of-possession challenge bound to chain, HND Genesis, CometBFT Genesis, nonce, key ID and role.
+- Two distinct witness signatures over a domain-separated digest of the manifest core.
+- Witness public keys are supplied as external trusted inputs; keys embedded in the manifest cannot establish their own trust.
+- Exact comparison against externally supplied chain ID, HND Genesis digest, CometBFT Genesis digest and pinned CometBFT source commit.
+
+This remains an offline verifier prototype. It does not establish that the external witness keys were provisioned through a real witnessed ceremony, prove human/custody independence, persist or pin the trust root, implement manifest rotation, connect to VSP startup verification, or enforce validator acknowledgements. Synthetic keys are generated only inside tests.
+
+**Acceptance boundary:** this implementation validates a candidate sequence-zero trust-manifest object only. It is not production bootstrap approval and does not close Station 2.
