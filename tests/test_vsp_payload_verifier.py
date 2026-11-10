@@ -49,7 +49,7 @@ class VSPVerifierTests(unittest.TestCase):
         p=copy.deepcopy(self.payload); p["extra"]=True
         with self.assertRaisesRegex(VSPInputError,"VSP-E-PAYLOAD-SCHEMA"): self.verify(self.signed(p))
     def test_rejects_stale_sequence_and_predecessor(self):
-        c=dict(self.ctx); c["active_profile"]={"sequence":4,"digest":"6"*64,"height":100}
+        c=dict(self.ctx); c["active_profile"]={"sequence":4,"digest":"6"*64,"current_height":100}
         p=copy.deepcopy(self.payload); p.update(profile_sequence=6,previous_profile_sha256="6"*64,activation={"kind":"height","height":110}); p["change"]["type"]="add"
         with self.assertRaisesRegex(VSPInputError,"VSP-E-PROFILE-SEQUENCE-ROLLBACK"): self.verify(self.signed(p),context=c)
         p["profile_sequence"]=5; p["previous_profile_sha256"]="7"*64
