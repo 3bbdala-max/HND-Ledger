@@ -331,13 +331,43 @@ class TestV02ABCIApplication(unittest.TestCase):
         self.assertEqual(restored.info(), self.app.info())
         self.assertEqual(restored.account_view(self.alice_id), self.app.account_view(self.alice_id))
 
-    def test_commit_fsyncs_state_file_and_parent_directory(self):
+    def test_commit_fsyncs_file_before_replace_and_directory_after_replace(self):
         self.app.finalize_block(height=1, transactions=[self.raw(amount=10, nonce=0)])
-        real_fsync = __import__("os").fsync
-        with patch("hnd_v02.abci_app.os.fsync", wraps=real_fsync) as fsync_spy:
+        events = []
+        real_fsync, real_replace = os.fsync, os.replace
+        def record_fsync(fd):
+            events.append(("fsync", stat.S_ISDIR(os.fstat(fd).st_mode)))
+            return real_fsync(fd)
+        def record_replace(source, destination, **kwargs):
+            events.append(("replace", None))
+            return real_replace(source, destination, **kwargs)
+        with patch("hnd_v02.abci_app.os.fsync", side_effect=record_fsync), \\
+             patch("hnd_v02.abci_app.os.replace", side_effect=record_replace):
             self.app.commit()
-        expected_calls = 2 if __import__("os").name == "posix" else 1
-        self.assertEqual(fsync_spy.call_count, expected_calls)
+        expected = [("fsync", False), ("replace", None)]
+        if os.name == "posix":
+            expected.append(("fsync", True))
+        self.assertEqual(events, expected)
+
+    def test_directory_fsync_failure_does_not_publish_in_memory_commit(self):
+        self.app.finalize_block(height=1, transactions=[self.raw(amount=10, nonce=0)])
+        real_fsync = os.fsync
+        def fail_directory_fsync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError("simulated directory fsync failure")
+            return real_fsync(fd)
+        if os.name != "posix":
+            self.skipTest("directory fsync is a POSIX durability boundary")
+        with patch("hnd_v02.abci_app.os.fsync", side_effect=fail_directory_fsync):
+            with self.assertRaisesRegex(OSError, "directory fsync failure"):
+                self.app.commit()
+        self.assertEqual(self.app.last_committed_height, 0)
+        self.assertIsNotNone(self.app._pending)
+        # The rename already happened: the visible file must still be a complete,
+        # verifiable old-or-new snapshot, never a partially written JSON document.
+        restarted = self.make_app()
+        self.assertEqual(restarted.last_committed_height, 1)
+        self.assertEqual(restarted.account_view(self.alice_id)["balance"], 599_990)
 
     def test_commit_without_finalize_is_rejected(self):
         with self.assertRaisesRegex(ABCIApplicationError, "no finalized block"):
