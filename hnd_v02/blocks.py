@@ -335,7 +335,7 @@ class HNDChain:
              config: ProtocolConfig, expected_genesis_hash: str) -> "HNDChain":
         """Load a JSON chain snapshot and verify every block from Genesis."""
         try:
-            with open(path, "r", encoding="utf-8") as handle:
+            with open(path, "rb") as handle:
                 snapshot = strict_json_loads(
                     handle.read(),
                     label="chain snapshot",
