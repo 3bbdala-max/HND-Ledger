@@ -99,12 +99,12 @@ def validate_payload(payload, context):
         if seq!=1 or payload["previous_profile_sha256"] is not None or activation!={"kind":"genesis","height":0}: fail("VSP-E-INITIAL-PROFILE-TRANSITION")
         if change["type"]!="initial": fail("VSP-E-INITIAL-CHANGE-TYPE")
     else:
-        if type(active) is not dict or set(active)!={"sequence","digest","height"}: fail("VSP-E-ACTIVE-PROFILE-CONTEXT")
-        if type(active["sequence"]) is not int or type(active["height"]) is not int or active["sequence"]<1 or active["height"]<0: fail("VSP-E-ACTIVE-PROFILE-CONTEXT")
+        if type(active) is not dict or set(active)!={"sequence","digest","current_height"}: fail("VSP-E-ACTIVE-PROFILE-CONTEXT")
+        if type(active["sequence"]) is not int or type(active["current_height"]) is not int or active["sequence"]<1 or active["current_height"]<0: fail("VSP-E-ACTIVE-PROFILE-CONTEXT")
         if seq!=active["sequence"]+1: fail("VSP-E-PROFILE-SEQUENCE-ROLLBACK")
         if payload["previous_profile_sha256"]!=active["digest"]: fail("VSP-E-PROFILE-PREDECESSOR")
         hexstr(payload["previous_profile_sha256"],HEX64,"VSP-E-PROFILE-PREDECESSOR")
-        if activation["kind"]!="height" or height<=active["height"] or change["type"]=="initial": fail("VSP-E-ACTIVATION-HEIGHT")
+        if activation["kind"]!="height" or height<=active["current_height"] or change["type"]=="initial": fail("VSP-E-ACTIVATION-HEIGHT")
     if activation["kind"] not in ("genesis","height"): fail("VSP-E-ACTIVATION-KIND")
     gov=exact(payload["governance_policy"],{"policy_id","authorized_key_ids","threshold"},"VSP-E-GOVERNANCE-POLICY")
     ids=gov["authorized_key_ids"]
