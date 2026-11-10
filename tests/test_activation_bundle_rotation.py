@@ -22,15 +22,15 @@ class ActivationBundleRotationTests(unittest.TestCase):
             "rotation_count": 2,
         }
         with patch("hnd_v02.activation_bundle.verify_vsp_with_trust_manifest_chain",
-                   return_value={"trust_manifest_chain": chain, "vsp": vsp}) as verify_chain, \\
-             patch("hnd_v02.activation_bundle.verify_unanimous_operator_acks",
-                   return_value={"ack_set_sha256": "c" * 64, "operator_count": 4,
-                                 "unanimous": True}) as verify_acks:
-            result = verify_activation_bundle_with_manifest_chain(
-                b"vsp", manifests, b"acks", context=context,
-                trusted_witness_keys={"w1": b"w" * 32},
-                expected_operator_keys={"op1": b"o" * 32},
-            )
+                   return_value={"trust_manifest_chain": chain, "vsp": vsp}) as verify_chain:
+            with patch("hnd_v02.activation_bundle.verify_unanimous_operator_acks",
+                       return_value={"ack_set_sha256": "c" * 64, "operator_count": 4,
+                                     "unanimous": True}) as verify_acks:
+                result = verify_activation_bundle_with_manifest_chain(
+                    b"vsp", manifests, b"acks", context=context,
+                    trusted_witness_keys={"w1": b"w" * 32},
+                    expected_operator_keys={"op1": b"o" * 32},
+                )
         verify_chain.assert_called_once_with(
             b"vsp", manifests, context=context,
             trusted_witness_keys={"w1": b"w" * 32},
