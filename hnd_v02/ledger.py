@@ -152,6 +152,15 @@ class HNDLedger:
                 os.fsync(handle.fileno())
             os.replace(temp_name, destination)
             temp_name = None
+            # Persist the directory entry update so the rename survives a crash.
+            directory_fd = os.open(
+                destination.parent,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
             if temp_name is not None:
                 try:
