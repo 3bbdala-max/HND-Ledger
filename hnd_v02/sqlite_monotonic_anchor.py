@@ -47,7 +47,8 @@ class SQLiteMonotonicAnchor:
 
     def _initialize(self):
         try:
-            with self._connect() as db:
+            db = self._connect()
+            try:
                 db.execute("PRAGMA journal_mode=DELETE")
                 db.execute("""
                     CREATE TABLE IF NOT EXISTS monotonic_state (
@@ -56,6 +57,8 @@ class SQLiteMonotonicAnchor:
                         digest TEXT NOT NULL CHECK(length(digest) = 64)
                     ) WITHOUT ROWID
                 """)
+            finally:
+                db.close()
         except sqlite3.Error as exc:
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-INITIALIZE") from exc
 
@@ -74,11 +77,14 @@ class SQLiteMonotonicAnchor:
         if type(namespace) is not str or namespace not in _ALLOWED:
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-NAMESPACE")
         try:
-            with self._connect() as db:
+            db = self._connect()
+            try:
                 row = db.execute(
                     "SELECT sequence, digest FROM monotonic_state WHERE namespace=?",
                     (namespace,),
                 ).fetchone()
+            finally:
+                db.close()
             return None if row is None else MonotonicRecord(row[0], row[1])
         except sqlite3.Error as exc:
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-READ") from exc
