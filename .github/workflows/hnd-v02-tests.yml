@@ -36,6 +36,20 @@ jobs:
         run: bash scripts/generate_cometbft_v040_python.sh
       - name: Run isolated VSP JCS cross-language compatibility spike
         run: python -m unittest -v tests.test_vsp_jcs_compatibility_spike
+      - name: Run strict VSP envelope and digest boundary tests
+        run: python -m unittest -v tests.test_vsp_strict_envelope
+      - name: Run VSP payload, signature and Genesis verifier tests
+        run: python -m unittest -v tests.test_vsp_payload_verifier
+      - name: Run witnessed VSP trust-manifest bootstrap tests
+        run: python -m unittest -v tests.test_trust_manifest
+      - name: Run Trust Manifest to VSP authorization integration tests
+        run: python -m unittest -v tests.test_trust_manifest_vsp_integration
+      - name: Run unanimous validator operator acknowledgement tests
+        run: python -m unittest -v tests.test_operator_ack
+      - name: Run complete offline activation evidence bundle tests
+        run: python -m unittest -v tests.test_activation_bundle
+      - name: Run strict CometBFT v0.40.0 profile parser tests
+        run: python -m unittest -v tests.test_cometbft_v040_profile
       - name: Run isolated v0.2 tests
         run: >-
           python -m unittest -v
