@@ -131,3 +131,33 @@ def parse_trust_manifest(raw: bytes, *, expected_context: Mapping[str, str],
     return {"manifest_digest": hashlib.sha256(MANIFEST_DOMAIN + _jcs(manifest)).hexdigest(),
         "sequence": 0, "governance_key_ids": sorted(seen_ids),
         "witness_ids": sorted(seen_witnesses), "threshold": 2}
+
+
+def verify_vsp_with_trust_manifest(vsp_raw: bytes, manifest_raw: bytes, *,
+        context: Mapping[str, Any], trusted_witness_keys: Mapping[str, bytes]) -> dict:
+    """Verify the bootstrap trust manifest, then verify a VSP using only its keys.
+
+    This composes two pure verifiers. It does not persist the manifest digest,
+    establish how witness keys were provisioned, or gate a node/signer startup.
+    """
+    required = {
+        "chain_id", "hnd_genesis_sha256", "cometbft_genesis_sha256",
+        "cometbft_source_commit",
+    }
+    if type(context) is not dict or not required.issubset(context):
+        _fail("TM-E-VSP-CONTEXT")
+    manifest_result = parse_trust_manifest(
+        manifest_raw,
+        expected_context={key: context[key] for key in required},
+        trusted_witness_keys=trusted_witness_keys,
+    )
+    manifest = json.loads(manifest_raw.decode("utf-8"))
+    governance_public_keys = {
+        item["key_id"]: base64.b64decode(item["public_key"], validate=True)
+        for item in manifest["governance_keys"]
+    }
+    from hnd_v02.vsp_verify import verify_vsp_envelope
+    vsp_result = verify_vsp_envelope(
+        vsp_raw, context=context, governance_public_keys=governance_public_keys
+    )
+    return {"trust_manifest": manifest_result, "vsp": vsp_result}
