@@ -34,7 +34,7 @@ def decode64(value, length, code):
     return raw
 def governance_key_id(public_key: bytes)->str:
     if type(public_key) is not bytes or len(public_key)!=32: fail("VSP-E-GOVERNANCE-PUBLIC-KEY")
-    return "gk1-"+hashlib.sha256(b"HND-GOV-KEY-v1\\x00"+public_key).hexdigest()
+    return "gk1-"+hashlib.sha256(b"HND-GOV-KEY-v1\x00"+public_key).hexdigest()
 def cometbft_ed25519_address(public_key: bytes)->bytes:
     if type(public_key) is not bytes or len(public_key)!=32: fail("VSP-E-CONSENSUS-PUBLIC-KEY")
     return hashlib.sha256(public_key).digest()[:20]
