@@ -256,7 +256,9 @@ def verify_trust_manifest_chain(
         "manifest_digest": bootstrap["manifest_digest"],
         "governance_public_keys": _public_keys(initial["governance_keys"]),
     }
+    previous_manifest_digest = None
     for raw in manifests[1:]:
+        previous_manifest_digest = current["manifest_digest"]
         current = verify_trust_manifest_rotation(
             raw,
             previous_sequence=current["sequence"],
@@ -268,6 +270,7 @@ def verify_trust_manifest_chain(
     return {
         "sequence": current["sequence"],
         "manifest_digest": current["manifest_digest"],
+        "previous_manifest_digest": previous_manifest_digest,
         "governance_key_ids": sorted(current["governance_public_keys"]),
         "governance_public_keys": dict(current["governance_public_keys"]),
         "witness_ids": sorted(trusted_witness_keys),
