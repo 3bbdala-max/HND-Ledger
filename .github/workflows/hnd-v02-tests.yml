@@ -126,7 +126,7 @@ jobs:
           paths = [item["go_path"] for item in fields]
           assert len(paths) >= 100, f"unexpectedly small config inventory: {len(paths)}"
           assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
-          assert any(item["mapstructure"] == "libp2p" for item in fields), "nested libp2p config missing"
+          assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
           print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
           PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
