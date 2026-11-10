@@ -79,6 +79,8 @@ jobs:
         run: python -m unittest -v tests.test_sqlite_monotonic_anchor
       - name: Run SQLite atomic activation reference backend tests
         run: python -m unittest -v tests.test_sqlite_atomic_activation
+      - name: Run cross-layer station-two end-to-end activation tests
+        run: python -m unittest -v tests.test_station2_end_to_end_activation
       - name: Run isolated v0.2 tests
         run: >-
           python -m unittest -v
