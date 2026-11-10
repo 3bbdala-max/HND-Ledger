@@ -223,6 +223,15 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
             restored = self.load(path)
         self.assertEqual(restored.snapshot(), self.ledger.snapshot())
 
+    def test_save_fsyncs_snapshot_file_and_parent_directory(self):
+        from unittest import mock
+        import os
+        with self.tempfile.TemporaryDirectory() as directory:
+            path = self.Path(directory) / "ledger.json"
+            with mock.patch("hnd_v02.ledger.os.fsync", wraps=os.fsync) as sync:
+                self.ledger.save(path)
+            self.assertEqual(sync.call_count, 2)
+
     def test_file_snapshot_wrong_genesis_hash_rejected(self):
         from hnd_v02.ledger import LedgerError
         with self.tempfile.TemporaryDirectory() as directory:
