@@ -73,6 +73,16 @@ class SQLiteMonotonicAnchor:
         if type(record.digest) is not str or not _HEX64.fullmatch(record.digest):
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-DIGEST")
 
+    def _validate_transition(namespace, current, proposed):
+        """Enforce namespace bootstrap and exact successor inside the write lock."""
+        bootstrap = {"trust-manifest": 0, "vsp-profile": 1}[namespace]
+        if current is None:
+            if proposed.sequence != bootstrap:
+                raise MonotonicAnchorConflict("HND-SQLITE-ANCHOR-E-BOOTSTRAP")
+            return
+        if current.sequence >= (1 << 53) - 1 or proposed.sequence != current.sequence + 1:
+            raise MonotonicAnchorConflict("HND-SQLITE-ANCHOR-E-SEQUENCE")
+ 
     def read_state(self, namespace: str) -> MonotonicRecord | None:
         if type(namespace) is not str or namespace not in _ALLOWED:
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-NAMESPACE")
@@ -85,8 +95,12 @@ class SQLiteMonotonicAnchor:
                 ).fetchone()
             finally:
                 db.close()
-            return None if row is None else MonotonicRecord(row[0], row[1])
-        except sqlite3.Error as exc:
+            if row is None:
+                return None
+            record = MonotonicRecord(row[0], row[1])
+            self._validate(namespace, record)
+            return record
+        except (sqlite3.Error, TypeError, ValueError) as exc:
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-READ") from exc
 
     def compare_and_advance(self, namespace, expected_current, new_record):
@@ -102,9 +116,14 @@ class SQLiteMonotonicAnchor:
                     (namespace,),
                 ).fetchone()
                 current = None if row is None else MonotonicRecord(row[0], row[1])
+                if current is not None:
+                    self._validate(namespace, current)
                 if current != expected_current:
                     db.rollback()
                     return False
+                # Do not rely on callers using advance_monotonic_state(): the
+                # adapter itself enforces exact bootstrap/successor sequences.
+                self._validate_transition(namespace, current, new_record)
                 if current is None:
                     db.execute(
                         "INSERT INTO monotonic_state(namespace, sequence, digest) VALUES(?,?,?)",
