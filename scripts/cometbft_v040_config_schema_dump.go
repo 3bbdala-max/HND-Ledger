@@ -22,7 +22,7 @@ type Field struct {
 	GoPath       string          `json:"go_path"`
 	GoName       string          `json:"go_name"`
 	GoType       string          `json:"go_type"`
-	Mapstructure string          `json:"mapstructure,omitempty"`
+	Mapstructure string          `json:"mapstructure"`
 	Anonymous    bool            `json:"anonymous,omitempty"`
 	DefaultJSON json.RawMessage `json:"default_json,omitempty"`
 }
