@@ -17,8 +17,8 @@ from hnd_v02.trust_manifest import (
 )
 
 ROTATION_SCHEMA = "hnd.vsp-trust-manifest-rotation"
-ROTATION_DOMAIN = b"HND-VSP-TRUST-MANIFEST-ROTATION-v1\\x00"
-ROTATION_AUTH_DOMAIN = b"HND-VSP-TRUST-MANIFEST-ROTATION-AUTH-v1\\x00"
+ROTATION_DOMAIN = b"HND-VSP-TRUST-MANIFEST-ROTATION-v1\x00"
+ROTATION_AUTH_DOMAIN = b"HND-VSP-TRUST-MANIFEST-ROTATION-AUTH-v1\x00"
 HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 HEX40 = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
 IDENT = re.compile(r"^[A-Za-z0-9._:-]{1,128}$", re.ASCII)
@@ -43,7 +43,7 @@ def _rotation_auth_message(digest: bytes) -> bytes:
 def _parse_canonical(raw: bytes) -> dict[str, Any]:
     if type(raw) is not bytes or not raw or len(raw) > MAX_ROTATION_BYTES:
         _fail("TMR-E-BYTE-LIMIT")
-    if raw.startswith(b"\\xef\\xbb\\xbf"):
+    if raw.startswith(b"\xef\xbb\xbf"):
         _fail("TMR-E-UTF8-BOM")
     try:
         value = json.loads(
@@ -155,7 +155,7 @@ def verify_trust_manifest_rotation(
         if entry["algorithm"] != "ed25519":
             _fail("TMR-E-GOVERNANCE-ALGORITHM")
         pub = _b64(entry["public_key"], 32, "TMR-E-GOVERNANCE-PUBLIC-KEY")
-        expected_id = "gk1-" + hashlib.sha256(b"HND-GOV-KEY-v1\\x00" + pub).hexdigest()
+        expected_id = "gk1-" + hashlib.sha256(b"HND-GOV-KEY-v1\x00" + pub).hexdigest()
         if entry["key_id"] != expected_id:
             _fail("TMR-E-GOVERNANCE-KEY-ID")
         role = entry["role_id"]
