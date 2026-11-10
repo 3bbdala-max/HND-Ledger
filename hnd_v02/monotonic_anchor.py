@@ -12,7 +12,8 @@ import re
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _MAX_SEQUENCE = (1 << 53) - 1
-_ALLOWED_NAMESPACES = frozenset({"trust-manifest", "vsp-profile"})
+_BOOTSTRAP_SEQUENCES = {"trust-manifest": 0, "vsp-profile": 1}
+_ALLOWED_NAMESPACES = frozenset(_BOOTSTRAP_SEQUENCES)
 
 
 class MonotonicAnchorError(RuntimeError):
@@ -53,7 +54,7 @@ def advance_monotonic_state(
     anchor: MonotonicStateAnchor, namespace: str, *,
     sequence: int, digest: str, predecessor_digest: str | None,
 ) -> MonotonicRecord:
-    """Atomically accept exactly the next state, or bootstrap sequence zero.
+    """Atomically accept exactly the next state, or its namespace bootstrap sequence.
 
     The caller must first cryptographically verify the manifest/VSP payload.
     This function enforces ordering only; it does not verify signatures.
@@ -76,7 +77,7 @@ def advance_monotonic_state(
         raise MonotonicAnchorUnavailable("HND-ANCHOR-E-READ") from exc
 
     if current is None:
-        if sequence != 0 or predecessor_digest is not None:
+        if sequence != _BOOTSTRAP_SEQUENCES[namespace] or predecessor_digest is not None:
             raise MonotonicAnchorConflict("HND-ANCHOR-E-BOOTSTRAP")
     else:
         if type(current) is not MonotonicRecord:
