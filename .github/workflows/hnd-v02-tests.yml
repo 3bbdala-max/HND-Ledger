@@ -36,6 +36,8 @@ jobs:
         run: bash scripts/generate_cometbft_v040_python.sh
       - name: Run isolated VSP JCS cross-language compatibility spike
         run: python -m unittest -v tests.test_vsp_jcs_compatibility_spike
+      - name: Run strict VSP envelope and digest boundary tests
+        run: python -m unittest -v tests.test_vsp_strict_envelope
       - name: Run isolated v0.2 tests
         run: >-
           python -m unittest -v
