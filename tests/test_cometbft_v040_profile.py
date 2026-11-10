@@ -20,7 +20,7 @@ def schema():
 
 class CometBFTProfileTests(unittest.TestCase):
     def test_defaults_are_resolved_only_from_pinned_schema(self):
-        result = parse_cometbft_v040_profile(b"", schema()) if False else parse_cometbft_v040_profile(
+        result = parse_cometbft_v040_profile(
             b'proxy_app = "tcp://127.0.0.1:26658"\n', schema()
         )
         self.assertEqual(result["consensus.timeout_commit"], "1s")
@@ -33,6 +33,10 @@ class CometBFTProfileTests(unittest.TestCase):
     def test_unknown_fields_fail_closed(self):
         with self.assertRaises(CometBFTProfileError):
             parse_cometbft_v040_profile(b'unknown_option=1\n', schema())
+
+    def test_unknown_empty_tables_fail_closed(self):
+        with self.assertRaises(CometBFTProfileError):
+            parse_cometbft_v040_profile(b'[unknown_section]\\n', schema())
 
     def test_wrong_types_fail_closed(self):
         with self.assertRaises(CometBFTProfileError):
