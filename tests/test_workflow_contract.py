@@ -19,8 +19,12 @@ class WorkflowContractTests(unittest.TestCase):
         pull_block = lines[pull_start:jobs_start]
         self.assertIn("      - phase-0.2-planning", push_block)
         self.assertIn("      - feat/station2-vsp-rotation-activation", push_block)
+        self.assertIn("      - feat/station2-monotonic-anchor-contract", push_block)
+        self.assertIn("      - feat/station2-atomic-activation-contract", push_block)
         self.assertIn("      - phase-0.2-planning", pull_block)
         self.assertIn("      - feat/station2-trust-manifest-rotation", pull_block)
+        self.assertIn("      - feat/station2-monotonic-anchor-contract", pull_block)
+        self.assertIn("      - feat/station2-atomic-activation-contract", pull_block)
         self.assertIn("      - main", pull_block)
 
 
