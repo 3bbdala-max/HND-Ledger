@@ -54,6 +54,7 @@ def verify_unanimous_operator_acks(raw: bytes, *, expected_chain_id: str,
     if type(expected_chain_id) is not str or type(expected_profile_sha256) is not str or not HEX64.fullmatch(expected_profile_sha256): _fail("ACK-E-CONTEXT")
     expected_ids = set(expected_operator_keys)
     if any(type(k) is not str or not IDENT.fullmatch(k) or type(v) is not bytes or len(v) != 32 for k,v in expected_operator_keys.items()): _fail("ACK-E-EXPECTED-OPERATORS")
+    if len(set(expected_operator_keys.values())) != len(expected_operator_keys): _fail("ACK-E-EXPECTED-KEY-DUPLICATE")
     ids = [item.get("operator_id") for item in value if type(item) is dict]
     if len(ids) != len(value) or ids != sorted(ids): _fail("ACK-E-ORDER")
     if set(ids) != expected_ids or len(ids) != len(expected_ids): _fail("ACK-E-UNANIMOUS-SET")
