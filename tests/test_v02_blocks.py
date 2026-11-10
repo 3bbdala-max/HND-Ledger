@@ -247,6 +247,28 @@ class TestV02Blocks(unittest.TestCase):
                 expected_genesis_hash=self.genesis_hash, snapshot=snapshot,
             )
 
+    def test_save_fsyncs_file_before_replace_and_directory_after_replace(self):
+        from unittest import mock
+        import os
+        import stat
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "chain.json"
+            events = []
+            real_fsync, real_replace = os.fsync, os.replace
+            def record_fsync(fd):
+                events.append(("fsync", stat.S_ISDIR(os.fstat(fd).st_mode)))
+                return real_fsync(fd)
+            def record_replace(source, destination):
+                events.append(("replace", None))
+                return real_replace(source, destination)
+            with mock.patch("hnd_v02.blocks.os.fsync", side_effect=record_fsync), \
+                 mock.patch("hnd_v02.blocks.os.replace", side_effect=record_replace):
+                self.chain.save(path)
+            expected = [("fsync", False), ("replace", None)]
+            if os.name == "posix":
+                expected.append(("fsync", True))
+            self.assertEqual(events, expected)
+
     def test_file_save_and_load(self):
         self.chain.build_block([self.tx(10, 0)], timestamp_ms=10)
         with tempfile.TemporaryDirectory() as directory:
@@ -257,6 +279,20 @@ class TestV02Blocks(unittest.TestCase):
                 expected_genesis_hash=self.genesis_hash,
             )
         self.assertEqual(restored.snapshot(), self.chain.snapshot())
+
+    def test_duplicate_json_keys_in_chain_snapshot_are_rejected(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "chain.json"
+            snapshot = self.chain.snapshot()
+            encoded = json.dumps(snapshot, separators=(",", ":"))
+            duplicate = '{"network_id":' + json.dumps(snapshot["network_id"]) + ',' + encoded[1:]
+            path.write_text(duplicate, encoding="utf-8")
+            with self.assertRaisesRegex(BlockError, "cannot be decoded"):
+                HNDChain.load(
+                    path, manifest=self.manifest, config=self.config,
+                    expected_genesis_hash=self.genesis_hash,
+                )
 
     def test_malformed_chain_file_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

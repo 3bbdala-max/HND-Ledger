@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from .genesis import validate_genesis_manifest
 from .transaction import ProtocolConfig, canonical_json, transaction_id, validate_transaction
+from .strict_json import strict_json_loads
 
 SNAPSHOT_VERSION = 1
 STATE_DOMAIN = b"HND-LEDGER/STATE\x00"
@@ -151,6 +152,17 @@ class HNDLedger:
                 os.fsync(handle.fileno())
             os.replace(temp_name, destination)
             temp_name = None
+            # POSIX filesystems require a parent-directory fsync to make
+            # the renamed directory entry durable across sudden power loss.
+            if os.name == "posix":
+                directory_fd = os.open(
+                    destination.parent,
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+                )
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
         finally:
             if temp_name is not None:
                 try:
@@ -204,10 +216,10 @@ class HNDLedger:
              config: ProtocolConfig, expected_genesis_hash: str) -> "HNDLedger":
         """Load JSON from disk and restore by replaying signed history from Genesis."""
         try:
-            with open(path, "r", encoding="utf-8") as handle:
-                snapshot = json.load(
-                    handle,
-                    parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
+            with open(path, "rb") as handle:
+                snapshot = strict_json_loads(
+                    handle.read(),
+                    label="ledger snapshot",
                 )
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise LedgerError("snapshot cannot be decoded") from exc

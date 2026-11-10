@@ -223,6 +223,28 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
             restored = self.load(path)
         self.assertEqual(restored.snapshot(), self.ledger.snapshot())
 
+    def test_save_fsyncs_file_before_replace_and_directory_after_replace(self):
+        from unittest import mock
+        import os
+        import stat
+        with self.tempfile.TemporaryDirectory() as directory:
+            path = self.Path(directory) / "ledger.json"
+            events = []
+            real_fsync, real_replace = os.fsync, os.replace
+            def record_fsync(fd):
+                events.append(("fsync", stat.S_ISDIR(os.fstat(fd).st_mode)))
+                return real_fsync(fd)
+            def record_replace(source, destination):
+                events.append(("replace", None))
+                return real_replace(source, destination)
+            with mock.patch("hnd_v02.ledger.os.fsync", side_effect=record_fsync), \
+                 mock.patch("hnd_v02.ledger.os.replace", side_effect=record_replace):
+                self.ledger.save(path)
+            expected = [("fsync", False), ("replace", None)]
+            if os.name == "posix":
+                expected.append(("fsync", True))
+            self.assertEqual(events, expected)
+
     def test_file_snapshot_wrong_genesis_hash_rejected(self):
         from hnd_v02.ledger import LedgerError
         with self.tempfile.TemporaryDirectory() as directory:
@@ -230,6 +252,18 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
             self.ledger.save(path)
             with self.assertRaisesRegex(LedgerError, "snapshot genesis hash"):
                 self.load(path, "0" * 64)
+
+    def test_duplicate_json_keys_in_snapshot_are_rejected(self):
+        import json
+        from hnd_v02.ledger import LedgerError
+        with self.tempfile.TemporaryDirectory() as directory:
+            path = self.Path(directory) / "ledger.json"
+            snapshot = self.ledger.snapshot()
+            encoded = json.dumps(snapshot, separators=(",", ":"))
+            duplicate = '{"network_id":' + json.dumps(snapshot["network_id"]) + ',' + encoded[1:]
+            path.write_text(duplicate, encoding="utf-8")
+            with self.assertRaisesRegex(LedgerError, "cannot be decoded"):
+                self.load(path)
 
     def test_corrupt_json_file_rejected(self):
         from hnd_v02.ledger import LedgerError
