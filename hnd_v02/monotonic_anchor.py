@@ -58,7 +58,7 @@ def advance_monotonic_state(
     The caller must first cryptographically verify the manifest/VSP payload.
     This function enforces ordering only; it does not verify signatures.
     """
-    if namespace not in _ALLOWED_NAMESPACES:
+    if type(namespace) is not str or namespace not in _ALLOWED_NAMESPACES:
         raise MonotonicAnchorError("HND-ANCHOR-E-NAMESPACE")
     if type(sequence) is not int or not 0 <= sequence <= _MAX_SEQUENCE:
         raise MonotonicAnchorError("HND-ANCHOR-E-SEQUENCE")
