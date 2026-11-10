@@ -1,9 +1,10 @@
 """Cross-layer station-two activation test using real crypto verifiers and SQLite."""
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from hnd_v02.activation_transaction import activate_verified_bundle
+from hnd_v02.activation_transaction import ActivationState, activate_verified_bundle
 from hnd_v02.sqlite_atomic_activation import SQLiteAtomicActivationBackend
 from hnd_v02.vsp_canonical import profile_digest
 from tests.test_activation_bundle import ActivationBundleTests
@@ -53,6 +54,28 @@ class StationTwoEndToEndActivationTests(unittest.TestCase):
             )
             self.assertEqual(reopened.read_active_state(), state)
             self.assertEqual(reopened.read_active_profile(), self.profile_bytes)
+
+    def test_concurrent_competing_bootstrap_activations_commit_exactly_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = SQLiteAtomicActivationBackend(
+                Path(directory) / "station-two-race.sqlite3",
+                profile_validator=lambda _artifact, _digest: True,
+            )
+            proposed = ActivationState(
+                trust_manifest_sequence=0,
+                trust_manifest_digest="1" * 64,
+                profile_sequence=1,
+                profile_digest="2" * 64,
+                activation_height=10,
+                operator_ack_set_sha256="3" * 64,
+            )
+            def attempt():
+                return backend.compare_and_activate(None, proposed, b"profile")
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(lambda _index: attempt(), range(2)))
+            self.assertEqual(sorted(results), [False, True])
+            self.assertEqual(backend.read_active_state(), proposed)
+            self.assertEqual(backend.read_active_profile(), b"profile")
 
     def test_profile_validation_failure_never_commits_any_activation_state(self):
         with tempfile.TemporaryDirectory() as directory:
