@@ -17,6 +17,7 @@ on:
       - feat/station2-vsp-rotation-activation
       - feat/station2-atomic-activation-contract
       - feat/station2-config-schema-dumper
+      - feat/station2-sqlite-anchor-reference
       - main
 
 jobs:
@@ -127,7 +128,7 @@ jobs:
           assert data["source_commit"] == "0880b4d378f347ab16e54ec677ff50d803f37d62"
           fields = data["fields"]
           paths = [item["go_path"] for item in fields]
-          assert len(paths) >= 100, f"unexpectedly small config inventory: {len(paths)}"
+          assert len(paths) >= 100, f"unexpectedly small config inventory: {len(fields)}"
           assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
           assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
           print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
