@@ -117,6 +117,22 @@ class TestV02ABCIApplication(unittest.TestCase):
             )
         self.assertFalse((Path(self.temp.name) / "wrong-config.json").exists())
 
+    def test_init_chain_rejects_block_transaction_limit_mismatch(self):
+        payload = json.loads(self.app.application_genesis_bytes())
+        payload["protocol_config"]["max_block_transactions"] += 1
+        app = HNDABCIApplication(
+            config=self.config,
+            manifest=self.manifest,
+            expected_genesis_hash=self.genesis_hash,
+            state_path=Path(self.temp.name) / "wrong-block-limit.json",
+        )
+        with self.assertRaisesRegex(ABCIApplicationError, "protocol config mismatch"):
+            app.init_chain(
+                chain_id=self.config.network_id,
+                app_state_bytes=canonical_json(payload),
+            )
+        self.assertFalse((Path(self.temp.name) / "wrong-block-limit.json").exists())
+
     def test_init_chain_rejects_unpinned_genesis_hash(self):
         payload = {
             "genesis_hash": "0" * 64,
@@ -125,6 +141,7 @@ class TestV02ABCIApplication(unittest.TestCase):
                 "network_id": self.config.network_id,
                 "protocol_version": self.config.protocol_version,
                 "max_amount": self.config.max_amount,
+                "max_block_transactions": 1000,
             },
         }
         with self.assertRaisesRegex(ABCIApplicationError, "Genesis hash mismatch"):
@@ -557,6 +574,11 @@ class TestV02ABCIApplication(unittest.TestCase):
                 expected_genesis_hash=self.genesis_hash,
                 state_path=self.state_path,
             )
+
+    def test_persisted_store_from_wrong_block_transaction_limit_is_rejected(self):
+        with patch("hnd_v02.abci_app.MAX_BLOCK_TRANSACTIONS", 999):
+            with self.assertRaisesRegex(ABCIApplicationError, "max_block_transactions mismatch"):
+                self.make_app()
 
     def test_persisted_store_from_wrong_genesis_is_rejected(self):
         payload = json.loads(self.state_path.read_text(encoding="utf-8"))
