@@ -19,6 +19,10 @@ class OperatorAckError(ValueError):
 def _fail(code):
     raise OperatorAckError(code)
 
+def _jcs(value):
+    try: return rfc8785.dumps(value)
+    except (TypeError, ValueError, OverflowError) as exc: raise OperatorAckError("ACK-E-CANONICALIZATION") from exc
+
 def _b64(value):
     if type(value) is not str: _fail("ACK-E-SIGNATURE")
     try: raw = base64.b64decode(value, validate=True)
@@ -30,7 +34,7 @@ def acknowledgement_message(*, chain_id, profile_sha256, activation_height, oper
     body = {"schema":"hnd.operator-ack","schema_version":1,"chain_id":chain_id,
         "profile_sha256":profile_sha256,"activation_height":activation_height,
         "operator_id":operator_id,"nonce":nonce}
-    return ACK_DOMAIN + rfc8785.dumps(body)
+    return ACK_DOMAIN + _jcs(body)
 
 def verify_unanimous_operator_acks(raw: bytes, *, expected_chain_id: str,
         expected_profile_sha256: str, expected_activation_height: int,
@@ -48,7 +52,7 @@ def verify_unanimous_operator_acks(raw: bytes, *, expected_chain_id: str,
         if isinstance(exc, OperatorAckError): raise
         raise OperatorAckError("ACK-E-JSON") from exc
     _validate_tree(value)
-    if rfc8785.dumps(value) != raw: _fail("ACK-E-NONCANONICAL")
+    if _jcs(value) != raw: _fail("ACK-E-NONCANONICAL")
     if type(value) is not list or not value or len(value) > 10000: _fail("ACK-E-ARRAY")
     if type(expected_operator_keys) is not dict or not expected_operator_keys: _fail("ACK-E-EXPECTED-OPERATORS")
     if type(expected_activation_height) is not int or expected_activation_height < 0: _fail("ACK-E-ACTIVATION")
@@ -76,7 +80,7 @@ def verify_unanimous_operator_acks(raw: bytes, *, expected_chain_id: str,
                     activation_height=expected_activation_height, operator_id=op, nonce=nonce))
         except (InvalidSignature, ValueError) as exc:
             raise OperatorAckError("ACK-E-SIGNATURE-VERIFY") from exc
-    digest = hashlib.sha256(ACK_SET_DOMAIN + rfc8785.dumps(value)).hexdigest()
+    digest = hashlib.sha256(ACK_SET_DOMAIN + _jcs(value)).hexdigest()
     return {"profile_sha256":expected_profile_sha256,"activation_height":expected_activation_height,
         "operator_count":len(ids),"acknowledged_operator_ids":ids,"ack_set_sha256":digest,
         "unanimous":True}
