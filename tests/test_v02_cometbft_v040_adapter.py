@@ -8,7 +8,7 @@ from pathlib import Path
 import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from hnd_v02.abci_app import HNDABCIApplication
+from hnd_v02.abci_app import HNDABCIApplication, MAX_BLOCK_TRANSACTIONS
 from hnd_v02.cometbft_v040_server import (
     HNDCometBFTv040Servicer,
     start_grpc_server,
@@ -358,6 +358,7 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
                 "network_id": self.config.network_id,
                 "protocol_version": self.config.protocol_version,
                 "max_amount": self.config.max_amount,
+                "max_block_transactions": MAX_BLOCK_TRANSACTIONS,
             },
         })
         with self.assertRaisesRegex(RuntimeError, "Genesis hash mismatch"):

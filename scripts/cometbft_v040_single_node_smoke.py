@@ -27,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from hnd_v02.abci_app import HNDABCIApplication
+from hnd_v02.abci_app import HNDABCIApplication, MAX_BLOCK_TRANSACTIONS
 from hnd_v02.cometbft_v040_server import start_grpc_server, types_pb2, types_pb2_grpc
 from hnd_v02.genesis import genesis_manifest_hash
 from hnd_v02.transaction import (
@@ -255,6 +255,7 @@ def main() -> None:
                 "network_id": config.network_id,
                 "protocol_version": config.protocol_version,
                 "max_amount": config.max_amount,
+                "max_block_transactions": MAX_BLOCK_TRANSACTIONS,
             },
         }).decode("utf-8")
         genesis_text = json.dumps(genesis, indent=2)

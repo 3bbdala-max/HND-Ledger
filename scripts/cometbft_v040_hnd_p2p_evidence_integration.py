@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 from hnd_v02.genesis import genesis_manifest_hash
 from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, public_key_b64
 from hnd_v02.cometbft_v040_server import start_grpc_server, types_pb2, types_pb2_grpc
-from hnd_v02.abci_app import HNDABCIApplication
+from hnd_v02.abci_app import HNDABCIApplication, MAX_BLOCK_TRANSACTIONS
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import grpc
 
@@ -180,6 +180,7 @@ def main():
                 "network_id": cfg.network_id,
                 "protocol_version": cfg.protocol_version,
                 "max_amount": cfg.max_amount,
+                "max_block_transactions": MAX_BLOCK_TRANSACTIONS,
             },
         },
         sort_keys=True, separators=(",", ":"),
