@@ -42,6 +42,8 @@ jobs:
         run: python -m unittest -v tests.test_vsp_payload_verifier
       - name: Run witnessed VSP trust-manifest bootstrap tests
         run: python -m unittest -v tests.test_trust_manifest
+      - name: Run Trust Manifest to VSP authorization integration tests
+        run: python -m unittest -v tests.test_trust_manifest_vsp_integration
       - name: Run unanimous validator operator acknowledgement tests
         run: python -m unittest -v tests.test_operator_ack
       - name: Run strict CometBFT v0.40.0 profile parser tests
