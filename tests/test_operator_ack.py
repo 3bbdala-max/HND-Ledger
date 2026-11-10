@@ -67,6 +67,14 @@ class OperatorAckTests(unittest.TestCase):
         with self.assertRaises(OperatorAckError):
             self.verify(rfc8785.dumps(changed))
 
+    def test_rejects_shared_public_key_for_distinct_operator_ids(self):
+        keys = dict(self.public)
+        keys["operator-2"] = keys["operator-1"]
+        with self.assertRaisesRegex(OperatorAckError, "ACK-E-EXPECTED-KEY-DUPLICATE"):
+            verify_unanimous_operator_acks(self.raw, expected_chain_id=self.chain,
+                expected_profile_sha256=self.profile, expected_activation_height=self.height,
+                expected_operator_keys=keys)
+
     def test_noncanonical_and_invalid_inputs_fail_closed(self):
         with self.assertRaisesRegex(OperatorAckError, "ACK-E-JSON"):
             self.verify(self.raw + b" ")
