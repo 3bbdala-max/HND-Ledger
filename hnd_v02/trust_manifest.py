@@ -90,6 +90,7 @@ def parse_trust_manifest(raw: bytes, *, expected_context: Mapping[str, str],
     _b64(manifest["nonce"], 32, "TM-E-NONCE")
     keys = manifest["governance_keys"]
     if type(keys) is not list or len(keys) != 3: _fail("TM-E-GOVERNANCE-KEY-COUNT")
+    if [item.get("key_id") for item in keys if type(item) is dict] != sorted(item.get("key_id") for item in keys if type(item) is dict): _fail("TM-E-GOVERNANCE-ORDER")
     core_digest = trust_manifest_digest(manifest)
     seen_ids, seen_public, seen_roles = set(), set(), set()
     for entry in keys:
@@ -111,6 +112,7 @@ def parse_trust_manifest(raw: bytes, *, expected_context: Mapping[str, str],
         except (InvalidSignature, ValueError) as exc: raise TrustManifestError("TM-E-GOVERNANCE-POP") from exc
     witnesses = manifest["witnesses"]
     if type(witnesses) is not list or len(witnesses) != 2 or type(trusted_witness_keys) is not dict or len(trusted_witness_keys) < 2: _fail("TM-E-WITNESS-COUNT")
+    if [item.get("witness_id") for item in witnesses if type(item) is dict] != sorted(item.get("witness_id") for item in witnesses if type(item) is dict): _fail("TM-E-WITNESS-ORDER")
     seen_witnesses = set()
     for witness in witnesses:
         _exact(witness, {"witness_id","signature"}, "TM-E-WITNESS-SCHEMA")
