@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from hnd_v02.abci_app import MAX_BLOCK_TRANSACTIONS
 from hnd_v02.genesis import genesis_manifest_hash
 from hnd_v02.recovery_controls import assert_replica_convergence, wait_for_recovery_readiness
 from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, canonical_json, create_signed_transaction, public_key_b64
@@ -149,7 +150,7 @@ def main():
     alloc=sorted([{"account_id":aid,"public_key":apub,"amount":ALICE},{"account_id":bid,"public_key":bpub,"amount":SUPPLY-ALICE}],key=lambda x:x["account_id"])
     manifest={"manifest_version":1,"network_id":CHAIN,"protocol_version":2,"total_supply":SUPPLY,"allocations":alloc}
     gh=genesis_manifest_hash(manifest)
-    appstate={"genesis_hash":gh,"manifest":manifest,"protocol_config":{"network_id":cfg.network_id,"protocol_version":cfg.protocol_version,"max_amount":cfg.max_amount}}
+    appstate={"genesis_hash":gh,"manifest":manifest,"protocol_config":{"network_id":cfg.network_id,"protocol_version":cfg.protocol_version,"max_amount":cfg.max_amount,"max_block_transactions":MAX_BLOCK_TRANSACTIONS}}
     tx=canonical_json(create_signed_transaction(ak,config=cfg,sender=aid,recipient=bid,amount=TRANSFER,nonce=0))
     with tempfile.TemporaryDirectory(prefix="hnd-four-validator-") as tmp:
         root=Path(tmp); mp=root/"manifest.json"; mp.write_text(json.dumps(manifest,sort_keys=True,indent=2)+"\n")
