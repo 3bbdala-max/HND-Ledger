@@ -1,5 +1,5 @@
 """Synthetic tests for VSP payload schema, signatures and Genesis binding."""
-import base64, copy, unittest
+import base64, copy, json, unittest
 import rfc8785
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_v02.vsp_canonical import VSPInputError, governance_signature_message, profile_digest
@@ -34,8 +34,9 @@ class VSPVerifierTests(unittest.TestCase):
         out=self.verify()
         self.assertEqual((out["profile_sequence"],out["validator_count"],out["total_voting_power"]),(1,2,20))
     def test_rejects_tampered_payload(self):
-        p=copy.deepcopy(self.payload); p["change"]["reason"]="tampered"
-        with self.assertRaisesRegex(VSPInputError,"VSP-E-GOVERNANCE-SIGNATURE"): self.verify(self.signed(p))
+        envelope=json.loads(self.signed())
+        envelope["payload"]["change"]["reason"]="tampered"
+        with self.assertRaisesRegex(VSPInputError,"VSP-E-GOVERNANCE-SIGNATURE"): self.verify(rfc8785.dumps(envelope))
     def test_rejects_wrong_trust_key_id(self):
         wrong=dict(self.trust); wrong[next(iter(wrong))]=bytes(32)
         with self.assertRaisesRegex(VSPInputError,"VSP-E-TRUST-MANIFEST-KEY-ID"): self.verify(trust=wrong)
