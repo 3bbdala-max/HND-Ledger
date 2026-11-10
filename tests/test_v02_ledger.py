@@ -231,6 +231,18 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
             with self.assertRaisesRegex(LedgerError, "snapshot genesis hash"):
                 self.load(path, "0" * 64)
 
+    def test_duplicate_json_keys_in_snapshot_are_rejected(self):
+        import json
+        from hnd_v02.ledger import LedgerError
+        with self.tempfile.TemporaryDirectory() as directory:
+            path = self.Path(directory) / "ledger.json"
+            snapshot = self.ledger.snapshot()
+            encoded = json.dumps(snapshot, separators=(",", ":"))
+            duplicate = '{"network_id":' + json.dumps(snapshot["network_id"]) + ',' + encoded[1:]
+            path.write_text(duplicate, encoding="utf-8")
+            with self.assertRaisesRegex(LedgerError, "cannot be decoded"):
+                self.load(path)
+
     def test_corrupt_json_file_rejected(self):
         from hnd_v02.ledger import LedgerError
         with self.tempfile.TemporaryDirectory() as directory:
