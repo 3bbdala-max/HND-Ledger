@@ -1,5 +1,3 @@
-//go:build ignore
-
 // Strict CometBFT v0.40.0 TOML parser probe. Run from the pinned CometBFT
 // source checkout so config.DefaultConfig and validation come from that exact
 // source tree. This tool deliberately does not claim to produce the VSP
