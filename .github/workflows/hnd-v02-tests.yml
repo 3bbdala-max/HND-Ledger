@@ -10,6 +10,7 @@ on:
   pull_request:
     branches:
       - phase-0.2-planning
+      - feat/station2-monotonic-anchor-contract
       - feat/station2-trust-manifest-rotation
       - feat/station2-vsp-rotation-activation
       - feat/station2-atomic-activation-contract
