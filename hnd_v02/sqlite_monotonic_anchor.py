@@ -73,6 +73,7 @@ class SQLiteMonotonicAnchor:
         if type(record.digest) is not str or not _HEX64.fullmatch(record.digest):
             raise MonotonicAnchorError("HND-SQLITE-ANCHOR-E-DIGEST")
 
+    @staticmethod
     def _validate_transition(namespace, current, proposed):
         """Enforce namespace bootstrap and exact successor inside the write lock."""
         bootstrap = {"trust-manifest": 0, "vsp-profile": 1}[namespace]
