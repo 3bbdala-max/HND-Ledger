@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - phase-0.2-planning
+      - feat/station2-trust-manifest-rotation
       - main
 
 jobs:
