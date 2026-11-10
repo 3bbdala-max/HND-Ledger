@@ -18,6 +18,8 @@ class FieldRule:
     scope: str
     default: Any = None
     has_default: bool = False
+    item_type: type | tuple[type, ...] | None = None
+    item_fields: Mapping[str, "FieldRule"] | None = None
 
 @dataclass(frozen=True)
 class ProfileSchema:
@@ -45,7 +47,22 @@ def _validate_value(value: Any, rule: FieldRule, path: str) -> None:
     expected = rule.value_type
     if type(value) not in (expected if isinstance(expected, tuple) else (expected,)):
         raise CometBFTProfileError(f"{path}: TOML value has wrong type")
-    _validate_tree(value, path)
+    if isinstance(value, list):
+        if rule.item_fields is not None:
+            for index, item in enumerate(value):
+                if type(item) is not dict or set(item) != set(rule.item_fields):
+                    raise CometBFTProfileError(f"{path}[{index}]: array-table field set mismatch")
+                for key, child_rule in rule.item_fields.items():
+                    _validate_value(item[key], child_rule, f"{path}[{index}].{key}")
+        elif rule.item_type is not None:
+            for index, item in enumerate(value):
+                if type(item) not in (rule.item_type if isinstance(rule.item_type, tuple) else (rule.item_type,)):
+                    raise CometBFTProfileError(f"{path}[{index}]: array item has wrong type")
+                _validate_tree(item, f"{path}[{index}]")
+        else:
+            raise CometBFTProfileError(f"{path}: array schema must declare item_type or item_fields")
+    else:
+        _validate_tree(value, path)
 
 def _table_paths(document: Mapping[str, Any], prefix: str = "") -> set[str]:
     paths: set[str] = set()
