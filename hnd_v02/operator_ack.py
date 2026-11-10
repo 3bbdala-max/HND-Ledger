@@ -48,6 +48,7 @@ def verify_unanimous_operator_acks(raw: bytes, *, expected_chain_id: str,
         if isinstance(exc, OperatorAckError): raise
         raise OperatorAckError("ACK-E-JSON") from exc
     _validate_tree(value)
+    if rfc8785.dumps(value) != raw: _fail("ACK-E-NONCANONICAL")
     if type(value) is not list or not value or len(value) > 10000: _fail("ACK-E-ARRAY")
     if type(expected_operator_keys) is not dict or not expected_operator_keys: _fail("ACK-E-EXPECTED-OPERATORS")
     if type(expected_activation_height) is not int or expected_activation_height < 0: _fail("ACK-E-ACTIVATION")
