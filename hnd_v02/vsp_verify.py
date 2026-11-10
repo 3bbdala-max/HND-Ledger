@@ -100,6 +100,7 @@ def validate_payload(payload, context):
         if change["type"]!="initial": fail("VSP-E-INITIAL-CHANGE-TYPE")
     else:
         if type(active) is not dict or set(active)!={"sequence","digest","height"}: fail("VSP-E-ACTIVE-PROFILE-CONTEXT")
+        if type(active["sequence"]) is not int or type(active["height"]) is not int or active["sequence"]<1 or active["height"]<0: fail("VSP-E-ACTIVE-PROFILE-CONTEXT")
         if seq!=active["sequence"]+1: fail("VSP-E-PROFILE-SEQUENCE-ROLLBACK")
         if payload["previous_profile_sha256"]!=active["digest"]: fail("VSP-E-PROFILE-PREDECESSOR")
         hexstr(payload["previous_profile_sha256"],HEX64,"VSP-E-PROFILE-PREDECESSOR")
@@ -110,7 +111,7 @@ def validate_payload(payload, context):
     if gov["policy_id"]!="hnd-vsp-2-of-3-v1" or type(gov["threshold"]) is not int or gov["threshold"]!=2: fail("VSP-E-GOVERNANCE-POLICY")
     if type(ids) is not list or len(ids)!=3 or any(type(x) is not str for x in ids) or ids!=sorted(set(ids)): fail("VSP-E-GOVERNANCE-KEY-IDS")
     if any(not re.fullmatch(r"gk1-[0-9a-f]{64}",x,re.ASCII) for x in ids): fail("VSP-E-GOVERNANCE-KEY-ID-FORMAT")
-    if change["type"] not in {"initial","add","remove","power_change","key_rotation","recovery"}: fail("VSP-E-CHANGE-TYPE")
+    if type(change["type"]) is not str or change["type"] not in {"initial","add","remove","power_change","key_rotation","recovery"}: fail("VSP-E-CHANGE-TYPE")
     if type(change["reason"]) is not str or not change["reason"] or len(change["reason"])>512: fail("VSP-E-CHANGE-REASON")
     if type(change["change_reference"]) is not str or not REF.fullmatch(change["change_reference"]): fail("VSP-E-CHANGE-REFERENCE")
     validate_roster(payload,context["cometbft_genesis_validators"])
