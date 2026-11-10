@@ -114,12 +114,15 @@ def parse_trust_manifest(raw: bytes, *, expected_context: Mapping[str, str],
     if type(witnesses) is not list or len(witnesses) != 2 or type(trusted_witness_keys) is not dict: _fail("TM-E-WITNESS-COUNT")
     if [item.get("witness_id") for item in witnesses if type(item) is dict] != sorted(item.get("witness_id") for item in witnesses if type(item) is dict): _fail("TM-E-WITNESS-ORDER")
     seen_witnesses = set()
+    seen_witness_public_keys = set()
     for witness in witnesses:
         _exact(witness, {"witness_id","signature"}, "TM-E-WITNESS-SCHEMA")
         wid = witness["witness_id"]
         if type(wid) is not str or not IDENT.fullmatch(wid) or wid in seen_witnesses: _fail("TM-E-WITNESS-ID")
         pub = trusted_witness_keys.get(wid)
         if type(pub) is not bytes or len(pub) != 32: _fail("TM-E-UNTRUSTED-WITNESS")
+        if pub in seen_witness_public_keys: _fail("TM-E-WITNESS-KEY-DUPLICATE")
+        seen_witness_public_keys.add(pub)
         signature = _b64(witness["signature"], 64, "TM-E-WITNESS-SIGNATURE")
         try: Ed25519PublicKey.from_public_bytes(pub).verify(signature, witness_message(core_digest))
         except (InvalidSignature, ValueError) as exc: raise TrustManifestError("TM-E-WITNESS-SIGNATURE") from exc
