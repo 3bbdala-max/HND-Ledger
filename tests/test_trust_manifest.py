@@ -115,6 +115,21 @@ class TrustManifestTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaisesRegex(TrustManifestError, error):
                 self.parse(rfc8785.dumps(changed))
 
+    def test_rejects_unsorted_governance_and_witness_arrays(self):
+        changed = copy.deepcopy(self.manifest)
+        changed["governance_keys"].reverse()
+        digest = trust_manifest_digest(changed)
+        changed["witnesses"] = [
+            {"witness_id": f"witness-{i+1}", "signature": b64(key.sign(witness_message(digest)))}
+            for i, key in enumerate(self.witness)
+        ]
+        with self.assertRaisesRegex(TrustManifestError, "TM-E-GOVERNANCE-ORDER"):
+            self.parse(rfc8785.dumps(changed))
+        changed = copy.deepcopy(self.manifest)
+        changed["witnesses"].reverse()
+        with self.assertRaisesRegex(TrustManifestError, "TM-E-WITNESS-ORDER"):
+            self.parse(rfc8785.dumps(changed))
+
     def test_rejects_noncanonical_duplicate_and_bom(self):
         with self.assertRaisesRegex(TrustManifestError, "TM-E-NONCANONICAL"):
             self.parse(self.raw + b" ")
