@@ -21,13 +21,14 @@ from .ledger import HNDLedger, LedgerError
 from .strict_json import StrictJSONError, strict_json_loads
 from .transaction import ProtocolConfig, canonical_json
 
-APP_STORE_VERSION = 4
+APP_STORE_VERSION = 5
 MAX_BLOCK_TRANSACTIONS = 1000
 _STORE_KEYS = {
     "schema_version",
     "network_id",
     "protocol_version",
     "max_amount",
+    "max_block_transactions",
     "genesis_hash",
     "last_committed_height",
     "ledger_snapshot",
@@ -260,6 +261,7 @@ class HNDABCIApplication:
                 "network_id": self.config.network_id,
                 "protocol_version": self.config.protocol_version,
                 "max_amount": self.config.max_amount,
+                "max_block_transactions": MAX_BLOCK_TRANSACTIONS,
             },
         })
 
@@ -283,6 +285,7 @@ class HNDABCIApplication:
                 "network_id": self.config.network_id,
                 "protocol_version": self.config.protocol_version,
                 "max_amount": self.config.max_amount,
+                "max_block_transactions": MAX_BLOCK_TRANSACTIONS,
             }
             if payload["protocol_config"] != expected_config:
                 raise ABCIApplicationError("application Genesis protocol config mismatch")
@@ -492,6 +495,7 @@ class HNDABCIApplication:
             "network_id": self.config.network_id,
             "protocol_version": self.config.protocol_version,
             "max_amount": self.config.max_amount,
+            "max_block_transactions": MAX_BLOCK_TRANSACTIONS,
             "genesis_hash": self.expected_genesis_hash,
             "last_committed_height": height,
             "ledger_snapshot": snapshot,
@@ -612,6 +616,8 @@ class HNDABCIApplication:
             raise ABCIApplicationError("application state protocol mismatch")
         if type(payload["max_amount"]) is not int or payload["max_amount"] != self.config.max_amount:
             raise ABCIApplicationError("application state max_amount mismatch")
+        if type(payload["max_block_transactions"]) is not int or payload["max_block_transactions"] != MAX_BLOCK_TRANSACTIONS:
+            raise ABCIApplicationError("application state max_block_transactions mismatch")
         if payload["genesis_hash"] != self.expected_genesis_hash:
             raise ABCIApplicationError("application state Genesis mismatch")
         height = payload["last_committed_height"]
