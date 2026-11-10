@@ -87,6 +87,7 @@ def validate_payload(payload, context):
     if hexstr(payload["hnd_genesis_sha256"],HEX64,"VSP-E-HND-GENESIS-DIGEST")!=context["hnd_genesis_sha256"]: fail("VSP-E-HND-GENESIS-MISMATCH")
     c=exact(payload["cometbft"],COMET,"VSP-E-COMETBFT-SCHEMA")
     if c["version"]!=context["cometbft_version"]: fail("VSP-E-COMETBFT-VERSION")
+    if context["cometbft_genesis_chain_id"]!=chain: fail("VSP-E-COMETBFT-GENESIS-CHAIN-ID")
     if hexstr(c["source_commit"],re.compile(r"^[0-9a-f]{40}$"),"VSP-E-COMETBFT-SOURCE")!=context["cometbft_source_commit"]: fail("VSP-E-COMETBFT-SOURCE-MISMATCH")
     for field,ctx,code in [("binary_sha256","cometbft_binary_sha256","VSP-E-COMETBFT-BINARY-MISMATCH"),("genesis_sha256","cometbft_genesis_sha256","VSP-E-COMETBFT-GENESIS-MISMATCH"),("profile_sha256","cometbft_profile_sha256","VSP-E-COMETBFT-PROFILE-MISMATCH")]:
         if hexstr(c[field],HEX64,code)!=context[ctx]: fail(code)
@@ -117,7 +118,7 @@ def validate_payload(payload, context):
     validate_roster(payload,context["cometbft_genesis_validators"])
 
 def verify_vsp_envelope(raw: bytes, *, context: Mapping[str,Any], governance_public_keys: Mapping[str,bytes])->dict:
-    required={"chain_id","hnd_genesis_sha256","cometbft_version","cometbft_source_commit","cometbft_binary_sha256","cometbft_genesis_sha256","cometbft_profile_sha256","cometbft_genesis_validators"}
+    required={"chain_id","hnd_genesis_sha256","cometbft_version","cometbft_source_commit","cometbft_binary_sha256","cometbft_genesis_sha256","cometbft_genesis_chain_id","cometbft_profile_sha256","cometbft_genesis_validators"}
     if type(context) is not dict or not required.issubset(context): fail("VSP-E-EXPECTED-CONTEXT")
     envelope=parse_vsp_envelope(raw)
     payload=envelope["payload"]
