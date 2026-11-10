@@ -6,13 +6,13 @@ from hnd_v02.trust_manifest import (
     verify_vsp_with_trust_manifest,
 )
 from hnd_v02.vsp_verify import governance_key_id
-from tests.test_vsp_payload_verifier import VSPVerifierTests
+import tests.test_vsp_payload_verifier as vsp_fixture_module
 
 def b64(value): return base64.b64encode(value).decode("ascii")
 
 class TrustManifestVSPIntegrationTests(unittest.TestCase):
     def test_manifest_keys_are_the_only_keys_used_for_vsp_authorization(self):
-        vsp = VSPVerifierTests()
+        vsp = vsp_fixture_module.VSPVerifierTests()
         vsp.setUp()
         nonce = b64(bytes(range(32)))
         keys = []
@@ -50,7 +50,7 @@ class TrustManifestVSPIntegrationTests(unittest.TestCase):
             trusted_witness_keys=witness_keys)
         self.assertEqual(result["vsp"]["profile_sequence"], 1)
         self.assertEqual(result["trust_manifest"]["threshold"], 2)
-        self.assertEqual(result["vsp"]["verified_signer_key_ids"], vsp.ids)
+        self.assertEqual(result["vsp"]["verified_signer_key_ids"], sorted(governance_key_id(vsp.gpub[i]) for i in (0, 1)))
 
 if __name__ == "__main__":
     unittest.main()
