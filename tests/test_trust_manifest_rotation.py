@@ -124,6 +124,36 @@ class TrustManifestRotationTests(unittest.TestCase):
         self.assertEqual(result["sequence"], 1)
         self.assertEqual(result["rotation_count"], 1)
         self.assertEqual(len(result["governance_key_ids"]), 3)
+        self.assertEqual(set(result["governance_public_keys"]), set(result["governance_key_ids"]))
+        self.assertEqual(len(result["governance_public_keys"]), 3)
+
+    def test_two_consecutive_rotations_use_only_latest_governance_keys(self):
+        second_private = [Ed25519PrivateKey.generate() for _ in range(3)]
+        third_private = [Ed25519PrivateKey.generate() for _ in range(3)]
+        rotation_one = self._make_rotation(
+            self.bootstrap_result["manifest_digest"], self.old_private, second_private,
+            sequence=1,
+        )
+        first_chain = verify_trust_manifest_chain(
+            [self.bootstrap, rotation_one], expected_context=self.context,
+            trusted_witness_keys=self.witness_keys,
+        )
+        rotation_two = self._make_rotation(
+            first_chain["manifest_digest"], second_private, third_private,
+            sequence=2,
+        )
+        result = verify_trust_manifest_chain(
+            [self.bootstrap, rotation_one, rotation_two],
+            expected_context=self.context, trusted_witness_keys=self.witness_keys,
+        )
+        expected_latest = {governance_key_id(public(key)) for key in third_private}
+        self.assertEqual(result["sequence"], 2)
+        self.assertEqual(result["rotation_count"], 2)
+        self.assertEqual(set(result["governance_key_ids"]), expected_latest)
+        self.assertEqual(set(result["governance_public_keys"]), expected_latest)
+        self.assertFalse(expected_latest.intersection(
+            governance_key_id(public(key)) for key in self.old_private
+        ))
 
     def test_rejects_skipped_sequence(self):
         new_private = [Ed25519PrivateKey.generate() for _ in range(3)]
