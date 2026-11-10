@@ -243,3 +243,23 @@ Before this candidate can become normative:
 8. Independent security review approves the final contract and implementation plan.
 
 **Final disposition: CONSOLIDATED CANDIDATE — NOT FROZEN — NOT IMPLEMENTED — NOT APPROVED FOR PRODUCTION.**
+
+
+---
+
+## 12. Project-owner decision alignment — 2026-11-10
+
+The project owner approved the following eight design decisions as the VSP v1 engineering baseline. This section supersedes conflicting candidate wording only for these decisions; all unimplemented controls remain requirements, not claims of completed functionality.
+
+1. **Complete CometBFT profile identity:** bind HND Genesis and CometBFT Genesis digests, pinned release/source/binary identity, and a deterministic digest of the complete version-specific consensus-affecting runtime configuration. Classify security-critical operational fields; explicitly enumerate local-only fields. Reject unknown or unsupported consensus-affecting fields.
+2. **No v1 expiry field:** VSP v1 does not contain expiry. Anti-replay uses profile sequence, predecessor digest, activation policy and durable anti-rollback state; no unsynchronized wall-clock dependency is introduced.
+3. **Strict canonical input:** strict UTF-8/no BOM, duplicate-key rejection at all depths, exact schemas, canonical whole-envelope JCS byte equality, lexical integer validation (no float/exponent/bool/string substitutes), bounded resources and stable fail-closed errors. Independent JCS vectors remain mandatory.
+4. **Separate counters:** trust-manifest and VSP profile sequences are independent monotonic namespaces with separate digests, predecessors, bootstrap records and anti-rollback state.
+5. **One governance key-ID rule:** the HND-GOV-KEY-v1 derivation from raw Ed25519 public keys is identical across manifests, proofs, signatures, rotations, revocations, audit and acknowledgements. G1/G2/G3 are roles only.
+6. **All-operator activation acknowledgement:** every configured operator must acknowledge the same digest. Any missing acknowledgement or digest mismatch blocks activation; no majority override. Numeric lead time and exact restart/recovery mechanics must be completed before activation implementation is accepted.
+7. **No catastrophic-loss bypass:** two-key loss/compromise stops governance changes; halt the network if signing safety is uncertain. Recovery requires a separately approved and rehearsed, independently witnessed process and new trust-root pinning.
+8. **Independence evidence:** operator identity, custody/admin separation, infrastructure/failure-domain independence, evidence freshness, revocation and privacy controls require independent verification; an attestation reference alone is insufficient.
+
+The candidate's expiry omission is therefore the selected v1 rule. Any older trust-root text requiring routine VSP expiry is superseded by this section for v1.
+
+**Current authority:** project-owner design baseline approved. **Not yet implemented:** full CometBFT profile digest binding, parser/verifier, durable anti-rollback, activation enforcement, governance trust-root ceremony and recovery, operator-independence verification. **Not approved:** production trust-root enrollment, production signing, validator onboarding, token issuance or public launch. Independent security review remains mandatory.
