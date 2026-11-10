@@ -63,3 +63,10 @@ Added `hnd_v02/operator_ack.py` and `tests/test_operator_ack.py`, wired into CI.
 The offline verifier requires exactly one valid Ed25519 acknowledgement from every operator in an externally supplied expected-operator key set. Each acknowledgement binds the chain ID, exact VSP digest, activation height, operator ID and nonce. Missing, extra, duplicate, wrong-profile, wrong-height, non-canonical or invalidly signed acknowledgements fail closed. The result includes a digest of the verified acknowledgement set.
 
 This is a pure verification function only. It does not establish operator independence, collect acknowledgements from real operators, store them durably, coordinate a rollout, atomically activate a profile, or prevent a process from bypassing the verifier. Those require deployment integration and independent operational evidence.
+
+
+## WP4.28 — Trust Manifest → VSP Authorization Composition
+
+Added `verify_vsp_with_trust_manifest` and an integration test proving that the governance public keys accepted for VSP signature verification are taken from the independently witness-validated manifest, rather than from a separately supplied arbitrary key map.
+
+This is still a pure/offline composition. It does not persist the trust-manifest digest as the node's pinned trust root, provide trusted witness-key provisioning, or gate CometBFT/remote-signer startup.
