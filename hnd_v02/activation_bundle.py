@@ -61,7 +61,9 @@ def verify_activation_bundle_with_manifest_chain(
     return {
         "trust_manifest_sequence": chain["sequence"],
         "trust_manifest_digest": chain["manifest_digest"],
+        "previous_trust_manifest_digest": chain["previous_manifest_digest"],
         "profile_digest": vsp["profile_digest"],
+        "previous_profile_digest": vsp["previous_profile_sha256"],
         "profile_sequence": vsp["profile_sequence"],
         "activation_height": vsp["activation_height"],
         "validator_count": vsp["validator_count"],
