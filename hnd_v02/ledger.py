@@ -205,7 +205,7 @@ class HNDLedger:
              config: ProtocolConfig, expected_genesis_hash: str) -> "HNDLedger":
         """Load JSON from disk and restore by replaying signed history from Genesis."""
         try:
-            with open(path, "r", encoding="utf-8") as handle:
+            with open(path, "rb") as handle:
                 snapshot = strict_json_loads(
                     handle.read(),
                     label="ledger snapshot",
