@@ -1,6 +1,6 @@
 # WP4.22 — VSP v1 Payload, Governance Signature and Genesis Verifier
 
-Date: 2026-11-10. Implemented on a dependent feature branch; CI evidence pending.
+Date: 2026-11-10. Implemented on a dependent feature branch. CI run 42753028814 completed successfully on exact implementation SHA 4b4b6a9fe8c7d60df2c98b9b9872e19ebb79c6b0; see WP4.23. The later documentation-only evidence commit is not covered by that code-run SHA.
 
 ## Implemented
 - Exact payload field sets based on the consolidated VSP candidate.
