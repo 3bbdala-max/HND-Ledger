@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from .genesis import validate_genesis_manifest
 from .transaction import ProtocolConfig, canonical_json, transaction_id, validate_transaction
+from .strict_json import strict_json_loads
 
 SNAPSHOT_VERSION = 1
 STATE_DOMAIN = b"HND-LEDGER/STATE\x00"
@@ -205,9 +206,9 @@ class HNDLedger:
         """Load JSON from disk and restore by replaying signed history from Genesis."""
         try:
             with open(path, "r", encoding="utf-8") as handle:
-                snapshot = json.load(
-                    handle,
-                    parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
+                snapshot = strict_json_loads(
+                    handle.read(),
+                    label="ledger snapshot",
                 )
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise LedgerError("snapshot cannot be decoded") from exc
