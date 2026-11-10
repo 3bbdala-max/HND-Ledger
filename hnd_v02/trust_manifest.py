@@ -111,7 +111,7 @@ def parse_trust_manifest(raw: bytes, *, expected_context: Mapping[str, str],
         try: Ed25519PublicKey.from_public_bytes(pub).verify(proof, message)
         except (InvalidSignature, ValueError) as exc: raise TrustManifestError("TM-E-GOVERNANCE-POP") from exc
     witnesses = manifest["witnesses"]
-    if type(witnesses) is not list or len(witnesses) != 2 or type(trusted_witness_keys) is not dict or len(trusted_witness_keys) < 2: _fail("TM-E-WITNESS-COUNT")
+    if type(witnesses) is not list or len(witnesses) != 2 or type(trusted_witness_keys) is not dict: _fail("TM-E-WITNESS-COUNT")
     if [item.get("witness_id") for item in witnesses if type(item) is dict] != sorted(item.get("witness_id") for item in witnesses if type(item) is dict): _fail("TM-E-WITNESS-ORDER")
     seen_witnesses = set()
     for witness in witnesses:
