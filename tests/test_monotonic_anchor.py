@@ -30,7 +30,7 @@ class BrokenAnchor:
 
 
 class MonotonicAnchorContractTests(unittest.TestCase):
-    def test_bootstrap_requires_sequence_zero(self):
+    def test_trust_manifest_bootstrap_is_sequence_zero(self):
         anchor = MemoryAnchor()
         result = advance_monotonic_state(
             anchor, "trust-manifest", sequence=0, digest="a" * 64,
@@ -38,7 +38,20 @@ class MonotonicAnchorContractTests(unittest.TestCase):
         )
         self.assertEqual(result, MonotonicRecord(0, "a" * 64))
 
-    def test_bootstrap_rejects_nonzero_sequence(self):
+    def test_vsp_profile_bootstrap_is_sequence_one(self):
+        anchor = MemoryAnchor()
+        result = advance_monotonic_state(
+            anchor, "vsp-profile", sequence=1, digest="d" * 64,
+            predecessor_digest=None,
+        )
+        self.assertEqual(result, MonotonicRecord(1, "d" * 64))
+        with self.assertRaises(MonotonicAnchorConflict):
+            advance_monotonic_state(
+                MemoryAnchor(), "vsp-profile", sequence=0,
+                digest="e" * 64, predecessor_digest=None,
+            )
+
+    def test_bootstrap_rejects_wrong_sequence(self):
         with self.assertRaises(MonotonicAnchorConflict):
             advance_monotonic_state(
                 MemoryAnchor(), "trust-manifest", sequence=1,
@@ -79,7 +92,7 @@ class MonotonicAnchorContractTests(unittest.TestCase):
             predecessor_digest=None,
         )
         advance_monotonic_state(
-            anchor, "vsp-profile", sequence=0, digest="b" * 64,
+            anchor, "vsp-profile", sequence=1, digest="b" * 64,
             predecessor_digest=None,
         )
         self.assertNotEqual(anchor.records["trust-manifest"],
@@ -93,8 +106,9 @@ class MonotonicAnchorContractTests(unittest.TestCase):
             with self.subTest(namespace=namespace, digest=digest):
                 with self.assertRaises(Exception):
                     advance_monotonic_state(
-                        anchor, namespace, sequence=0, digest=digest,
-                        predecessor_digest=None,
+                        anchor, namespace,
+                        sequence=1 if namespace == "vsp-profile" else 0,
+                        digest=digest, predecessor_digest=None,
                     )
 
     def test_unavailable_anchor_fails_closed(self):
