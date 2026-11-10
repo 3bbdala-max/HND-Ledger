@@ -70,3 +70,13 @@ This is a pure verification function only. It does not establish operator indepe
 Added `verify_vsp_with_trust_manifest` and an integration test proving that the governance public keys accepted for VSP signature verification are taken from the independently witness-validated manifest, rather than from a separately supplied arbitrary key map.
 
 This is still a pure/offline composition. It does not persist the trust-manifest digest as the node's pinned trust root, provide trusted witness-key provisioning, or gate CometBFT/remote-signer startup.
+
+
+## WP4.29 — Offline Activation Evidence Bundle
+
+Added `hnd_v02/activation_bundle.py` and a CI integration test. It composes:
+1. Trust Manifest bootstrap validation against external witness keys.
+2. VSP payload, Genesis/profile identity and governance-signature validation using only keys from that verified manifest.
+3. Unanimous operator acknowledgement validation for the exact VSP digest and activation height.
+
+The preflight returns an accepted result only when all three verifiers pass. This is not an activation engine: it does not persist the selected trust root or active sequence, atomically write/activate a profile, enforce pre-start/signer gates, or provide an external monotonic anchor. It is not production-ready.
