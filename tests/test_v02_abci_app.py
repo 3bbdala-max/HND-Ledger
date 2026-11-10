@@ -341,9 +341,9 @@ class TestV02ABCIApplication(unittest.TestCase):
         def record_replace(source, destination, **kwargs):
             events.append(("replace", None))
             return real_replace(source, destination, **kwargs)
-        with patch("hnd_v02.abci_app.os.fsync", side_effect=record_fsync), \\
-             patch("hnd_v02.abci_app.os.replace", side_effect=record_replace):
-            self.app.commit()
+        with patch("hnd_v02.abci_app.os.fsync", side_effect=record_fsync):
+            with patch("hnd_v02.abci_app.os.replace", side_effect=record_replace):
+                self.app.commit()
         expected = [("fsync", False), ("replace", None)]
         if os.name == "posix":
             expected.append(("fsync", True))
