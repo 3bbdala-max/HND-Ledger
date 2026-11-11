@@ -209,5 +209,60 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         urlopen.assert_not_called()
 
 
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_intent_and_both_monotonic_records_commit_with_state_and_profile(self, urlopen):
+        urlopen.side_effect = [
+            _Response({"kvs": []}),
+            _Response({"succeeded": True}),
+        ]
+        backend = self.backend()
+        proposed = state()
+        self.assertTrue(backend.compare_and_activate_with_intent(
+            None, proposed, b"profile-v1",
+            activation_id="station2-bootstrap-001",
+        ))
+        self.assertEqual(urlopen.call_count, 2)
+        request = urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(len(payload["compare"]), 5)
+        self.assertTrue(all(item["target"] == "CREATE" for item in payload["compare"]))
+        self.assertEqual(len(payload["success"]), 5)
+        written = {
+            base64.b64decode(item["request_put"]["key"]).decode("utf-8"):
+            base64.b64decode(item["request_put"]["value"])
+            for item in payload["success"]
+        }
+        self.assertEqual(set(written), {
+            "/hnd/station2/active-state",
+            "/hnd/station2/active-profile",
+            "/hnd/station2/monotonic/trust-manifest",
+            "/hnd/station2/monotonic/vsp-profile",
+            "/hnd/station2/activation-intents/station2-bootstrap-001",
+        })
+        self.assertEqual(written["/hnd/station2/active-state"],
+                         backend._encode_state(proposed))
+        self.assertEqual(written["/hnd/station2/active-profile"], b"profile-v1")
+        self.assertEqual(json.loads(written[
+            "/hnd/station2/monotonic/trust-manifest"]),
+            {"sequence": 0, "digest": "1" * 64})
+        self.assertEqual(json.loads(written[
+            "/hnd/station2/monotonic/vsp-profile"]),
+            {"sequence": 1, "digest": "2" * 64})
+        intent = json.loads(written[
+            "/hnd/station2/activation-intents/station2-bootstrap-001"])
+        self.assertEqual(intent["state"], "pending_witness")
+        self.assertEqual(intent["activation_id"], "station2-bootstrap-001")
+        self.assertEqual(intent["operator_ack_digest"], "3" * 64)
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_atomic_intent_rejects_invalid_id_before_network(self, urlopen):
+        backend = self.backend()
+        with self.assertRaises(EtcdAtomicActivationError):
+            backend.compare_and_activate_with_intent(
+                None, state(), b"profile-v1", activation_id="../escape",
+            )
+        urlopen.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
