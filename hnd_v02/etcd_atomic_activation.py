@@ -1,0 +1,231 @@
+"""etcd v3 atomic activation backend for HND Station 2.
+
+The backend stores the active state (including both anti-rollback namespaces)
+and the active profile artifact in one etcd transaction. It requires an HTTPS
+etcd v3 JSON gateway. The independently operated monotonic witness described
+in WP4.34 remains a separate required production control; this module does not
+claim to prevent rollback of an entire restored etcd cluster.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import re
+import ssl
+import urllib.error
+import urllib.request
+from typing import Callable
+from urllib.parse import urlsplit
+
+from hnd_v02.activation_transaction import (
+    ActivationState, ActivationTransactionError, _validate_state,
+)
+
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
+_MAX_SEQUENCE = (1 << 53) - 1
+_STATE_FIELDS = {
+    "trust_manifest_sequence", "trust_manifest_digest",
+    "profile_sequence", "profile_digest", "activation_height",
+    "operator_ack_set_sha256", "previous_trust_manifest_digest",
+    "previous_profile_digest",
+}
+
+
+class EtcdAtomicActivationError(ActivationTransactionError):
+    """The etcd backend could not safely read or commit activation state."""
+
+
+class EtcdV3AtomicActivationBackend:
+    """Atomic etcd v3 implementation of AtomicActivationBackend.
+
+    A linearizable range reads the current state. compare_and_activate then
+    compares that exact serialized state (or key absence) and writes the
+    successor state and profile artifact in one Raft-backed etcd transaction.
+    The supplied profile_validator must enforce the pinned CometBFT schema and
+    shared-profile digest; no permissive default is provided.
+    """
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        profile_validator: Callable[[bytes, str], bool],
+        key_prefix: str = "/hnd/station2",
+        timeout: float = 5.0,
+        ssl_context: ssl.SSLContext | None = None,
+    ):
+        parsed = urlsplit(endpoint)
+        if (parsed.scheme != "https" or not parsed.netloc
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment):
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-HTTPS-ENDPOINT")
+        if not callable(profile_validator):
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-VALIDATOR-REQUIRED")
+        if (type(key_prefix) is not str or not key_prefix.startswith("/")
+                or key_prefix == "/" or key_prefix.endswith("/")
+                or any(part in {"", ".", ".."} for part in key_prefix[1:].split("/"))):
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PREFIX")
+        if type(timeout) not in (int, float) or timeout <= 0:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-TIMEOUT")
+        self.endpoint = endpoint.rstrip("/")
+        self.prefix = key_prefix
+        self.timeout = float(timeout)
+        self.profile_validator = profile_validator
+        self.ssl_context = ssl_context
+
+    @staticmethod
+    def _b64(value: bytes) -> str:
+        return base64.b64encode(value).decode("ascii")
+
+    @staticmethod
+    def _unb64(value: str) -> bytes:
+        if type(value) is not str:
+            raise ValueError("invalid etcd base64 value")
+        return base64.b64decode(value.encode("ascii"), validate=True)
+
+    @staticmethod
+    def _encode_state(state: ActivationState) -> bytes:
+        _validate_state(state)
+        data = {
+            "trust_manifest_sequence": state.trust_manifest_sequence,
+            "trust_manifest_digest": state.trust_manifest_digest,
+            "profile_sequence": state.profile_sequence,
+            "profile_digest": state.profile_digest,
+            "activation_height": state.activation_height,
+            "operator_ack_set_sha256": state.operator_ack_set_sha256,
+            "previous_trust_manifest_digest": state.previous_trust_manifest_digest,
+            "previous_profile_digest": state.previous_profile_digest,
+        }
+        return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    @staticmethod
+    def _decode_state(raw: bytes) -> ActivationState:
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            if type(data) is not dict or set(data) != _STATE_FIELDS:
+                raise ValueError("state shape")
+            state = ActivationState(**data)
+            _validate_state(state)
+            return state
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-STATE-CORRUPT") from exc
+
+    def _key(self, name: str) -> str:
+        return self._b64((self.prefix + "/" + name).encode("utf-8"))
+
+    def _post(self, route: str, payload: dict) -> dict:
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        request = urllib.request.Request(
+            self.endpoint + route, data=body, method="POST",
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=self.timeout, context=self.ssl_context
+            ) as response:
+                raw = response.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                raise ValueError("etcd response too large")
+            result = json.loads(raw.decode("utf-8"))
+            if type(result) is not dict:
+                raise ValueError("invalid etcd response")
+            return result
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError,
+                UnicodeError, json.JSONDecodeError) as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-REQUEST") from exc
+
+    def _range(self, key: str) -> tuple[bytes | None, str | None]:
+        result = self._post("/v3/kv/range", {"key": key})
+        kvs = result.get("kvs", [])
+        if type(kvs) is not list or len(kvs) > 1:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-SHAPE")
+        if not kvs:
+            return None, None
+        row = kvs[0]
+        if type(row) is not dict or "value" not in row:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-SHAPE")
+        try:
+            return self._unb64(row["value"]), row.get("mod_revision")
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-VALUE") from exc
+
+    def read_active_state(self) -> ActivationState | None:
+        raw, _ = self._range(self._key("active-state"))
+        return None if raw is None else self._decode_state(raw)
+
+    def read_active_profile(self) -> bytes | None:
+        raw, _ = self._range(self._key("active-profile"))
+        return raw
+
+    @staticmethod
+    def _validate_successor(current: ActivationState | None,
+                            proposed: ActivationState) -> None:
+        _validate_state(proposed)
+        if current is None:
+            valid = (
+                proposed.trust_manifest_sequence == 0
+                and proposed.profile_sequence == 1
+                and proposed.previous_trust_manifest_digest is None
+                and proposed.previous_profile_digest is None
+            )
+            if not valid:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-BOOTSTRAP")
+            return
+        _validate_state(current)
+        if proposed.trust_manifest_sequence != current.trust_manifest_sequence + 1:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-MANIFEST-SEQUENCE")
+        if proposed.profile_sequence != current.profile_sequence + 1:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-SEQUENCE")
+        if proposed.activation_height <= current.activation_height:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-HEIGHT")
+        if proposed.previous_trust_manifest_digest != current.trust_manifest_digest:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-MANIFEST-PREDECESSOR")
+        if proposed.previous_profile_digest != current.profile_digest:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-PREDECESSOR")
+
+    def compare_and_activate(
+        self,
+        expected_current: ActivationState | None,
+        new_state: ActivationState,
+        profile_artifact: bytes,
+    ) -> bool:
+        if type(profile_artifact) is not bytes or not profile_artifact:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE")
+        if expected_current is not None:
+            _validate_state(expected_current)
+        self._validate_successor(expected_current, new_state)
+        try:
+            valid = self.profile_validator(profile_artifact, new_state.profile_digest)
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-VALIDATION") from exc
+        if valid is not True:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-DIGEST")
+
+        state_key = self._key("active-state")
+        profile_key = self._key("active-profile")
+        if expected_current is None:
+            compare = [{"key": state_key, "target": "CREATE", "create_revision": "0"}]
+        else:
+            compare = [{
+                "key": state_key, "target": "VALUE",
+                "value": self._b64(self._encode_state(expected_current)),
+            }]
+        payload = {
+            "compare": compare,
+            "success": [
+                {"request_put": {
+                    "key": state_key,
+                    "value": self._b64(self._encode_state(new_state)),
+                }},
+                {"request_put": {
+                    "key": profile_key,
+                    "value": self._b64(profile_artifact),
+                }},
+            ],
+            "failure": [],
+        }
+        result = self._post("/v3/kv/txn", payload)
+        if type(result.get("succeeded")) is not bool:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-TXN-SHAPE")
+        return result["succeeded"]
