@@ -133,11 +133,11 @@ jobs:
           read -r old_leader target_leader < <(python -c '
           import json,sys
           rows=json.load(sys.stdin)
-          leaders={str(int(r["Status"]["leader"])) for r in rows}
+          leaders={format(int(r["Status"]["leader"]), "x") for r in rows}
           assert len(leaders)==1, "cluster reports inconsistent leaders"
           old=next(iter(leaders))
-          followers=[str(int(r["Status"]["header"]["member_id"])) for r in rows
-                     if str(int(r["Status"]["header"]["member_id"])) != old]
+          followers=[format(int(r["Status"]["header"]["member_id"]), "x") for r in rows
+                     if format(int(r["Status"]["header"]["member_id"]), "x") != old]
           assert followers, "no follower available for leadership transfer"
           print(old, followers[0])
           ' <<< "$status")
@@ -146,7 +146,7 @@ jobs:
           "${ctl}" "${args[@]}" move-leader "${target_leader}"
           for attempt in $(seq 1 30); do
             status="$("${ctl}" "${args[@]}" endpoint status --cluster -w json)"
-            leader="$(python -c 'import json,sys; rows=json.load(sys.stdin); leaders={str(int(r["Status"]["leader"])) for r in rows}; print(next(iter(leaders)) if len(leaders)==1 else "")' <<< "$status")"
+            leader="$(python -c 'import json,sys; rows=json.load(sys.stdin); leaders={format(int(r["Status"]["leader"]), "x") for r in rows}; print(next(iter(leaders)) if len(leaders)==1 else "")' <<< "$status")"
             if [ "$leader" = "$target_leader" ]; then
               echo "Raft leadership transferred from $old_leader to $leader"
               exit 0
