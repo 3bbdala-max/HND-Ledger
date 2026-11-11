@@ -104,18 +104,20 @@ class RemoteMonotonicAnchor:
         ))
         self.timeout = float(timeout)
         self.transport = transport
-        try:
-            self._ssl_context = ssl.create_default_context(
-                purpose=ssl.Purpose.SERVER_AUTH, cafile=ca_file
-            )
-            self._ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-            self._ssl_context.verify_mode = ssl.CERT_REQUIRED
-            self._ssl_context.check_hostname = True
-            self._ssl_context.load_cert_chain(
-                certfile=client_cert_file, keyfile=client_key_file
-            )
-        except (OSError, ssl.SSLError) as exc:
-            raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-TLS-CONFIG") from exc
+        self._ssl_context = None
+        if self.transport is None:
+            try:
+                self._ssl_context = ssl.create_default_context(
+                    purpose=ssl.Purpose.SERVER_AUTH, cafile=ca_file
+                )
+                self._ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+                self._ssl_context.verify_mode = ssl.CERT_REQUIRED
+                self._ssl_context.check_hostname = True
+                self._ssl_context.load_cert_chain(
+                    certfile=client_cert_file, keyfile=client_key_file
+                )
+            except (OSError, ssl.SSLError) as exc:
+                raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-TLS-CONFIG") from exc
 
     def _post(self, route: str, payload: Mapping) -> Any:
         body = json.dumps(
