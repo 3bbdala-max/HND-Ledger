@@ -31,12 +31,16 @@ class LiveThreeMemberEtcdActivationTests(unittest.TestCase):
             raise RuntimeError("live etcd integration environment is incomplete")
         context = ssl.create_default_context(cafile=ca_file)
         context.load_cert_chain(certfile=cert_file, keyfile=key_file)
-        cls.backend = EtcdV3AtomicActivationBackend(
-            endpoint,
+        cls.endpoint = endpoint
+        cls.context = context
+
+    def setUp(self):
+        self.backend = EtcdV3AtomicActivationBackend(
+            self.endpoint,
             profile_validator=lambda raw, expected: _digest(raw) == expected,
-            key_prefix="/hnd/station2/live-integration",
+            key_prefix="/hnd/station2/live-integration/" + self._testMethodName,
             timeout=10,
-            ssl_context=context,
+            ssl_context=self.context,
         )
 
     def _state(self, *, trust_seq, profile_seq, height, profile, previous=None):
