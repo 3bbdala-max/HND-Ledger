@@ -10,6 +10,7 @@ class ActivationBundleRotationTests(unittest.TestCase):
         manifests = [b"bootstrap", b"rotation-1", b"rotation-2"]
         vsp = {
             "profile_digest": "a" * 64,
+            "previous_profile_sha256": "9" * 64,
             "profile_sequence": 7,
             "activation_height": 120,
             "validator_count": 4,
@@ -17,6 +18,7 @@ class ActivationBundleRotationTests(unittest.TestCase):
         chain = {
             "sequence": 2,
             "manifest_digest": "b" * 64,
+            "previous_manifest_digest": "8" * 64,
             "governance_key_ids": ["g1", "g2", "g3"],
             "governance_public_keys": {"g1": b"1" * 32},
             "rotation_count": 2,
