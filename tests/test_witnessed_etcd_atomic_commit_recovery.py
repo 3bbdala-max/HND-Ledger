@@ -110,7 +110,9 @@ class LostEtcdCommitResponseRecoveryTests(unittest.TestCase):
         self.assertEqual(witness.calls, [(activation_id, digest)])
         self.assertEqual(backend.finalized["state"], "finalized")
         self.assertEqual(backend.finalized["activation_digest"], digest)
-        self.assertEqual(backend.finalized["witness_receipt"], {\n            "schema": "hnd.station2.witness-ack.v1", "signature": "test-receipt"\n        })
+        self.assertEqual(backend.finalized["witness_receipt"], {
+            "schema": "hnd.station2.witness-ack.v1", "signature": "test-receipt"
+        })
 
 
 if __name__ == "__main__":
