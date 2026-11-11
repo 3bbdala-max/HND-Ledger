@@ -139,4 +139,4 @@ def verify_vsp_envelope(raw: bytes, *, context: Mapping[str,Any], governance_pub
         except (InvalidSignature,ValueError) as exc: raise VSPInputError("VSP-E-GOVERNANCE-SIGNATURE") from exc
         valid.append(record["key_id"])
     if len(set(valid))<2: fail("VSP-E-GOVERNANCE-THRESHOLD")
-    return {"profile_digest":profile_digest(payload).hex(),"profile_sequence":payload["profile_sequence"],"activation_height":payload["activation"]["height"],"validator_count":len(payload["validators"]),"total_voting_power":payload["total_voting_power"],"verified_signer_key_ids":sorted(valid)}
+    return {"profile_digest":profile_digest(payload).hex(),"profile_sequence":payload["profile_sequence"],"previous_profile_sha256":payload["previous_profile_sha256"],"activation_height":payload["activation"]["height"],"validator_count":len(payload["validators"]),"total_voting_power":payload["total_voting_power"],"verified_signer_key_ids":sorted(valid)}

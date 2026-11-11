@@ -4,10 +4,27 @@ on:
   push:
     branches:
       - phase-0.2-planning
+      - feat/station2-vsp-rotation-activation
+      - feat/station2-monotonic-anchor-contract
+      - feat/station2-atomic-activation-contract
+      - feat/station2-config-schema-dumper
+      - feat/station2-sqlite-anchor-reference
+      - feat/station2-sqlite-atomic-activation-reference
+      - fix/station2-sqlite-backend-monotonic-enforcement
+      - fix/station2-sqlite-anchor-direct-monotonic
+      - test/station2-end-to-end-activation
+      - fix/station2-schema-inventory-fail-closed
   pull_request:
     branches:
       - phase-0.2-planning
+      - feat/station2-monotonic-anchor-contract
+      - feat/station2-trust-manifest-rotation
       - feat/station2-vsp-rotation-activation
+      - feat/station2-atomic-activation-contract
+      - feat/station2-config-schema-dumper
+      - feat/station2-sqlite-anchor-reference
+      - feat/station2-sqlite-atomic-activation-reference
+      - fix/station2-sqlite-backend-monotonic-enforcement
       - main
 
 jobs:
@@ -51,8 +68,20 @@ jobs:
         run: python -m unittest -v tests.test_operator_ack
       - name: Run complete offline activation evidence bundle tests
         run: python -m unittest -v tests.test_activation_bundle
+      - name: Run rotated Trust Manifest activation preflight integration tests
+        run: python -m unittest -v tests.test_activation_bundle_rotation
       - name: Run strict CometBFT v0.40.0 profile parser tests
         run: python -m unittest -v tests.test_cometbft_v040_profile
+      - name: Run external monotonic trust-anchor contract tests
+        run: python -m unittest -v tests.test_monotonic_anchor
+      - name: Run atomic profile activation transaction contract tests
+        run: python -m unittest -v tests.test_activation_transaction
+      - name: Run durable SQLite monotonic-anchor reference adapter tests
+        run: python -m unittest -v tests.test_sqlite_monotonic_anchor
+      - name: Run SQLite atomic activation reference backend tests
+        run: python -m unittest -v tests.test_sqlite_atomic_activation
+      - name: Run cross-layer station-two end-to-end activation tests
+        run: python -m unittest -v tests.test_station2_end_to_end_activation
       - name: Run isolated v0.2 tests
         run: >-
           python -m unittest -v
@@ -99,6 +128,24 @@ jobs:
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
           go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
           "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
+      - name: Generate pinned CometBFT recursive config field/default inventory
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_config_schema_dump.go" > "$RUNNER_TEMP/cometbft-v040-config-inventory.json"
+          python - "$RUNNER_TEMP/cometbft-v040-config-inventory.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert data["source_commit"] == "0880b4d378f347ab16e54ec677ff50d803f37d62"
+          fields = data["fields"]
+          paths = [item["go_path"] for item in fields]
+          assert len(paths) >= 100, f"unexpectedly small config inventory: {len(fields)}"
+          assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
+          assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
+          assert any("default_json" in item for item in fields), "config defaults were not captured"
+          assert all(item.get("default_json") != "UNSERIALIZABLE" for item in fields), "unserializable default sentinel found"
+          print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
+          PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
         run: |
           home="$RUNNER_TEMP/hnd-remote-only-negative"
