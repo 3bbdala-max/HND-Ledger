@@ -70,6 +70,26 @@ class WitnessedEtcdActivationCoordinatorTests(unittest.TestCase):
             "previous_profile_digest": None,
         }
 
+    def coordinator(self, backend, witness):
+        return WitnessedEtcdActivationCoordinator(
+            backend=backend,
+            witness_client=witness,
+            trusted_witness_keys={"witness-a": b"k" * 32},
+            expected_witness_id="witness-a",
+            expected_config_epoch=3,
+        )
+
+    def activate(self, coordinator, activation_id="activation-001"):
+        return coordinator.activate(
+            activation_id=activation_id,
+            vsp_raw=b"vsp",
+            trust_manifests=[b"manifest"],
+            operator_acks_raw=b"acks",
+            profile_artifact=b"profile",
+            context={},
+            trusted_operator_keys={},
+        )
+
     @patch(
         "hnd_v02.witnessed_etcd_activation_coordinator.verify_activation_bundle_with_manifest_chain"
     )
@@ -78,28 +98,11 @@ class WitnessedEtcdActivationCoordinatorTests(unittest.TestCase):
         backend = _Backend()
         receipt = {"schema": "hnd.station2.witness-ack.v1", "signature": "opaque"}
         witness = _Witness(receipt)
-        coordinator = WitnessedEtcdActivationCoordinator(
-            backend=backend,
-            witness_client=witness,
-            trusted_witness_keys={"witness-a": b"k" * 32},
-            expected_witness_id="witness-a",
-            expected_config_epoch=3,
-        )
         backend.digest = "0" * 64
-        # The backend's atomic commit must write the digest calculated from the
-        # same complete state and exact profile artifact.
         from hnd_v02.activation_witness import compute_activation_digest
         proposed = ActivationState(**self.evidence())
         backend.digest = compute_activation_digest("activation-001", proposed, b"profile")
-        result = coordinator.activate(
-            activation_id="activation-001",
-            vsp_raw=b"vsp",
-            trust_manifests=[b"manifest"],
-            operator_acks_raw=b"acks",
-            profile_artifact=b"profile",
-            context={},
-            trusted_operator_keys={},
-        )
+        result = self.activate(self.coordinator(backend, witness))
         self.assertEqual(result, proposed)
         self.assertEqual(witness.calls, [("activation-001", backend.digest)])
         self.assertEqual(backend.finalized_receipt, receipt)
@@ -112,25 +115,66 @@ class WitnessedEtcdActivationCoordinatorTests(unittest.TestCase):
         verify.side_effect = ValueError("bad evidence")
         backend = _Backend()
         witness = _Witness({})
-        coordinator = WitnessedEtcdActivationCoordinator(
-            backend=backend,
-            witness_client=witness,
-            trusted_witness_keys={"witness-a": b"k" * 32},
-            expected_witness_id="witness-a",
-            expected_config_epoch=3,
-        )
         with self.assertRaises(WitnessedActivationCoordinatorError):
-            coordinator.activate(
-                activation_id="activation-002",
-                vsp_raw=b"vsp",
-                trust_manifests=[b"manifest"],
-                operator_acks_raw=b"acks",
-                profile_artifact=b"profile",
-                context={},
-                trusted_operator_keys={},
-            )
+            self.activate(self.coordinator(backend, witness), "activation-002")
         self.assertIsNone(backend.intent)
         self.assertEqual(witness.calls, [])
+
+    @patch(
+        "hnd_v02.witnessed_etcd_activation_coordinator.verify_activation_bundle_with_manifest_chain"
+    )
+    def test_lost_witness_response_retries_same_activation_id_and_digest(self, verify):
+        verify.return_value = self.evidence()
+        backend = _Backend()
+        receipt = {"schema": "hnd.station2.witness-ack.v1", "signature": "opaque"}
+        class LostFirstResponseWitness(_Witness):
+            def acknowledge(self, activation_id, digest):
+                self.calls.append((activation_id, digest))
+                if len(self.calls) == 1:
+                    raise TimeoutError("ack committed but response was lost")
+                return self.receipt
+        witness = LostFirstResponseWitness(receipt)
+        from hnd_v02.activation_witness import compute_activation_digest
+        backend.digest = compute_activation_digest(
+            "activation-003", ActivationState(**self.evidence()), b"profile"
+        )
+        result = self.activate(self.coordinator(backend, witness), "activation-003")
+        self.assertEqual(result, ActivationState(**self.evidence()))
+        self.assertEqual(len(witness.calls), 2)
+        self.assertEqual(witness.calls[0], witness.calls[1])
+        self.assertEqual(witness.calls[0][0], "activation-003")
+        self.assertEqual(backend.finalized_receipt, receipt)
+
+    @patch(
+        "hnd_v02.witnessed_etcd_activation_coordinator.verify_activation_bundle_with_manifest_chain"
+    )
+    def test_lost_finalize_response_reconciles_exact_receipt_without_new_ack(self, verify):
+        verify.return_value = self.evidence()
+        backend = _Backend()
+        receipt = {"schema": "hnd.station2.witness-ack.v1", "signature": "opaque"}
+        class LostFinalizeResponseBackend(_Backend):
+            def __init__(self):
+                super().__init__()
+                self.finalize_calls = 0
+            def finalize_activation_intent(self, activation_id, supplied_receipt, **kwargs):
+                self.finalize_calls += 1
+                result = super().finalize_activation_intent(
+                    activation_id, supplied_receipt, **kwargs
+                )
+                if self.finalize_calls == 1:
+                    raise TimeoutError("finalize committed but response was lost")
+                return result
+        backend = LostFinalizeResponseBackend()
+        witness = _Witness(receipt)
+        from hnd_v02.activation_witness import compute_activation_digest
+        backend.digest = compute_activation_digest(
+            "activation-004", ActivationState(**self.evidence()), b"profile"
+        )
+        result = self.activate(self.coordinator(backend, witness), "activation-004")
+        self.assertEqual(result, ActivationState(**self.evidence()))
+        self.assertEqual(witness.calls, [("activation-004", backend.digest)])
+        self.assertEqual(backend.finalize_calls, 1)
+        self.assertEqual(backend.intent["witness_receipt"], receipt)
 
 
 if __name__ == "__main__":
