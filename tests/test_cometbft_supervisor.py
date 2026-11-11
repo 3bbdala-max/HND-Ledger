@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+import rfc8785
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pathlib import Path
@@ -15,6 +17,11 @@ from hnd_v02.cometbft_supervisor import (
 )
 from hnd_v02.activation_witness import compute_activation_digest, verify_witness_receipt
 from hnd_v02.activation_witness_store import SQLiteActivationWitnessStore
+from hnd_v02.abci_app import HNDABCIApplication
+from hnd_v02.genesis import genesis_manifest_hash
+from hnd_v02.operator_ack import acknowledgement_message
+from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, public_key_b64
+from hnd_v02.trust_manifest import trust_manifest_digest, witness_message
 from hnd_v02.vsp_canonical import profile_digest
 from tests.test_activation_bundle import ActivationBundleTests
 
@@ -106,9 +113,91 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self.fixture = ActivationBundleTests()
         self.fixture.setUp()
         self.profile = b"reviewed-profile-artifact-v1"
+        self.binary_bytes = b"pinned-cometbft-test-binary"
+        self._bind_fixture_to_real_hnd_genesis()
         self.digest = profile_digest(self.fixture.vsp.payload).hex()
         self.calls = []
         self.child = object()
+
+    def _bind_fixture_to_real_hnd_genesis(self):
+        """Make the VSP fixture and HND application share a valid synthetic Genesis."""
+        context = self.fixture.vsp.ctx
+        config = ProtocolConfig(
+            network_id=context["chain_id"],
+            protocol_version=2,
+            max_amount=1_000_000,
+        )
+        allocations = []
+        for amount in (600_000, 400_000):
+            key = Ed25519PrivateKey.generate()
+            public = public_key_b64(key)
+            allocations.append({
+                "account_id": account_id_for_public_key(public, config=config),
+                "public_key": public,
+                "amount": amount,
+            })
+        allocations.sort(key=lambda row: row["account_id"])
+        manifest = {
+            "manifest_version": 1,
+            "network_id": config.network_id,
+            "protocol_version": config.protocol_version,
+            "total_supply": 1_000_000,
+            "allocations": allocations,
+        }
+        genesis_hash = genesis_manifest_hash(manifest)
+        binary_hash = hashlib.sha256(self.binary_bytes).hexdigest()
+
+        context["hnd_genesis_sha256"] = genesis_hash
+        context["cometbft_binary_sha256"] = binary_hash
+        self.fixture.vsp.payload["hnd_genesis_sha256"] = genesis_hash
+        self.fixture.vsp.payload["cometbft"]["binary_sha256"] = binary_hash
+        self.fixture.vsp_raw = self.fixture.vsp.signed()
+
+        # Re-sign the bootstrap manifest after changing its HND Genesis binding.
+        self.fixture.manifest["hnd_genesis_sha256"] = genesis_hash
+        manifest_digest = trust_manifest_digest(self.fixture.manifest)
+        self.fixture.manifest["witnesses"] = [
+            {
+                "witness_id": f"witness-{index + 1}",
+                "signature": __import__("base64").b64encode(
+                    key.sign(witness_message(manifest_digest))
+                ).decode("ascii"),
+            }
+            for index, key in enumerate(self.fixture.witnesses)
+        ]
+        self.fixture.manifest_raw = rfc8785.dumps(self.fixture.manifest)
+
+        # Operator acknowledgements bind the changed canonical VSP digest.
+        profile_hash = profile_digest(self.fixture.vsp.payload).hex()
+        acknowledgements = []
+        for operator_id, private_key in self.fixture.operators.items():
+            nonce = operator_id + "_supervisor_activation_nonce_01"
+            message = acknowledgement_message(
+                chain_id=config.network_id,
+                profile_sha256=profile_hash,
+                activation_height=0,
+                operator_id=operator_id,
+                nonce=nonce,
+            )
+            acknowledgements.append({
+                "schema": "hnd.operator-ack",
+                "schema_version": 1,
+                "chain_id": config.network_id,
+                "profile_sha256": profile_hash,
+                "activation_height": 0,
+                "operator_id": operator_id,
+                "nonce": nonce,
+                "signature": __import__("base64").b64encode(
+                    private_key.sign(message)
+                ).decode("ascii"),
+            })
+        acknowledgements.sort(key=lambda row: row["operator_id"])
+        self.fixture.acks_raw = rfc8785.dumps(acknowledgements)
+
+        self.application = HNDABCIApplication.__new__(HNDABCIApplication)
+        self.application.config = config
+        self.application.manifest = manifest
+        self.application.expected_genesis_hash = genesis_hash
 
     def _backend(self, _path):
         return _WitnessedMemoryBackend(
@@ -119,10 +208,11 @@ class CometBFTSupervisorTests(unittest.TestCase):
 
     def _launch(self, directory, *, valid_acks=True, expected_digest=None,
                 environment=_DEFAULT_ENVIRONMENT, witness_unavailable=False,
-                application_binding_valid=True, popen_failure=False):
+                application_binding_valid=True, popen_failure=False,
+                application_network_mismatch=False, application_genesis_mismatch=False):
         root = Path(directory)
         binary = root / "cometbft"
-        binary.write_bytes(b"pinned-cometbft-test-binary")
+        binary.write_bytes(self.binary_bytes)
         binary.chmod(0o755)
         actual_digest = hashlib.sha256(binary.read_bytes()).hexdigest()
         self.backend = self._backend(root / "activation.sqlite3")
@@ -143,7 +233,14 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 signing_key=witness_private_key,
             )
         )
-        self.application = object()
+        if application_network_mismatch:
+            self.application.config = ProtocolConfig(
+                network_id="wrong-network",
+                protocol_version=self.application.config.protocol_version,
+                max_amount=self.application.config.max_amount,
+            )
+        if application_genesis_mismatch:
+            self.application.expected_genesis_hash = "0" * 64
         self.events = []
         self.abci_server = MagicMock()
         self.abci_server.stop.return_value.wait.return_value = None
@@ -246,6 +343,22 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(self.calls, [])
             self.assertIsNone(self.backend.read_active_state())
 
+
+    def test_wrong_hnd_network_is_rejected_before_listener_and_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(CometBFTSupervisorError, "HND-GENESIS-BINDING"):
+                self._launch(directory, application_network_mismatch=True)
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_wrong_hnd_genesis_hash_is_rejected_before_listener_and_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(CometBFTSupervisorError, "HND-GENESIS-BINDING"):
+                self._launch(directory, application_genesis_mismatch=True)
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
 
     def test_application_binding_mismatch_opens_no_listener_or_process(self):
         with tempfile.TemporaryDirectory() as directory:
