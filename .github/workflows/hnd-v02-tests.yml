@@ -10,6 +10,7 @@ on:
       - feat/station2-config-schema-dumper
       - feat/station2-sqlite-anchor-reference
       - feat/station2-sqlite-atomic-activation-reference
+      - fix/station2-sqlite-backend-monotonic-enforcement
   pull_request:
     branches:
       - phase-0.2-planning
@@ -20,6 +21,7 @@ on:
       - feat/station2-config-schema-dumper
       - feat/station2-sqlite-anchor-reference
       - feat/station2-sqlite-atomic-activation-reference
+      - fix/station2-sqlite-backend-monotonic-enforcement
       - main
 
 jobs:

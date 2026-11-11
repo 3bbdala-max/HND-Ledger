@@ -27,7 +27,7 @@ class SQLiteAtomicActivationTests(unittest.TestCase):
     def backend(self, path, validator=None):
         return SQLiteAtomicActivationBackend(
             path,
-            profile_validator=validator or (lambda artifact, digest: digest == "2" * 64),
+            profile_validator=validator or (lambda artifact, digest: digest in {"2" * 64, "5" * 64}),
         )
 
     def test_bootstrap_atomically_persists_state_and_profile_across_reopen(self):
@@ -51,7 +51,6 @@ class SQLiteAtomicActivationTests(unittest.TestCase):
                 manifest_digest="4" * 64, profile_digest="5" * 64,
                 previous_manifest="1" * 64, previous_profile="2" * 64,
             )
-            # The injected validator is intentionally bound to the new digest.
             backend.profile_validator = lambda artifact, digest: (
                 artifact == b"profile-v2" and digest == "5" * 64
             )
@@ -69,7 +68,7 @@ class SQLiteAtomicActivationTests(unittest.TestCase):
             self.assertEqual(backend.read_active_state(), first)
             self.assertEqual(backend.read_active_profile(), b"profile-v1")
 
-    def test_profile_digest_mismatch_fails_before_transaction(self):
+    def test_profile_digest_mismatch_fails_before_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             backend = self.backend(
                 Path(directory) / "activation.sqlite3",
@@ -104,6 +103,60 @@ class SQLiteAtomicActivationTests(unittest.TestCase):
             with self.assertRaises(ActivationTransactionError):
                 SQLiteAtomicActivationBackend(Path(directory) / "activation.sqlite3",
                                               profile_validator=None)
+
+    def test_backend_itself_rejects_non_successor_manifest_sequence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = self.backend(Path(directory) / "activation.sqlite3")
+            first = state()
+            backend.compare_and_activate(None, first, b"profile-v1")
+            bad = state(
+                manifest_sequence=2, profile_sequence=2, height=101,
+                manifest_digest="4" * 64, profile_digest="5" * 64,
+                previous_manifest="1" * 64, previous_profile="2" * 64,
+            )
+            with self.assertRaises(ActivationTransactionError):
+                backend.compare_and_activate(first, bad, b"profile-v2")
+            self.assertEqual(backend.read_active_state(), first)
+
+    def test_backend_itself_rejects_profile_sequence_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = self.backend(Path(directory) / "activation.sqlite3")
+            first = state()
+            backend.compare_and_activate(None, first, b"profile-v1")
+            bad = state(
+                manifest_sequence=1, profile_sequence=1, height=101,
+                manifest_digest="4" * 64, profile_digest="5" * 64,
+                previous_manifest="1" * 64, previous_profile="2" * 64,
+            )
+            with self.assertRaises(ActivationTransactionError):
+                backend.compare_and_activate(first, bad, b"profile-v2")
+
+    def test_backend_itself_rejects_predecessor_mismatch_and_nonincreasing_height(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = self.backend(Path(directory) / "activation.sqlite3")
+            first = state()
+            backend.compare_and_activate(None, first, b"profile-v1")
+            cases = [
+                state(manifest_sequence=1, profile_sequence=2, height=101,
+                      manifest_digest="4" * 64, profile_digest="5" * 64,
+                      previous_manifest="9" * 64, previous_profile="2" * 64),
+                state(manifest_sequence=1, profile_sequence=2, height=100,
+                      manifest_digest="4" * 64, profile_digest="5" * 64,
+                      previous_manifest="1" * 64, previous_profile="2" * 64),
+            ]
+            for bad in cases:
+                with self.subTest(state=bad):
+                    with self.assertRaises(ActivationTransactionError):
+                        backend.compare_and_activate(first, bad, b"profile-v2")
+                    self.assertEqual(backend.read_active_state(), first)
+
+    def test_backend_itself_rejects_invalid_bootstrap_sequence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = self.backend(Path(directory) / "activation.sqlite3")
+            bad = state(manifest_sequence=1, profile_sequence=2)
+            with self.assertRaises(ActivationTransactionError):
+                backend.compare_and_activate(None, bad, b"profile-v1")
+            self.assertIsNone(backend.read_active_state())
 
 
 if __name__ == "__main__":
