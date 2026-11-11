@@ -25,6 +25,7 @@ on:
       - feat/station2-sqlite-anchor-reference
       - feat/station2-sqlite-atomic-activation-reference
       - fix/station2-sqlite-backend-monotonic-enforcement
+      - fix/station2-sqlite-anchor-direct-monotonic
       - main
 
 jobs:
