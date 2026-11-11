@@ -327,16 +327,20 @@ class EtcdV3AtomicActivationBackend:
             "failure": [],
         }
         result = self._post("/v3/kv/txn", payload)
-        if type(result.get("succeeded")) is not bool:
-            # Keep diagnostics bounded and value-free: etcd responses can
-            # contain activation state and profile bytes.
+        # etcd's protobuf JSON gateway omits default-valued false booleans
+        # unless EmitUnpopulated is enabled. A valid header-only TxnResponse
+        # therefore means the compare failed, not that the response is malformed.
+        succeeded = result.get(
+            "succeeded", False if type(result.get("header")) is dict else None
+        )
+        if type(succeeded) is not bool:
             shape = ",".join(
                 f"{key}:{type(value).__name__}" for key, value in sorted(result.items())
             )
             raise EtcdAtomicActivationError(
                 "HND-ETCD-ACT-E-TXN-SHAPE:" + (shape or "empty-response")
             )
-        return result["succeeded"]
+        return succeeded
 
     @staticmethod
     def _encode_anchor_record(sequence: int, digest: str) -> bytes:
@@ -604,13 +608,17 @@ class EtcdV3AtomicActivationBackend:
             "failure": [],
         }
         result = self._post("/v3/kv/txn", payload)
-        if type(result.get("succeeded")) is not bool:
-            # Keep diagnostics bounded and value-free: etcd responses can
-            # contain activation state and profile bytes.
+        # etcd's protobuf JSON gateway omits default-valued false booleans
+        # unless EmitUnpopulated is enabled. A valid header-only TxnResponse
+        # therefore means the compare failed, not that the response is malformed.
+        succeeded = result.get(
+            "succeeded", False if type(result.get("header")) is dict else None
+        )
+        if type(succeeded) is not bool:
             shape = ",".join(
                 f"{key}:{type(value).__name__}" for key, value in sorted(result.items())
             )
             raise EtcdAtomicActivationError(
                 "HND-ETCD-ACT-E-TXN-SHAPE:" + (shape or "empty-response")
             )
-        return result["succeeded"]
+        return succeeded
