@@ -14,7 +14,7 @@ from hnd_v02.activation_transaction import (
 )
 from hnd_v02.monotonic_anchor import MonotonicRecord, MonotonicStateAnchor
 from hnd_v02.remote_activation_intent import (
-    ActivationIntent, RemoteActivationProtocolError,
+    ActivationIntent,
 )
 from hnd_v02.remote_monotonic_anchor import RemoteMonotonicAnchor
 
@@ -56,7 +56,9 @@ class ActivationCoordinator:
             getattr(intent_client, "read_intent", None)
         ) or not callable(getattr(intent_client, "finalize", None)):
             raise ActivationCoordinatorError("HND-COORD-E-INTENT-CLIENT")
-        if not callable(getattr(anchor, "read_state", None)) or not callable(\n            getattr(anchor, "compare_and_advance", None)\n        ):
+        if not callable(getattr(anchor, "read_state", None)) or not callable(
+            getattr(anchor, "compare_and_advance", None)
+        ):
             raise ActivationCoordinatorError("HND-COORD-E-ANCHOR")
         if not callable(getattr(backend, "read_active_state", None)) or not callable(
             getattr(backend, "compare_and_activate", None)
