@@ -55,6 +55,40 @@ class SQLiteActivationIntentStore:
                         intent_json TEXT NOT NULL
                     ) WITHOUT ROWID
                 """)
+                db.execute("""
+                    CREATE TABLE IF NOT EXISTS active_activation_intent (
+                        singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                        activation_id TEXT NOT NULL UNIQUE
+                    )
+                """)
+                db.execute("BEGIN IMMEDIATE")
+                prepared = db.execute(
+                    "SELECT activation_id FROM activation_intents WHERE state='prepared' ORDER BY activation_id"
+                ).fetchall()
+                if len(prepared) > 1:
+                    db.rollback()
+                    raise RemoteActivationProtocolError(
+                        "HND-REMOTE-ACT-STORE-E-MULTIPLE-ACTIVE-INTENTS"
+                    )
+                guard = db.execute(
+                    "SELECT activation_id FROM active_activation_intent WHERE singleton=1"
+                ).fetchone()
+                if prepared:
+                    if guard is not None and guard[0] != prepared[0][0]:
+                        db.rollback()
+                        raise RemoteActivationProtocolError(
+                            "HND-REMOTE-ACT-STORE-E-GUARD-MISMATCH"
+                        )
+                    db.execute(
+                        "INSERT OR IGNORE INTO active_activation_intent VALUES(1,?)",
+                        (prepared[0][0],),
+                    )
+                elif guard is not None:
+                    db.rollback()
+                    raise RemoteActivationProtocolError(
+                        "HND-REMOTE-ACT-STORE-E-ORPHAN-GUARD"
+                    )
+                db.commit()
             finally:
                 db.close()
         except sqlite3.Error as exc:
@@ -113,10 +147,23 @@ class SQLiteActivationIntentStore:
                         raise RemoteActivationProtocolError("HND-REMOTE-ACT-STORE-E-ID-CONFLICT")
                     db.commit()
                     return json.loads(row[1])
+                guard = db.execute(
+                    "SELECT activation_id FROM active_activation_intent WHERE singleton=1"
+                ).fetchone()
+                if guard is not None and guard[0] != activation_id:
+                    db.rollback()
+                    raise RemoteActivationProtocolError(
+                        "HND-REMOTE-ACT-STORE-E-ACTIVE-INTENT"
+                    )
                 db.execute(
                     "INSERT INTO activation_intents VALUES(?,?,?,?)",
                     (activation_id, "prepared", encoded_request, encoded_intent),
                 )
+                if guard is None:
+                    db.execute(
+                        "INSERT INTO active_activation_intent VALUES(1,?)",
+                        (activation_id,),
+                    )
                 db.commit()
                 return intent
             except Exception:
@@ -173,6 +220,10 @@ class SQLiteActivationIntentStore:
                         "UPDATE activation_intents SET state='finalized', intent_json=? WHERE activation_id=?",
                         (self._json(intent), activation_id),
                     )
+                db.execute(
+                    "DELETE FROM active_activation_intent WHERE singleton=1 AND activation_id=?",
+                    (activation_id,),
+                )
                 db.commit()
                 return intent
             except Exception:

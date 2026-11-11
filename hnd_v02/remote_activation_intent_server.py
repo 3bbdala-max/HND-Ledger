@@ -81,6 +81,7 @@ def dispatch_activation_request(
             raise ActivationIntentHTTPError(404, "HND-ACT-SERVER-E-NOT-FOUND") from exc
         if any(code.endswith(suffix) for suffix in (
             "-ID-CONFLICT", "-DIGEST-MISMATCH", "-SEQUENCE",
+            "-ACTIVE-INTENT", "-MULTIPLE-ACTIVE-INTENTS", "-GUARD-MISMATCH", "-ORPHAN-GUARD",
         )):
             raise ActivationIntentHTTPError(409, "HND-ACT-SERVER-E-CONFLICT") from exc
         raise ActivationIntentHTTPError(400, "HND-ACT-SERVER-E-INVALID") from exc

@@ -38,6 +38,27 @@ class SQLiteActivationIntentStoreTests(unittest.TestCase):
         with self.assertRaises(RemoteActivationProtocolError):
             self.store.prepare(changed)
 
+    def test_second_distinct_prepared_intent_is_rejected_until_finalize(self):
+        self.store.prepare(self.request)
+        other = dict(self.request, activation_id="activation-002")
+        with self.assertRaisesRegex(RemoteActivationProtocolError, "ACTIVE-INTENT"):
+            self.store.prepare(other)
+        self.assertIsNone(self.store.read_intent("activation-002"))
+        self.store.finalize("activation-001", "3" * 64, "4" * 64)
+        accepted = self.store.prepare(other)
+        self.assertEqual(accepted["activation_id"], "activation-002")
+
+    def test_same_active_intent_remains_idempotent_after_reopen(self):
+        self.store.prepare(self.request)
+        reopened = SQLiteActivationIntentStore(self.path)
+        self.assertEqual(reopened.prepare(self.request)["state"], "prepared")
+
+    def test_finalized_intent_releases_single_active_slot(self):
+        self.store.prepare(self.request)
+        self.store.finalize("activation-001", "3" * 64, "4" * 64)
+        other = dict(self.request, activation_id="activation-002")
+        self.assertEqual(self.store.prepare(other)["state"], "prepared")
+
     def test_finalize_is_idempotent_and_survives_reopen(self):
         self.store.prepare(self.request)
         first = self.store.finalize("activation-001", "3" * 64, "4" * 64)
