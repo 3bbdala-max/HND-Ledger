@@ -35,7 +35,6 @@ from .abci_app import ABCIApplicationError, HNDABCIApplication
 from .genesis import genesis_manifest_hash
 from .transaction import ProtocolConfig, canonical_json
 from .strict_json import StrictJSONError, strict_json_loads
-from .startup_authorization import authorize_then_start_witnessed
 
 APP_VERSION = "HND-v0.2"
 CODESPACE = "hnd"
@@ -310,7 +309,12 @@ def start_grpc_server(
     bind_address: str = "127.0.0.1:26658",
     max_workers: int = 16,
 ):
-    """Start a CometBFT-compatible ABCI gRPC server and return (server, port)."""
+    """Low-level listener primitive for isolated test harnesses only.
+
+    Production startup is orchestrated by cometbft_supervisor.start_authorized_cometbft,
+    which verifies the independent witness and application binding before calling
+    this function and closes the listener if CometBFT process creation fails.
+    """
     if type(max_workers) is not int or max_workers < 4:
         raise ValueError("max_workers must be an integer >= 4 for ABCI concurrency")
     _validate_loopback_bind_address(bind_address)
@@ -326,63 +330,6 @@ def start_grpc_server(
 
 
 
-def start_witnessed_grpc_server(
-    application: HNDABCIApplication,
-    *,
-    backend: Any,
-    witness_client: Any,
-    activation_id: str,
-    expected_witness_id: str,
-    expected_config_epoch: int,
-    vsp_raw: bytes,
-    trust_manifests: list[bytes],
-    operator_acks_raw: bytes,
-    profile_artifact: bytes,
-    context: dict,
-    trusted_witness_keys: dict[str, bytes],
-    expected_operator_keys: dict[str, bytes],
-    application_binding_verifier,
-    bind_address: str = "127.0.0.1:26658",
-    max_workers: int = 16,
-):
-    """Authorize the exact application binding before opening the ABCI socket.
-
-    The mandatory binding verifier must return True only when the supplied
-    HNDABCIApplication instance is derived from the exact verified profile and
-    Genesis/network context. It is deliberately not inferred from a local
-    Genesis hash alone. The listener is created only inside the post-witness
-    launch callback; failures before that point open no socket.
-    """
-    if not callable(application_binding_verifier):
-        raise ValueError("application_binding_verifier is mandatory")
-
-    def open_listener(state):
-        try:
-            bound = application_binding_verifier(application, state, profile_artifact)
-        except Exception as exc:
-            raise RuntimeError("HND-ABCI-E-APPLICATION-BINDING") from exc
-        if bound is not True:
-            raise RuntimeError("HND-ABCI-E-APPLICATION-BINDING")
-        return start_grpc_server(
-            application, bind_address=bind_address, max_workers=max_workers
-        )
-
-    return authorize_then_start_witnessed(
-        backend=backend,
-        witness_client=witness_client,
-        activation_id=activation_id,
-        expected_witness_id=expected_witness_id,
-        expected_config_epoch=expected_config_epoch,
-        vsp_raw=vsp_raw,
-        trust_manifests=trust_manifests,
-        operator_acks_raw=operator_acks_raw,
-        profile_artifact=profile_artifact,
-        context=context,
-        trusted_witness_keys=trusted_witness_keys,
-        expected_operator_keys=expected_operator_keys,
-        launch=open_listener,
-    )
-
 def main(argv: list[str] | None = None) -> None:
     """Reject standalone startup; production must use the witnessed supervisor."""
     parser = argparse.ArgumentParser(
@@ -391,7 +338,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.parse_args(argv)
     parser.error(
         "HND-ABCI-E-DIRECT-START-DISABLED: standalone ABCI startup is disabled; "
-        "use start_witnessed_grpc_server through the deployment supervisor "
+        "use the combined start_authorized_cometbft deployment supervisor "
         "with an independently authenticated witness and an exact application "
         "binding verifier"
     )
