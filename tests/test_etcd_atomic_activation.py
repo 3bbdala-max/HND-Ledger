@@ -6,6 +6,7 @@ from unittest.mock import patch
 from hnd_v02.activation_transaction import ActivationState
 from hnd_v02.etcd_atomic_activation import (
     EtcdV3AtomicActivationBackend, EtcdAtomicActivationError,
+    _NoRedirectHandler,
 )
 
 
@@ -43,6 +44,16 @@ class _Response:
 
 
 class EtcdV3AtomicActivationTests(unittest.TestCase):
+    def test_redirect_handler_rejects_all_redirects(self):
+        handler = _NoRedirectHandler()
+        request = __import__("urllib.request", fromlist=["Request"]).Request(
+            "https://etcd.example.test:2379/v3/kv/txn"
+        )
+        self.assertIsNone(handler.redirect_request(
+            request, None, 307, "Temporary Redirect", {}, 
+            "https://other.example.test/v3/kv/txn",
+        ))
+
     def backend(self, validator=None):
         return EtcdV3AtomicActivationBackend(
             "https://etcd.example.test:2379",
@@ -64,7 +75,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
                 profile_validator=None,
             )
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_bootstrap_writes_state_and_profile_in_one_etcd_transaction(self, urlopen):
         urlopen.side_effect = [
             _Response({"kvs": []}),
@@ -92,7 +103,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         )
         self.assertEqual(written["/hnd/station2/active-profile"], b"profile-v1")
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_successor_compares_exact_state_and_profile_then_writes_both(self, urlopen):
         urlopen.side_effect = [
             _Response({"kvs": [{"value": encoded(b"profile-v1")}]}),
@@ -125,7 +136,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         )
         self.assertEqual(len(payload["success"]), 2)
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_etcd_compare_failure_is_reported_as_false(self, urlopen):
         urlopen.side_effect = [
             _Response({"kvs": []}),
@@ -133,7 +144,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         ]
         self.assertFalse(self.backend().compare_and_activate(None, state(), b"profile-v1"))
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_profile_validation_failure_never_submits_transaction(self, urlopen):
         urlopen.return_value = _Response({"kvs": []})
         backend = self.backend(validator=lambda artifact, digest: False)
@@ -141,7 +152,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
             backend.compare_and_activate(None, state(), b"tampered")
         urlopen.assert_not_called()
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_state_and_profile_reads_decode_and_validate_pair(self, urlopen):
         proposed = state()
         state_value = encoded(EtcdV3AtomicActivationBackend._encode_state(proposed))
@@ -156,7 +167,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         self.assertEqual(backend.read_active_profile(), b"profile-v1")
         self.assertEqual(urlopen.call_count, 3)
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_orphan_profile_and_missing_profile_fail_closed(self, urlopen):
         urlopen.side_effect = [
             _Response({"kvs": []}),
@@ -173,7 +184,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         with self.assertRaises(EtcdAtomicActivationError):
             self.backend().read_active_state()
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_corrupt_state_fails_closed(self, urlopen):
         raw = encoded(b'{"unexpected":true}')
         urlopen.side_effect = [
@@ -183,7 +194,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         with self.assertRaises(EtcdAtomicActivationError):
             self.backend().read_active_state()
 
-    @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_invalid_successor_fails_before_network_access(self, urlopen):
         invalid = state(manifest_sequence=2, profile_sequence=2)
         with self.assertRaises(EtcdAtomicActivationError):
