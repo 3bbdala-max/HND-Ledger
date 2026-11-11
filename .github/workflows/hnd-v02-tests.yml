@@ -80,6 +80,8 @@ jobs:
         run: python -m unittest -v tests.test_remote_activation_intent
       - name: Run durable SQLite activation intent store tests
         run: python -m unittest -v tests.test_sqlite_activation_intent_store
+      - name: Run mTLS remote activation intent server protocol tests
+        run: python -m unittest -v tests.test_remote_activation_intent_server
       - name: Run atomic profile activation transaction contract tests
         run: python -m unittest -v tests.test_activation_transaction
       - name: Run durable SQLite monotonic-anchor reference adapter tests
