@@ -1,6 +1,6 @@
 # HND v0.2 — Project Closure Register
 
-**Last updated:** 2026-11-10  
+**Last updated:** 2026-11-11  
 **Working branch:** `phase-0.2-planning`  
 **Current engineering status:** Prototype remediation in progress; **NOT APPROVED** for production signing, public-network launch, token issuance, or release.
 
@@ -17,6 +17,7 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Regression coverage added in `tests/test_v02_strict_json.py` for 20,000-level nested input at the parser boundary and for CLI rejection before server startup.
 - **2026-11-10 block-count identity binding:** `max_block_transactions = 1000` is now included in the HND application Genesis protocol configuration and durable-store identity. `InitChain` rejects a mismatched value, and store recovery rejects a persisted value that differs from the running application. The single-node and four-validator disposable fixtures carry the same field. This records the existing deterministic count rule; it does not approve the still-open transaction-byte or aggregate block-byte limits.
 - **2026-11-10 evidence-query parser hardening:** the `/evidence` page request now uses the shared `strict_json_loads` decoder rather than direct `json.loads`. Excessively nested JSON is normalized to the adapter's ordinary failed-query response instead of escaping as an uncaught `RecursionError`. Regression coverage exercises a 20,000-level request and asserts a non-zero ABCI query result with the strict parser error.
+- **2026-11-11 supervisor child-environment hardening:** `hnd_v02/cometbft_supervisor.py` now requires an explicit child environment and rejects inherited ambient environments plus `LD_*` and `GLIBC_TUNABLES` overrides. This prevents dynamic-loader injection/behavior overrides from bypassing the executable digest pin. Regression tests assert rejection occurs before activation commit or process spawn. This does not solve privileged same-inode writes or establish the sole production launch path.
 
 ## 2. Exact evidence for the latest code/test change
 
@@ -37,6 +38,18 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Exact-commit CI run: [`42777126700`](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42777126700), exact SHA `d64678dd22eda68458859e93b42eda4aa12ac2c7`. At register update, `hnd-v02-tests` completed **SUCCESS** (12/12 steps); `cometbft-single-node-smoke` remained **IN_PROGRESS** at `Build pinned CometBFT binary` (step 7/35), with no failed step reported. Do not treat the overall workflow as successful until the second job completes.
 - The new regression is in `tests/test_v02_cometbft_v040_adapter.py`; the existing strict parser implementation already normalizes deep nesting to `StrictJSONError`, which the ABCI query handler maps to a failed response.
 - Latest branch head at this evidence update: `d64678dd22eda68458859e93b42eda4aa12ac2c7`. The subsequent closure-register documentation commit is not part of run `42777126700`.
+
+
+## 2B. Exact evidence for 2026-11-11 supervisor environment hardening
+
+- Source/test commit: [b2ba2ee99572bae1b1008442540fe78b12d616d9](https://github.com/3bbdala-max/HND-Ledger/commit/b2ba2ee99572bae1b1008442540fe78b12d616d9).
+- Changed files: [hnd_v02/cometbft_supervisor.py](https://github.com/3bbdala-max/HND-Ledger/blob/phase-0.2-planning/hnd_v02/cometbft_supervisor.py) and [tests/test_cometbft_supervisor.py](https://github.com/3bbdala-max/HND-Ledger/blob/phase-0.2-planning/tests/test_cometbft_supervisor.py).
+- Exact-commit workflow run: [42983865839](https://github.com/3bbdala-max/HND-Ledger/actions/runs/42983865839), exact SHA b2ba2ee99572bae1b1008442540fe78b12d616d9; overall workflow **SUCCESS**.
+- `hnd-v02-tests`: **SUCCESS**, 34/34 steps. New tests reject `environment=None` and `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, and `GLIBC_TUNABLES` before activation or process creation.
+- `cometbft-single-node-smoke`: **SUCCESS**, 37/37 steps; includes pinned CometBFT build, Byzantine/equivocation regression, remote-signer anti-double-sign and crash-recovery probes, single-node ABCI, four-validator integration, external signer recovery, and authenticated Noise signer integration.
+- No failed steps or pending jobs remained in this exact-commit run.
+- This is bounded supervisor hardening, not proof of a complete production launch boundary. WP4.32's privileged same-inode write/deployment controls, actual sole-launch-path enforcement, frozen Config/VSP binding, independent anti-rollback, and ABCI local-client authorization remain open.
+- Branch head at this evidence update: b2ba2ee99572bae1b1008442540fe78b12d616d9.
 
 ## 3. Open repository-addressable security and correctness gates
 
@@ -60,7 +73,7 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 
 ## 5. Next concrete action
 
-1. Complete and record the exact-commit CometBFT job for run `42777126700`; diagnose any failed step without weakening gates.
+1. Supervisor environment hardening is complete on exact commit `b2ba2ee99572bae1b1008442540fe78b12d616d9`; exact-commit run `42983865839` completed both CI jobs successfully. Do not reinterpret this as production approval.
 2. Continue the WP4.14 HREC01–HREC09 cross-store CometBFT/HND recovery matrix and identify a deterministic, fail-closed guard that does not invent a trust anchor or snapshot protocol.
 3. Keep ABCI local-caller authorization blocked until the independent transport/OS trust-boundary decision is recorded. WP4.17's existing options remain the decision packet; do not enable mutating RPCs or silently choose Unix peer credentials versus mutual TLS.
 4. Keep VSP runtime enforcement, production signer integration, real key material, public network deployment, token issuance, release publication, and `main` changes blocked.
