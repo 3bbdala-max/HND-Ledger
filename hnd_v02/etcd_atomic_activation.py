@@ -9,6 +9,7 @@ claim to prevent rollback of an entire restored etcd cluster.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import ssl
@@ -309,6 +310,173 @@ class EtcdV3AtomicActivationBackend:
                     "key": profile_key,
                     "value": self._b64(profile_artifact),
                 }},
+            ],
+            "failure": [],
+        }
+        result = self._post("/v3/kv/txn", payload)
+        if type(result.get("succeeded")) is not bool:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-TXN-SHAPE")
+        return result["succeeded"]
+
+    @staticmethod
+    def _encode_anchor_record(sequence: int, digest: str) -> bytes:
+        if (type(sequence) is not int or not 0 <= sequence <= _MAX_SEQUENCE
+                or type(digest) is not str or not _HEX64.fullmatch(digest)):
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-ANCHOR-RECORD")
+        return json.dumps(
+            {"sequence": sequence, "digest": digest},
+            sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
+
+    @staticmethod
+    def _validate_activation_id(activation_id: str) -> str:
+        if (type(activation_id) is not str
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
+                                    activation_id, re.ASCII)):
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-ACTIVATION-ID")
+        return activation_id
+
+    def read_activation_intent(self, activation_id: str) -> dict | None:
+        """Read one immutable activation intent by its validated ID."""
+        activation_id = self._validate_activation_id(activation_id)
+        raw, _ = self._range(self._key("activation-intents/" + activation_id))
+        if raw is None:
+            return None
+        try:
+            value = json.loads(raw.decode("utf-8"))
+            required = {
+                "activation_id", "state", "activation_digest",
+                "trust_manifest_sequence", "trust_manifest_digest",
+                "profile_sequence", "profile_digest", "operator_ack_digest",
+            }
+            if (type(value) is not dict or set(value) != required
+                    or value["activation_id"] != activation_id
+                    or value["state"] not in {"pending_witness", "finalized"}
+                    or type(value["activation_digest"]) is not str
+                    or not _HEX64.fullmatch(value["activation_digest"])
+                    or type(value["trust_manifest_sequence"]) is not int
+                    or not 0 <= value["trust_manifest_sequence"] <= _MAX_SEQUENCE
+                    or type(value["trust_manifest_digest"]) is not str
+                    or not _HEX64.fullmatch(value["trust_manifest_digest"])
+                    or type(value["profile_sequence"]) is not int
+                    or not 0 <= value["profile_sequence"] <= _MAX_SEQUENCE
+                    or type(value["profile_digest"]) is not str
+                    or not _HEX64.fullmatch(value["profile_digest"])
+                    or type(value["operator_ack_digest"]) is not str
+                    or not _HEX64.fullmatch(value["operator_ack_digest"])):
+                raise ValueError("intent shape")
+            return value
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-INTENT-CORRUPT") from exc
+
+    def compare_and_activate_with_intent(
+        self,
+        expected_current: ActivationState | None,
+        new_state: ActivationState,
+        profile_artifact: bytes,
+        *,
+        activation_id: str,
+    ) -> bool:
+        """Atomically commit active state/profile, both etcd anti-rollback
+        records, and an immutable pending-witness intent.
+
+        The independent witness remains a separate trust domain and must
+        acknowledge this exact activation digest before startup is authorized.
+        """
+        activation_id = self._validate_activation_id(activation_id)
+        if type(profile_artifact) is not bytes or not profile_artifact:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE")
+        if expected_current is not None:
+            _validate_state(expected_current)
+        self._validate_successor(expected_current, new_state)
+        try:
+            valid = self.profile_validator(profile_artifact, new_state.profile_digest)
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-VALIDATION") from exc
+        if valid is not True:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-DIGEST")
+
+        state_key = self._key("active-state")
+        profile_key = self._key("active-profile")
+        trust_key = self._key("monotonic/trust-manifest")
+        vsp_key = self._key("monotonic/vsp-profile")
+        intent_key = self._key("activation-intents/" + activation_id)
+        current_profile, _ = self._range(profile_key)
+
+        if expected_current is None:
+            if current_profile is not None:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-ORPHAN-PROFILE")
+            compare = [
+                {"key": key, "target": "CREATE", "create_revision": "0"}
+                for key in (state_key, profile_key, trust_key, vsp_key, intent_key)
+            ]
+        else:
+            if current_profile is None:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-MISSING")
+            try:
+                current_valid = self.profile_validator(
+                    current_profile, expected_current.profile_digest
+                )
+            except Exception as exc:
+                raise EtcdAtomicActivationError(
+                    "HND-ETCD-ACT-E-CURRENT-PROFILE-VALIDATION"
+                ) from exc
+            if current_valid is not True:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-CURRENT-PROFILE-DIGEST")
+            expected_trust = self._encode_anchor_record(
+                expected_current.trust_manifest_sequence,
+                expected_current.trust_manifest_digest,
+            )
+            expected_vsp = self._encode_anchor_record(
+                expected_current.profile_sequence,
+                expected_current.profile_digest,
+            )
+            compare = [
+                {"key": state_key, "target": "VALUE",
+                 "value": self._b64(self._encode_state(expected_current))},
+                {"key": profile_key, "target": "VALUE",
+                 "value": self._b64(current_profile)},
+                {"key": trust_key, "target": "VALUE",
+                 "value": self._b64(expected_trust)},
+                {"key": vsp_key, "target": "VALUE",
+                 "value": self._b64(expected_vsp)},
+                {"key": intent_key, "target": "CREATE", "create_revision": "0"},
+            ]
+
+        new_state_raw = self._encode_state(new_state)
+        activation_digest = __import__("hashlib").sha256(
+            new_state_raw + b"\x00" + profile_artifact
+        ).hexdigest()
+        intent = {
+            "activation_id": activation_id,
+            "state": "pending_witness",
+            "activation_digest": activation_digest,
+            "trust_manifest_sequence": new_state.trust_manifest_sequence,
+            "trust_manifest_digest": new_state.trust_manifest_digest,
+            "profile_sequence": new_state.profile_sequence,
+            "profile_digest": new_state.profile_digest,
+            "operator_ack_digest": new_state.operator_ack_set_sha256,
+        }
+        trust_record = self._encode_anchor_record(
+            new_state.trust_manifest_sequence, new_state.trust_manifest_digest
+        )
+        vsp_record = self._encode_anchor_record(
+            new_state.profile_sequence, new_state.profile_digest
+        )
+        writes = (
+            (state_key, new_state_raw),
+            (profile_key, profile_artifact),
+            (trust_key, trust_record),
+            (vsp_key, vsp_record),
+            (intent_key, json.dumps(
+                intent, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")),
+        )
+        payload = {
+            "compare": compare,
+            "success": [
+                {"request_put": {"key": key, "value": self._b64(value)}}
+                for key, value in writes
             ],
             "failure": [],
         }
