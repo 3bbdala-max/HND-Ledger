@@ -86,13 +86,13 @@ class RemoteMonotonicAnchorTests(unittest.TestCase):
         self.assertEqual(self.anchor.read_state("trust-manifest"), current)
 
     def test_strictly_rejects_duplicate_keys_and_bad_response_shapes(self):
-        self.service.transport = lambda *_: (
+        self.anchor.transport = lambda *_: (
             200, {"Content-Type": "application/json"},
             b'{"record":null,"record":null}',
         )
         with self.assertRaises(MonotonicAnchorUnavailable):
             self.anchor.read_state("trust-manifest")
-        self.service.transport = lambda *_: (
+        self.anchor.transport = lambda *_: (
             200, {"Content-Type": "application/json"}, b'{"unexpected":null}',
         )
         with self.assertRaises(MonotonicAnchorUnavailable):
@@ -129,12 +129,12 @@ class RemoteMonotonicAnchorTests(unittest.TestCase):
         self.assertEqual(len(self.service.requests), count)
 
     def test_rejects_wrong_content_type_and_http_errors(self):
-        self.service.transport = lambda *_: (
+        self.anchor.transport = lambda *_: (
             200, {"Content-Type": "text/plain"}, b'{"record":null}',
         )
         with self.assertRaises(MonotonicAnchorUnavailable):
             self.anchor.read_state("trust-manifest")
-        self.service.transport = lambda *_: (
+        self.anchor.transport = lambda *_: (
             503, {"Content-Type": "application/json"}, b'{"record":null}',
         )
         with self.assertRaises(MonotonicAnchorUnavailable):
