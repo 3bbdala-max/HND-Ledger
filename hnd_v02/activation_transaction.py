@@ -128,6 +128,12 @@ def activate_verified_bundle(
         raise ActivationTransactionUnavailable("HND-ACT-E-READ") from exc
     if current is not None:
         _validate_state(current)
+        # A previous atomic commit may have succeeded even if its response was
+        # lost. After re-verifying the complete evidence bundle above, an exact
+        # state match is an idempotent success; never treat a partial or merely
+        # same-sequence state as committed.
+        if current == proposed:
+            return proposed
         if proposed.trust_manifest_sequence != current.trust_manifest_sequence + 1:
             raise ActivationTransactionConflict("HND-ACT-E-MANIFEST-SEQUENCE")
         if proposed.profile_sequence != current.profile_sequence + 1:
