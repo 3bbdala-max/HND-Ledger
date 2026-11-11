@@ -353,7 +353,17 @@ class EtcdV3AtomicActivationBackend:
                     or value["activation_id"] != activation_id
                     or value["state"] not in {"pending_witness", "finalized"}
                     or type(value["activation_digest"]) is not str
-                    or not _HEX64.fullmatch(value["activation_digest"])):
+                    or not _HEX64.fullmatch(value["activation_digest"])
+                    or type(value["trust_manifest_sequence"]) is not int
+                    or not 0 <= value["trust_manifest_sequence"] <= _MAX_SEQUENCE
+                    or type(value["trust_manifest_digest"]) is not str
+                    or not _HEX64.fullmatch(value["trust_manifest_digest"])
+                    or type(value["profile_sequence"]) is not int
+                    or not 0 <= value["profile_sequence"] <= _MAX_SEQUENCE
+                    or type(value["profile_digest"]) is not str
+                    or not _HEX64.fullmatch(value["profile_digest"])
+                    or type(value["operator_ack_digest"]) is not str
+                    or not _HEX64.fullmatch(value["operator_ack_digest"])):
                 raise ValueError("intent shape")
             return value
         except Exception as exc:
