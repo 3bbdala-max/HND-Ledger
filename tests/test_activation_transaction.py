@@ -61,6 +61,20 @@ class AtomicActivationTransactionTests(unittest.TestCase):
         self.assertIsNone(backend.calls[0][0])
         self.assertEqual(backend.calls[0][2], b"profile")
 
+    def test_exact_already_committed_state_is_idempotent_after_lost_response(self):
+        committed = ActivationState(0, "1" * 64, 1, "2" * 64, 100, "3" * 64)
+        backend = FakeAtomicBackend(committed)
+        state = self.call_activate(backend)
+        self.assertEqual(state, committed)
+        self.assertEqual(backend.calls, [])
+
+    def test_same_sequences_with_different_digest_are_not_idempotent(self):
+        current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
+        backend = FakeAtomicBackend(current)
+        with self.assertRaises(ActivationTransactionConflict):
+            self.call_activate(backend)
+        self.assertEqual(backend.calls, [])
+
     def test_successor_requires_both_monotonic_sequences_and_height(self):
         current = ActivationState(0, "4" * 64, 1, "5" * 64, 100, "6" * 64)
         backend = FakeAtomicBackend(current)
