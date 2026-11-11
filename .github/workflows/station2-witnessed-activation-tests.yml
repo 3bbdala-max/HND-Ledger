@@ -20,5 +20,7 @@ jobs:
           python-version: "3.12"
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt
+      - name: Install hash-verified JCS dependency required by activation evidence verifier
+        run: python -m pip install --require-hashes -r requirements-vsp-jcs-spike.txt
       - name: Run witnessed etcd activation coordinator recovery tests
         run: python -m unittest -v tests.test_witnessed_etcd_activation_coordinator
