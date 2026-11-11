@@ -17,6 +17,7 @@ from typing import Any
 
 from hnd_v02.activation_transaction import AtomicActivationBackend
 from hnd_v02.startup_authorization import authorize_then_start_witnessed
+from hnd_v02.cometbft_v040_server import start_grpc_server
 
 
 class CometBFTSupervisorError(RuntimeError):
@@ -73,6 +74,8 @@ def _open_pinned_executable(path: str, expected_sha256: str) -> tuple[int, str]:
 def start_authorized_cometbft(
     *,
     backend: AtomicActivationBackend,
+    application: Any,
+    application_binding_verifier: Any,
     witness_client: Any,
     activation_id: str,
     expected_witness_id: str,
@@ -87,6 +90,8 @@ def start_authorized_cometbft(
     binary_path: str,
     expected_binary_sha256: str,
     arguments: Sequence[str],
+    abci_bind_address: str = "127.0.0.1:26658",
+    abci_max_workers: int = 16,
     cwd: str,
     environment: Mapping[str, str] | None = None,
     popen: Any = subprocess.Popen,
@@ -121,20 +126,57 @@ def start_authorized_cometbft(
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
         child_environment = dict(environment)
 
-        def launch_after_commit(_state: Any) -> Any:
-            # Re-hash the same open inode immediately before exec; never reopen
-            # the mutable pathname after the initial O_NOFOLLOW open.
-            _verify_open_executable(executable_fd, expected_binary_sha256)
-            return popen(
-                [executable_ref, *arguments],
-                executable=executable_ref,
-                cwd=cwd,
-                env=child_environment,
-                shell=False,
-                close_fds=True,
-                pass_fds=(executable_fd,),
-                start_new_session=True,
-            )
+        if not callable(application_binding_verifier):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-APPLICATION-BINDING")
+
+        def launch_after_commit(state: Any) -> Any:
+            # The witness receipt is finalized before this callback is entered.
+            # Bind the exact application only after that authorization succeeds.
+            try:
+                application_is_bound = application_binding_verifier(
+                    application, state, profile_artifact
+                )
+            except Exception as exc:
+                raise CometBFTSupervisorError(
+                    "HND-SUPERVISOR-E-APPLICATION-BINDING"
+                ) from exc
+            if application_is_bound is not True:
+                raise CometBFTSupervisorError("HND-SUPERVISOR-E-APPLICATION-BINDING")
+
+            abci_server = None
+            try:
+                abci_server, abci_port = start_grpc_server(
+                    application,
+                    bind_address=abci_bind_address,
+                    max_workers=abci_max_workers,
+                )
+                # Re-hash the same open inode immediately before exec; never reopen
+                # the mutable pathname after the initial O_NOFOLLOW open.
+                _verify_open_executable(executable_fd, expected_binary_sha256)
+                process = popen(
+                    [executable_ref, *arguments],
+                    executable=executable_ref,
+                    cwd=cwd,
+                    env=child_environment,
+                    shell=False,
+                    close_fds=True,
+                    pass_fds=(executable_fd,),
+                    start_new_session=True,
+                )
+                return {
+                    "abci_server": abci_server,
+                    "abci_port": abci_port,
+                    "cometbft_process": process,
+                }
+            except Exception:
+                # A failed bind or failed process creation must not leave an
+                # orphan ABCI listener accepting unaffiliated CometBFT traffic.
+                if abci_server is not None:
+                    try:
+                        abci_server.stop(grace=0).wait()
+                    except Exception:
+                        pass
+                raise
 
         return authorize_then_start_witnessed(
             backend=backend,
