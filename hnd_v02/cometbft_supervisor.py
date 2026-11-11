@@ -15,7 +15,10 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from hnd_v02.activation_transaction import AtomicActivationBackend
+from hnd_v02.activation_transaction import ActivationState, AtomicActivationBackend
+from hnd_v02.abci_app import HNDABCIApplication
+from hnd_v02.genesis import genesis_manifest_hash
+from hnd_v02.vsp_canonical import parse_vsp_envelope, profile_digest
 from hnd_v02.startup_authorization import authorize_then_start_witnessed
 from hnd_v02.cometbft_v040_server import start_grpc_server
 
@@ -70,6 +73,74 @@ def _open_pinned_executable(path: str, expected_sha256: str) -> tuple[int, str]:
         os.close(fd)
         raise
 
+
+
+def _verify_hnd_application_binding(
+    *,
+    application: Any,
+    state: ActivationState,
+    vsp_raw: bytes,
+    context: Mapping,
+    expected_binary_sha256: str,
+) -> None:
+    """Bind the running HND application to the exact witnessed VSP evidence.
+
+    This verifies the HND application type, chain/network identity, canonical
+    HND Genesis manifest/hash, activation state digest, and pinned CometBFT
+    binary digest. A separate mandatory deployment verifier must still inspect
+    the actual CometBFT Genesis file and parse the actual profile artifact using
+    the complete pinned v0.40.0 profile schema.
+    """
+    if not isinstance(application, HNDABCIApplication):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-APPLICATION-TYPE")
+    if type(state) is not ActivationState:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-ACTIVATION-STATE")
+    if not isinstance(context, Mapping) or type(vsp_raw) is not bytes or not vsp_raw:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-TRUST-CONTEXT")
+    try:
+        payload = parse_vsp_envelope(vsp_raw)["payload"]
+        vsp_digest = profile_digest(payload).hex()
+        manifest_digest = genesis_manifest_hash(application.manifest)
+        comet = payload["cometbft"]
+    except Exception as exc:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-EVIDENCE-BINDING") from exc
+
+    chain_id = payload.get("chain_id")
+    hnd_genesis = payload.get("hnd_genesis_sha256")
+    if (
+        type(chain_id) is not str
+        or type(hnd_genesis) is not str
+        or application.config.network_id != chain_id
+        or application.manifest.get("network_id") != chain_id
+        or application.config.protocol_version != application.manifest.get("protocol_version")
+        or application.expected_genesis_hash != hnd_genesis
+        or manifest_digest != hnd_genesis
+        or context.get("chain_id") != chain_id
+        or context.get("hnd_genesis_sha256") != hnd_genesis
+    ):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-HND-GENESIS-BINDING")
+
+    if state.profile_digest != vsp_digest:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-VSP-DIGEST-BINDING")
+
+    expected_binary = expected_binary_sha256.lower()
+    if (
+        type(expected_binary_sha256) is not str
+        or len(expected_binary_sha256) != 64
+        or type(comet) is not dict
+        or comet.get("binary_sha256") != expected_binary
+        or context.get("cometbft_binary_sha256") != expected_binary
+    ):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-BINARY-BINDING")
+
+    expected_context = {
+        "cometbft_version": comet.get("version"),
+        "cometbft_source_commit": comet.get("source_commit"),
+        "cometbft_genesis_sha256": comet.get("genesis_sha256"),
+        "cometbft_profile_sha256": comet.get("profile_sha256"),
+    }
+    if any(context.get(key) != value for key, value in expected_context.items()):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-CONTEXT-BINDING")
 
 def start_authorized_cometbft(
     *,
@@ -135,6 +206,13 @@ def start_authorized_cometbft(
             # The witness receipt is finalized before this callback is entered.
             # Bind the exact application only after that authorization succeeds.
             try:
+                _verify_hnd_application_binding(
+                    application=application,
+                    state=state,
+                    vsp_raw=vsp_raw,
+                    context=context,
+                    expected_binary_sha256=expected_binary_sha256,
+                )
                 application_is_bound = application_binding_verifier(
                     application, state, profile_artifact
                 )
