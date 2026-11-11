@@ -165,9 +165,43 @@ class EtcdV3AtomicActivationBackend:
         except Exception as exc:
             raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-VALUE") from exc
 
+    def _range_pair(self) -> tuple[bytes | None, bytes | None]:
+        """Read active state and profile in one linearizable etcd transaction."""
+        result = self._post("/v3/kv/txn", {
+            "compare": [],
+            "success": [
+                {"request_range": {"key": self._key("active-state")}},
+                {"request_range": {"key": self._key("active-profile")}},
+            ],
+            "failure": [],
+        })
+        responses = result.get("responses")
+        if type(responses) is not list or len(responses) != 2:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-PAIR-SHAPE")
+
+        values: list[bytes | None] = []
+        for item in responses:
+            if type(item) is not dict or type(item.get("response_range")) is not dict:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-PAIR-SHAPE")
+            kvs = item["response_range"].get("kvs", [])
+            if type(kvs) is not list or len(kvs) > 1:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-PAIR-SHAPE")
+            if not kvs:
+                values.append(None)
+                continue
+            row = kvs[0]
+            if type(row) is not dict or "value" not in row:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-RANGE-PAIR-SHAPE")
+            try:
+                values.append(self._unb64(row["value"]))
+            except Exception as exc:
+                raise EtcdAtomicActivationError(
+                    "HND-ETCD-ACT-E-RANGE-PAIR-VALUE"
+                ) from exc
+        return values[0], values[1]
+
     def read_active_state(self) -> ActivationState | None:
-        raw, _ = self._range(self._key("active-state"))
-        profile, _ = self._range(self._key("active-profile"))
+        raw, profile = self._range_pair()
         if raw is None:
             if profile is not None:
                 raise EtcdAtomicActivationError("HND-ETCD-ACT-E-ORPHAN-PROFILE")
