@@ -398,11 +398,36 @@ def main() -> None:
 
             node = start_node(binary, home, node_handle)
             restarted_status = wait_for_node(node, node_log)
+            # HREC02: compare CometBFT's native committed position with the
+            # restored HND ABCI application at the clean-restart boundary.
+            native_sync = restarted_status["result"]["sync_info"]
+            native_height = int(native_sync["latest_block_height"])
+            native_app_hash = decode_rpc_bytes(native_sync.get("latest_app_hash"))
+            restarted_abci = rpc_get("/abci_info").get("result", {}).get("response", {})
+            hnd_height = int(restarted_abci.get("last_block_height", -1))
+            hnd_app_hash = decode_rpc_bytes(restarted_abci.get("last_block_app_hash"))
+            if native_height != hnd_height:
+                raise AssertionError(
+                    f"HREC02 cross-store height mismatch: CometBFT={native_height}, HND={hnd_height}"
+                )
+            if not native_app_hash or native_app_hash != hnd_app_hash:
+                raise AssertionError(
+                    "HREC02 cross-store app-hash mismatch or missing native/HND app hash"
+                )
+            if hnd_height != restored_app.last_committed_height:
+                raise AssertionError(
+                    "HREC02 ABCI Info height differs from restored HND application height"
+                )
             restored_account = wait_for_balance(
                 alice_id, INITIAL_ALICE_BALANCE - TRANSFER_AMOUNT
             )
             if restored_account != after:
                 raise AssertionError("account state changed across CometBFT/application restart")
+            print("HREC02_CROSS_STORE_RESTART_MATCH", json.dumps({
+                "cometbft_height": native_height,
+                "hnd_height": hnd_height,
+                "app_hash": hnd_app_hash.hex(),
+            }, sort_keys=True), flush=True)
 
             print(json.dumps({
                 "result": "COMETBFT_V040_SINGLE_NODE_SMOKE_OK",
