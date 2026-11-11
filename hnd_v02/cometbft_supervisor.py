@@ -343,11 +343,30 @@ def start_authorized_cometbft(
                     pass_fds=(executable_fd,),
                     start_new_session=True,
                 )
-                return SupervisedCometBFTNode(
-                    abci_server=abci_server,
-                    abci_port=abci_port,
-                    process=process,
-                )
+                try:
+                    return SupervisedCometBFTNode(
+                        abci_server=abci_server,
+                        abci_port=abci_port,
+                        process=process,
+                    )
+                except Exception:
+                    # If lifecycle monitoring cannot be established, do not
+                    # leave a live child attached to an unmonitored listener.
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            process.kill()
+                            process.wait(timeout=5)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    raise
             except Exception:
                 # A failed bind or failed process creation must not leave an
                 # orphan ABCI listener accepting unaffiliated CometBFT traffic.
