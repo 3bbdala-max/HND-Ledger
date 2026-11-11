@@ -25,6 +25,15 @@ from hnd_v02.activation_transaction import (
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _MAX_SEQUENCE = (1 << 53) - 1
+def _object_without_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
 _STATE_FIELDS = {
     "trust_manifest_sequence", "trust_manifest_digest",
     "profile_sequence", "profile_digest", "activation_height",
@@ -118,7 +127,7 @@ class EtcdV3AtomicActivationBackend:
     @staticmethod
     def _decode_state(raw: bytes) -> ActivationState:
         try:
-            data = json.loads(raw.decode("utf-8"))
+            data = json.loads(raw.decode("utf-8"), object_pairs_hook=_object_without_duplicate_keys)
             if type(data) is not dict or set(data) != _STATE_FIELDS:
                 raise ValueError("state shape")
             state = ActivationState(**data)
@@ -143,7 +152,7 @@ class EtcdV3AtomicActivationBackend:
                 raw = response.read(2 * 1024 * 1024 + 1)
             if len(raw) > 2 * 1024 * 1024:
                 raise ValueError("etcd response too large")
-            result = json.loads(raw.decode("utf-8"))
+            result = json.loads(raw.decode("utf-8"), object_pairs_hook=_object_without_duplicate_keys)
             if type(result) is not dict:
                 raise ValueError("invalid etcd response")
             return result
@@ -343,7 +352,7 @@ class EtcdV3AtomicActivationBackend:
         if raw is None:
             return None
         try:
-            value = json.loads(raw.decode("utf-8"))
+            value = json.loads(raw.decode("utf-8"), object_pairs_hook=_object_without_duplicate_keys)
             required = {
                 "activation_id", "state", "activation_digest",
                 "trust_manifest_sequence", "trust_manifest_digest",
