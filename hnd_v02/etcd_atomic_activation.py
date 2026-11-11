@@ -605,5 +605,12 @@ class EtcdV3AtomicActivationBackend:
         }
         result = self._post("/v3/kv/txn", payload)
         if type(result.get("succeeded")) is not bool:
-            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-TXN-SHAPE")
+            # Keep diagnostics bounded and value-free: etcd responses can
+            # contain activation state and profile bytes.
+            shape = ",".join(
+                f"{key}:{type(value).__name__}" for key, value in sorted(result.items())
+            )
+            raise EtcdAtomicActivationError(
+                "HND-ETCD-ACT-E-TXN-SHAPE:" + (shape or "empty-response")
+            )
         return result["succeeded"]
