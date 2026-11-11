@@ -176,7 +176,9 @@ jobs:
           done
           nohup "${bin}/etcd"             --name n3             --data-dir "${data}/n3"             --listen-client-urls "https://127.0.0.1:4379"             --advertise-client-urls "https://127.0.0.1:4379"             --listen-peer-urls "https://127.0.0.1:4380"             --initial-advertise-peer-urls "https://127.0.0.1:4380"             --initial-cluster "n1=https://127.0.0.1:2380,n2=https://127.0.0.1:3380,n3=https://127.0.0.1:4380"             --initial-cluster-token "hnd-station2-live-ci"             --initial-cluster-state existing             --cert-file "${cert}/server.crt"             --key-file "${cert}/server.key"             --trusted-ca-file "${cert}/ca.crt"             --client-cert-auth=true             --peer-cert-file "${cert}/server.crt"             --peer-key-file "${cert}/server.key"             --peer-trusted-ca-file "${cert}/ca.crt"             --peer-client-cert-auth=true             --enable-grpc-gateway=true             --logger=zap             --log-outputs "${RUNNER_TEMP}/n3-restarted.log"             > "${RUNNER_TEMP}/n3-restarted.stdout" 2>&1 &
           new_pid=$!
-          echo "${new_pid}" >> "${pid_file}"
+          # Replace the crashed n3 PID in-place; keep exactly one current PID per member.
+          awk -v replacement="${new_pid}" 'NR == 3 { $0 = replacement } { print }' "${pid_file}" > "${pid_file}.tmp"
+          mv "${pid_file}.tmp" "${pid_file}"
           ready=0
           for attempt in $(seq 1 60); do
             if "${ctl}" "${args[@]}" --endpoints="https://127.0.0.1:4379" endpoint health; then
