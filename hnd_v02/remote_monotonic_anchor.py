@@ -197,6 +197,13 @@ class RemoteMonotonicAnchor:
                     })
         except (TypeError, ValueError) as exc:
             raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-RECORD") from exc
+        bootstrap = 0 if namespace == "trust-manifest" else 1
+        expected_sequence = (
+            bootstrap if expected_current is None
+            else expected_current.sequence + 1
+        )
+        if expected_sequence > _MAX_SEQUENCE or new_record.sequence != expected_sequence:
+            raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-SEQUENCE")
         payload = {
             "namespace": namespace,
             "expected_current": None if expected_current is None else {
