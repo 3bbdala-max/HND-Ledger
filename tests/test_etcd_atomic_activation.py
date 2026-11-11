@@ -289,6 +289,14 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         self.assertEqual(self.backend().read_activation_intent("station2-bootstrap-001"), intent)
 
     @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_intent_reader_rejects_duplicate_json_keys(self, urlopen):
+        raw = (b'{"activation_id":"station2-bootstrap-001",'
+               b'"state":"pending_witness","state":"finalized"}')
+        urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
+        with self.assertRaises(EtcdAtomicActivationError):
+            self.backend().read_activation_intent("station2-bootstrap-001")
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_atomic_intent_rejects_invalid_id_before_network(self, urlopen):
         backend = self.backend()
         with self.assertRaises(EtcdAtomicActivationError):
