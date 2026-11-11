@@ -122,6 +122,39 @@ jobs:
           "${ctl}" "${args[@]}" \
             --endpoints=https://127.0.0.1:2379,https://127.0.0.1:3379,https://127.0.0.1:4379 \
             endpoint status --cluster
+      - name: Transfer Raft leadership and verify the new leader
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctl="${RUNNER_TEMP}/etcd/etcdctl"
+          endpoints="https://127.0.0.1:2379,https://127.0.0.1:3379,https://127.0.0.1:4379"
+          args=(--cacert "${HND_ETCD_CA_FILE}" --cert "${HND_ETCD_CLIENT_CERT}" --key "${HND_ETCD_CLIENT_KEY}" --endpoints="${endpoints}")
+          status="$("${ctl}" "${args[@]}" endpoint status --cluster -w json)"
+          read -r old_leader target_leader < <(python -c '
+          import json,sys
+          rows=json.load(sys.stdin)
+          leaders={str(int(r["Status"]["leader"])) for r in rows}
+          assert len(leaders)==1, "cluster reports inconsistent leaders"
+          old=next(iter(leaders))
+          followers=[str(int(r["Status"]["header"]["member_id"])) for r in rows
+                     if str(int(r["Status"]["header"]["member_id"])) != old]
+          assert followers, "no follower available for leadership transfer"
+          print(old, followers[0])
+          ' <<< "$status")
+          test -n "$old_leader"
+          test -n "$target_leader"
+          "${ctl}" "${args[@]}" move-leader "${target_leader}"
+          for attempt in $(seq 1 30); do
+            status="$("${ctl}" "${args[@]}" endpoint status --cluster -w json)"
+            leader="$(python -c 'import json,sys; rows=json.load(sys.stdin); leaders={str(int(r["Status"]["leader"])) for r in rows}; print(next(iter(leaders)) if len(leaders)==1 else "")' <<< "$status")"
+            if [ "$leader" = "$target_leader" ]; then
+              echo "Raft leadership transferred from $old_leader to $leader"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Raft leadership did not converge to requested target" >&2
+          exit 1
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt
       - name: Install hash-verified JCS dependency required by activation evidence verifier
