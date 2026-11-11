@@ -256,6 +256,39 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         self.assertRegex(intent["activation_digest"], r"^[0-9a-f]{64}$")
 
     @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_intent_reader_rejects_finalized_without_witness_receipt(self, urlopen):
+        intent = {
+            "activation_id": "station2-bootstrap-001",
+            "state": "finalized",
+            "activation_digest": "4" * 64,
+            "trust_manifest_sequence": 0,
+            "trust_manifest_digest": "1" * 64,
+            "profile_sequence": 1,
+            "profile_digest": "2" * 64,
+            "operator_ack_digest": "3" * 64,
+        }
+        raw = json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
+        with self.assertRaises(EtcdAtomicActivationError):
+            self.backend().read_activation_intent("station2-bootstrap-001")
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_intent_reader_accepts_pending_witness_record(self, urlopen):
+        intent = {
+            "activation_id": "station2-bootstrap-001",
+            "state": "pending_witness",
+            "activation_digest": "4" * 64,
+            "trust_manifest_sequence": 0,
+            "trust_manifest_digest": "1" * 64,
+            "profile_sequence": 1,
+            "profile_digest": "2" * 64,
+            "operator_ack_digest": "3" * 64,
+        }
+        raw = json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
+        self.assertEqual(self.backend().read_activation_intent("station2-bootstrap-001"), intent)
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_atomic_intent_rejects_invalid_id_before_network(self, urlopen):
         backend = self.backend()
         with self.assertRaises(EtcdAtomicActivationError):
