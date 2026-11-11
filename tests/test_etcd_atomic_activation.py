@@ -2,9 +2,12 @@ import base64
 import json
 import unittest
 import base64
+import tempfile
+from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hnd_v02.activation_witness import compute_activation_digest
+from hnd_v02.activation_witness_store import SQLiteActivationWitnessStore
 
 from unittest.mock import patch
 
@@ -309,20 +312,12 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         digest = compute_activation_digest(activation_id, proposed, b"profile-v1")
         key = Ed25519PrivateKey.generate()
         public = key.public_key().public_bytes_raw()
-        signed = {
-            "schema": "hnd.station2.witness-ack.v1",
-            "activation_id": activation_id,
-            "activation_digest": digest,
-            "witness_id": "witness-a",
-            "config_epoch": 7,
-            "counter": 1,
-        }
-        canonical = json.dumps(
-            signed, ensure_ascii=True, allow_nan=False,
-            sort_keys=True, separators=(",", ":"),
-        ).encode("ascii")
-        signature = key.sign(b"HND-STATION2-WITNESS-ACK-V1\x00" + canonical)
-        receipt = {**signed, "signature": base64.b64encode(signature).decode("ascii")}
+        with tempfile.TemporaryDirectory() as temp:
+            store = SQLiteActivationWitnessStore(
+                str(Path(temp) / "witness.sqlite"),
+                witness_id="witness-a", config_epoch=7, signing_key=key,
+            )
+            receipt = store.acknowledge(activation_id, digest)
         intent = {
             "activation_id": activation_id,
             "state": "pending_witness",
