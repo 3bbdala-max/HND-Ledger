@@ -71,6 +71,32 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _strict_loads(b'{"value":NaN}')
 
+
+    def test_dispatch_accepts_injected_non_sqlite_anchor_implementation(self):
+        class InjectedAnchor:
+            def __init__(self):
+                self.state = {}
+            def read_state(self, namespace):
+                return self.state.get(namespace)
+            def compare_and_advance(self, namespace, expected_current, new_record):
+                if self.state.get(namespace) != expected_current:
+                    return False
+                if expected_current is None:
+                    if new_record.sequence != (0 if namespace == "trust-manifest" else 1):
+                        raise MonotonicAnchorConflict("bad bootstrap")
+                elif new_record.sequence != expected_current.sequence + 1:
+                    raise MonotonicAnchorConflict("bad successor")
+                self.state[namespace] = new_record
+                return True
+
+        injected = InjectedAnchor()
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            injected, "/v1/state/compare-and-advance", self.bootstrap
+        ), {"advanced": True})
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            injected, "/v1/state/read", {"namespace": "trust-manifest"}
+        ), {"record": {"sequence": 0, "digest": "a" * 64}})
+
     def test_server_requires_mtls_and_nonempty_pins(self):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
