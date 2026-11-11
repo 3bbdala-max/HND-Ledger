@@ -13,6 +13,7 @@ on:
       - fix/station2-sqlite-backend-monotonic-enforcement
       - fix/station2-sqlite-anchor-direct-monotonic
       - test/station2-end-to-end-activation
+      - fix/station2-schema-inventory-fail-closed
   pull_request:
     branches:
       - phase-0.2-planning
@@ -141,6 +142,8 @@ jobs:
           assert len(paths) >= 100, f"unexpectedly small config inventory: {len(fields)}"
           assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
           assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
+          assert any("default_json" in item for item in fields), "config defaults were not captured"
+          assert all(item.get("default_json") != "UNSERIALIZABLE" for item in fields), "unserializable default sentinel found"
           print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
           PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys

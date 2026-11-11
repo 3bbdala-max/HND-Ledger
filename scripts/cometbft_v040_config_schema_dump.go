@@ -33,18 +33,18 @@ type Inventory struct {
 	Fields       []Field `json:"fields"`
 }
 
-func defaultJSON(v reflect.Value) json.RawMessage {
+func defaultJSON(v reflect.Value) (json.RawMessage, error) {
 	if !v.IsValid() || !v.CanInterface() {
-		return nil
+		return nil, nil
 	}
 	b, err := json.Marshal(v.Interface())
 	if err != nil {
-		return json.RawMessage(`"UNSERIALIZABLE"`)
+		return nil, fmt.Errorf("cannot serialize default at reflected value %s: %w", v.Type(), err)
 	}
-	return b
+	return b, nil
 }
 
-func walk(t reflect.Type, v reflect.Value, prefix string, out *[]Field) {
+func walk(t reflect.Type, v reflect.Value, prefix string, out *[]Field) error {
 	for i := 0; i < t.NumField(); i++ {
 		sf := t.Field(i)
 		if sf.PkgPath != "" { // unexported implementation detail, not public config
@@ -60,22 +60,29 @@ func walk(t reflect.Type, v reflect.Value, prefix string, out *[]Field) {
 			GoPath: path, GoName: sf.Name, GoType: sf.Type.String(),
 			Mapstructure: tag, Anonymous: sf.Anonymous,
 		}
-		if sf.Type.Kind() != reflect.Struct && sf.Type.Kind() != reflect.Pointer {
-			entry.DefaultJSON = defaultJSON(fv)
-		} else if sf.Type.Kind() == reflect.Pointer {
-			entry.DefaultJSON = defaultJSON(fv)
+		if sf.Type.Kind() != reflect.Struct {
+			defaultValue, err := defaultJSON(fv)
+			if err != nil {
+				return fmt.Errorf("field %s: %w", path, err)
+			}
+			entry.DefaultJSON = defaultValue
 		}
 		*out = append(*out, entry)
 
 		switch sf.Type.Kind() {
 		case reflect.Struct:
-			walk(sf.Type, fv, path, out)
+			if err := walk(sf.Type, fv, path, out); err != nil {
+				return err
+			}
 		case reflect.Pointer:
 			if !fv.IsNil() && fv.Elem().Kind() == reflect.Struct {
-				walk(fv.Type().Elem(), fv.Elem(), path, out)
+				if err := walk(fv.Type().Elem(), fv.Elem(), path, out); err != nil {
+					return err
+				}
 			}
 		}
 	}
+	return nil
 }
 
 func main() {
@@ -87,7 +94,10 @@ func main() {
 		RootType: t.String(),
 		Fields: make([]Field, 0, 160),
 	}
-	walk(t, v, "", &inventory.Fields)
+	if err := walk(t, v, "", &inventory.Fields); err != nil {
+		fmt.Fprintln(os.Stderr, "config schema inventory failed:", err)
+		os.Exit(1)
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(inventory); err != nil {
