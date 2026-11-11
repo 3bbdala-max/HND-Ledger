@@ -189,11 +189,14 @@ class RemoteMonotonicAnchor:
         if type(new_record) is not MonotonicRecord:
             raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-NEW-RECORD")
         # Validate record values before putting them on the wire.
-        for record in (expected_current, new_record):
-            if record is not None:
-                _record_from_json({
-                    "sequence": record.sequence, "digest": record.digest
-                })
+        try:
+            for record in (expected_current, new_record):
+                if record is not None:
+                    _record_from_json({
+                        "sequence": record.sequence, "digest": record.digest
+                    })
+        except (TypeError, ValueError) as exc:
+            raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-RECORD") from exc
         payload = {
             "namespace": namespace,
             "expected_current": None if expected_current is None else {
