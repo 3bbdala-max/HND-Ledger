@@ -1,0 +1,142 @@
+name: Station 2 live three-member etcd integration
+
+on:
+  push:
+    branches:
+      - feat/station2-etcd-atomic-activation-backend
+  pull_request:
+    branches:
+      - phase-0.2-planning
+
+permissions:
+  contents: read
+
+jobs:
+  live-three-member-etcd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Download pinned official etcd release and verify GitHub asset digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="v3.5.35"
+          archive="etcd-${version}-linux-amd64.tar.gz"
+          expected="ca9f94cdc80be66923ef571d82b128819d0f5f3aa9f01522bafd991618ee29d1"
+          curl --fail --location --retry 3 \
+            "https://github.com/etcd-io/etcd/releases/download/${version}/${archive}" \
+            --output "${RUNNER_TEMP}/${archive}"
+          echo "${expected}  ${RUNNER_TEMP}/${archive}" | sha256sum --check -
+          mkdir -p "${RUNNER_TEMP}/etcd"
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/etcd" \
+            --strip-components=1 --no-same-owner
+          "${RUNNER_TEMP}/etcd/etcd" --version
+          "${RUNNER_TEMP}/etcd/etcdctl" version
+      - name: Create ephemeral mutual-TLS certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          certdir="${RUNNER_TEMP}/etcd-certs"
+          mkdir -p "${certdir}"
+          openssl req -x509 -newkey rsa:3072 -nodes -days 2 \
+            -keyout "${certdir}/ca.key" -out "${certdir}/ca.crt" \
+            -subj "/CN=HND Station2 ephemeral etcd test CA"
+          openssl req -newkey rsa:3072 -nodes \
+            -keyout "${certdir}/server.key" -out "${certdir}/server.csr" \
+            -subj "/CN=localhost"
+          printf "subjectAltName=DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\n" \
+            > "${certdir}/server.ext"
+          openssl x509 -req -in "${certdir}/server.csr" \
+            -CA "${certdir}/ca.crt" -CAkey "${certdir}/ca.key" \
+            -CAcreateserial -out "${certdir}/server.crt" -days 2 \
+            -extfile "${certdir}/server.ext"
+          {
+            echo "HND_ETCD_CA_FILE=${certdir}/ca.crt"
+            echo "HND_ETCD_CLIENT_CERT=${certdir}/server.crt"
+            echo "HND_ETCD_CLIENT_KEY=${certdir}/server.key"
+          } >> "${GITHUB_ENV}"
+      - name: Start a real three-member etcd Raft cluster with TLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="${RUNNER_TEMP}/etcd"
+          data="${RUNNER_TEMP}/etcd-data"
+          cert="${RUNNER_TEMP}/etcd-certs"
+          mkdir -p "${data}"
+          cluster="n1=https://127.0.0.1:2380,n2=https://127.0.0.1:3380,n3=https://127.0.0.1:4380"
+          start_member() {
+            name="$1"; client="$2"; peer="$3"
+            mkdir -p "${data}/${name}"
+            nohup "${bin}/etcd" \
+              --name "${name}" \
+              --data-dir "${data}/${name}" \
+              --listen-client-urls "https://127.0.0.1:${client}" \
+              --advertise-client-urls "https://127.0.0.1:${client}" \
+              --listen-peer-urls "https://127.0.0.1:${peer}" \
+              --initial-advertise-peer-urls "https://127.0.0.1:${peer}" \
+              --initial-cluster "${cluster}" \
+              --initial-cluster-token "hnd-station2-live-ci" \
+              --initial-cluster-state new \
+              --cert-file "${cert}/server.crt" \
+              --key-file "${cert}/server.key" \
+              --trusted-ca-file "${cert}/ca.crt" \
+              --client-cert-auth=true \
+              --peer-cert-file "${cert}/server.crt" \
+              --peer-key-file "${cert}/server.key" \
+              --peer-trusted-ca-file "${cert}/ca.crt" \
+              --peer-client-cert-auth=true \
+              --enable-grpc-gateway=true \
+              --logger=zap \
+              --log-outputs "${RUNNER_TEMP}/${name}.log" \
+              > "${RUNNER_TEMP}/${name}.stdout" 2>&1 &
+            echo $! >> "${RUNNER_TEMP}/etcd-pids"
+          }
+          start_member n1 2379 2380
+          start_member n2 3379 3380
+          start_member n3 4379 4380
+          echo "HND_ETCD_ENDPOINT=https://127.0.0.1:2379" >> "${GITHUB_ENV}"
+      - name: Wait for all three members to become healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctl="${RUNNER_TEMP}/etcd/etcdctl"
+          args=(--cacert "${HND_ETCD_CA_FILE}" --cert "${HND_ETCD_CLIENT_CERT}" --key "${HND_ETCD_CLIENT_KEY}")
+          for port in 2379 3379 4379; do
+            ready=0
+            for attempt in $(seq 1 60); do
+              if "${ctl}" "${args[@]}" --endpoints="https://127.0.0.1:${port}" endpoint health; then
+                ready=1
+                break
+              fi
+              sleep 2
+            done
+            test "${ready}" -eq 1
+          done
+          "${ctl}" "${args[@]}" \
+            --endpoints=https://127.0.0.1:2379,https://127.0.0.1:3379,https://127.0.0.1:4379 \
+            endpoint status --cluster
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run live three-member etcd transaction and concurrent CAS tests
+        run: python -m unittest -v tests.test_station2_live_three_member_etcd
+      - name: Show etcd member logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          for name in n1 n2 n3; do
+            echo "===== ${name} ====="
+            cat "${RUNNER_TEMP}/${name}.log" "${RUNNER_TEMP}/${name}.stdout" 2>/dev/null || true
+          done
+      - name: Stop ephemeral etcd members
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "${RUNNER_TEMP}/etcd-pids" ]; then
+            xargs -r kill < "${RUNNER_TEMP}/etcd-pids" || true
+          fi
