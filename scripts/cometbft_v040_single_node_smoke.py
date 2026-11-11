@@ -410,6 +410,14 @@ def main() -> None:
                 raise AssertionError(
                     f"HREC02 cross-store height mismatch: CometBFT={native_height}, HND={hnd_height}"
                 )
+            print("HREC02_CROSS_STORE_HASH_DIAGNOSTIC", json.dumps({
+                "native_height": native_height,
+                "hnd_height": hnd_height,
+                "native_app_hash_raw": native_sync.get("latest_app_hash"),
+                "native_app_hash_hex": native_app_hash.hex(),
+                "hnd_app_hash_raw": restarted_abci.get("last_block_app_hash"),
+                "hnd_app_hash_hex": hnd_app_hash.hex(),
+            }, sort_keys=True), flush=True)
             if not native_app_hash or native_app_hash != hnd_app_hash:
                 raise AssertionError(
                     "HREC02 cross-store app-hash mismatch or missing native/HND app hash"
