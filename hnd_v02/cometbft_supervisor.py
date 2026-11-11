@@ -2,7 +2,8 @@
 
 The executable is opened with O_NOFOLLOW and passed to the child by inherited
 file descriptor through /proc/self/fd. This prevents a path replacement between
-digest verification and exec. The installed inode must still be root-controlled
+digest verification and exec. Child environments must be explicit and may not
+override the dynamic loader. The installed inode must still be root-controlled
 and immutable against privileged writers; this is not a complete OS boundary.
 """
 from __future__ import annotations
@@ -100,14 +101,20 @@ def start_authorized_cometbft(
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-ARGUMENTS")
         if type(cwd) is not str or not os.path.isabs(cwd) or not os.path.isdir(cwd):
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-CWD")
-        if environment is not None:
-            if not isinstance(environment, Mapping) or any(
-                type(key) is not str or type(value) is not str for key, value in environment.items()
-            ):
-                raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
-            child_environment = dict(environment)
-        else:
-            child_environment = None
+        if environment is None or not isinstance(environment, Mapping) or any(
+            type(key) is not str or type(value) is not str
+            for key, value in environment.items()
+        ):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
+        # Do not inherit the supervisor's ambient environment: glibc loader
+        # variables can inject libraries or alter symbol resolution even when
+        # the executable itself is pinned by digest and file descriptor.
+        if any(
+            key.startswith("LD_") or key == "GLIBC_TUNABLES"
+            for key in environment
+        ):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
+        child_environment = dict(environment)
 
         def launch_after_commit(_state: Any) -> Any:
             # Re-hash the same open inode immediately before exec; never reopen

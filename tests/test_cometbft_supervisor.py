@@ -14,6 +14,9 @@ from hnd_v02.vsp_canonical import profile_digest
 from tests.test_activation_bundle import ActivationBundleTests
 
 
+_DEFAULT_ENVIRONMENT = object()
+
+
 class CometBFTSupervisorTests(unittest.TestCase):
     def setUp(self):
         self.fixture = ActivationBundleTests()
@@ -31,7 +34,8 @@ class CometBFTSupervisorTests(unittest.TestCase):
             ),
         )
 
-    def _launch(self, directory, *, valid_acks=True, expected_digest=None):
+    def _launch(self, directory, *, valid_acks=True, expected_digest=None,
+                environment=_DEFAULT_ENVIRONMENT):
         root = Path(directory)
         binary = root / "cometbft"
         binary.write_bytes(b"pinned-cometbft-test-binary")
@@ -62,7 +66,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
             expected_binary_sha256=expected_digest or actual_digest,
             arguments=["start", "--home", str(root / "node-home")],
             cwd=str(root),
-            environment={"PATH": "/usr/bin"},
+            environment=(
+                {"PATH": "/usr/bin"}
+                if environment is _DEFAULT_ENVIRONMENT else environment
+            ),
             popen=fake_popen,
         )
         return result, binary, actual_digest
@@ -101,6 +108,27 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 self._launch(directory, valid_acks=False)
             self.assertEqual(self.calls, [])
             self.assertIsNone(self.backend.read_active_state())
+
+
+    def test_ambient_environment_is_rejected_before_activation_or_spawn(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(CometBFTSupervisorError, "ENVIRONMENT"):
+                self._launch(directory, environment=None)
+            self.assertEqual(self.calls, [])
+            self.assertIsNone(self.backend.read_active_state())
+
+    def test_dynamic_loader_environment_overrides_are_rejected(self):
+        for key in ("LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "GLIBC_TUNABLES"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                (Path(directory) / "node-home").mkdir()
+                with self.assertRaisesRegex(CometBFTSupervisorError, "ENVIRONMENT"):
+                    self._launch(
+                        directory,
+                        environment={"PATH": "/usr/bin", key: "/tmp/untrusted"},
+                    )
+                self.assertEqual(self.calls, [])
+                self.assertIsNone(self.backend.read_active_state())
 
     def test_symlinked_executable_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
