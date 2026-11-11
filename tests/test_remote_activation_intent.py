@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from hnd_v02.remote_monotonic_anchor import RemoteMonotonicAnchor
+from hnd_v02.monotonic_anchor import MonotonicAnchorUnavailable
 from hnd_v02.remote_activation_intent import (
     RemoteActivationIntentClient, RemoteActivationProtocolError,
 )
@@ -121,7 +122,7 @@ class RemoteActivationIntentTests(unittest.TestCase):
 
     def test_finalize_rejects_wrong_digests(self):
         self.prepare()
-        with self.assertRaises(RemoteActivationProtocolError):
+        with self.assertRaises(MonotonicAnchorUnavailable):
             self.client.finalize(
                 activation_id="activation-001", profile_digest="9" * 64,
                 operator_ack_digest="4" * 64,
