@@ -16,7 +16,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hnd_v02.activation_transaction import AtomicActivationBackend
-from hnd_v02.startup_authorization import authorize_then_start
+from hnd_v02.startup_authorization import authorize_then_start_witnessed
 
 
 class CometBFTSupervisorError(RuntimeError):
@@ -73,6 +73,10 @@ def _open_pinned_executable(path: str, expected_sha256: str) -> tuple[int, str]:
 def start_authorized_cometbft(
     *,
     backend: AtomicActivationBackend,
+    witness_client: Any,
+    activation_id: str,
+    expected_witness_id: str,
+    expected_config_epoch: int,
     vsp_raw: bytes,
     trust_manifests: list[bytes],
     operator_acks_raw: bytes,
@@ -87,9 +91,10 @@ def start_authorized_cometbft(
     environment: Mapping[str, str] | None = None,
     popen: Any = subprocess.Popen,
 ) -> tuple[Any, Any]:
-    """Authorize, atomically activate, then exec the digest-pinned open inode.
+    """Require a verified independent witness receipt, then exec the pinned inode.
 
-    Linux /proc/self/fd is required. The executable descriptor remains open
+    The five-key etcd activation and independent witness acknowledgement are
+    mandatory. Linux /proc/self/fd is required. The executable descriptor remains open
     until Popen has completed process creation and is explicitly inherited by
     that child; replacing the original path cannot redirect the execution.
     """
@@ -131,8 +136,12 @@ def start_authorized_cometbft(
                 start_new_session=True,
             )
 
-        return authorize_then_start(
+        return authorize_then_start_witnessed(
             backend=backend,
+            witness_client=witness_client,
+            activation_id=activation_id,
+            expected_witness_id=expected_witness_id,
+            expected_config_epoch=expected_config_epoch,
             vsp_raw=vsp_raw,
             trust_manifests=trust_manifests,
             operator_acks_raw=operator_acks_raw,
