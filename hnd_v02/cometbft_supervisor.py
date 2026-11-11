@@ -90,18 +90,20 @@ def start_authorized_cometbft(
     binary_path: str,
     expected_binary_sha256: str,
     arguments: Sequence[str],
+    cwd: str,
     abci_bind_address: str = "127.0.0.1:26658",
     abci_max_workers: int = 16,
-    cwd: str,
     environment: Mapping[str, str] | None = None,
     popen: Any = subprocess.Popen,
 ) -> tuple[Any, Any]:
-    """Require a verified independent witness receipt, then exec the pinned inode.
+    """Authorize, bind ABCI, and start the pinned CometBFT process as one unit.
 
     The five-key etcd activation and independent witness acknowledgement are
-    mandatory. Linux /proc/self/fd is required. The executable descriptor remains open
-    until Popen has completed process creation and is explicitly inherited by
-    that child; replacing the original path cannot redirect the execution.
+    mandatory. The application binding is checked before the ABCI listener is
+    opened. CometBFT is spawned only after that listener is ready; if spawning
+    fails, the listener is stopped before the error is returned. Linux
+    /proc/self/fd is required, and the executable descriptor remains open until
+    Popen completes process creation.
     """
     executable_fd, executable_ref = _open_pinned_executable(
         binary_path, expected_binary_sha256
