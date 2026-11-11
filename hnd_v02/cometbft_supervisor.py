@@ -12,6 +12,7 @@ import hashlib
 import os
 import stat
 import subprocess
+import threading
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -153,6 +154,86 @@ def _verify_hnd_application_binding(
     if any(context.get(key) != value for key, value in expected_context.items()):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-CONTEXT-BINDING")
 
+
+class SupervisedCometBFTNode:
+    """Own the ABCI listener for exactly the lifetime of a CometBFT child.
+
+    A daemon monitor waits for the child process and closes the ABCI listener
+    whenever that process exits, including an unexpected crash. Explicit wait()
+    and poll() calls also reconcile the listener state. Listener shutdown is
+    idempotent so the monitor and caller may race safely.
+    """
+
+    def __init__(self, *, abci_server: Any, abci_port: int, process: Any):
+        if not callable(getattr(process, "wait", None)) or not callable(
+            getattr(process, "poll", None)
+        ):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-PROCESS-INTERFACE")
+        self.abci_server = abci_server
+        self.abci_port = abci_port
+        self.cometbft_process = process
+        self._close_lock = threading.Lock()
+        self._listener_closed = threading.Event()
+        self._closed = False
+        self._cleanup_error: Exception | None = None
+        self._monitor = threading.Thread(
+            target=self._monitor_process,
+            name="hnd-cometbft-abci-lifecycle",
+            daemon=True,
+        )
+        self._monitor.start()
+
+    def _close_listener(self) -> None:
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+        try:
+            self.abci_server.stop(grace=0).wait()
+        except Exception as exc:
+            self._cleanup_error = exc
+        finally:
+            self._listener_closed.set()
+
+    def _monitor_process(self) -> None:
+        try:
+            self.cometbft_process.wait()
+        except Exception as exc:
+            self._cleanup_error = exc
+        finally:
+            self._close_listener()
+
+    @property
+    def listener_closed(self) -> bool:
+        return self._listener_closed.is_set()
+
+    @property
+    def cleanup_error(self) -> Exception | None:
+        return self._cleanup_error
+
+    def poll(self):
+        result = self.cometbft_process.poll()
+        if result is not None:
+            self._close_listener()
+        return result
+
+    def wait(self, timeout: float | None = None):
+        try:
+            result = self.cometbft_process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise
+        except Exception:
+            self._close_listener()
+            raise
+        self._close_listener()
+        return result
+
+    def terminate(self) -> None:
+        self.cometbft_process.terminate()
+
+    def kill(self) -> None:
+        self.cometbft_process.kill()
+
 def start_authorized_cometbft(
     *,
     backend: AtomicActivationBackend,
@@ -183,9 +264,10 @@ def start_authorized_cometbft(
     The five-key etcd activation and independent witness acknowledgement are
     mandatory. The application binding is checked before the ABCI listener is
     opened. CometBFT is spawned only after that listener is ready; if spawning
-    fails, the listener is stopped before the error is returned. Linux
-    /proc/self/fd is required, and the executable descriptor remains open until
-    Popen completes process creation.
+    fails, the listener is stopped before the error is returned. The returned
+    SupervisedCometBFTNode closes ABCI automatically when the child exits.
+    Linux /proc/self/fd is required, and the executable descriptor remains open
+    until Popen completes process creation.
     """
     executable_fd, executable_ref = _open_pinned_executable(
         binary_path, expected_binary_sha256
@@ -256,11 +338,11 @@ def start_authorized_cometbft(
                     pass_fds=(executable_fd,),
                     start_new_session=True,
                 )
-                return {
-                    "abci_server": abci_server,
-                    "abci_port": abci_port,
-                    "cometbft_process": process,
-                }
+                return SupervisedCometBFTNode(
+                    abci_server=abci_server,
+                    abci_port=abci_port,
+                    process=process,
+                )
             except Exception:
                 # A failed bind or failed process creation must not leave an
                 # orphan ABCI listener accepting unaffiliated CometBFT traffic.
