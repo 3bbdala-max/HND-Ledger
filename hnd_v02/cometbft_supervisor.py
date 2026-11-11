@@ -128,12 +128,13 @@ def _verify_hnd_application_binding(
         or len(expected_binary_sha256) != 64
         or any(char not in "0123456789abcdefABCDEF" for char in expected_binary_sha256)
         or type(comet) is not dict
-        or comet.get("binary_sha256") != expected_binary
-        or context.get("cometbft_binary_sha256") != expected_binary
     ):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-BINARY-BINDING")
     expected_binary = expected_binary_sha256.lower()
-    if comet.get("binary_sha256") != expected_binary or context.get("cometbft_binary_sha256") != expected_binary:
+    if (
+        comet.get("binary_sha256") != expected_binary
+        or context.get("cometbft_binary_sha256") != expected_binary
+    ):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-BINARY-BINDING")
 
     expected_context = {
@@ -219,6 +220,8 @@ def start_authorized_cometbft(
                 application_is_bound = application_binding_verifier(
                     application, state, profile_artifact
                 )
+            except CometBFTSupervisorError:
+                raise
             except Exception as exc:
                 raise CometBFTSupervisorError(
                     "HND-SUPERVISOR-E-APPLICATION-BINDING"
