@@ -176,7 +176,10 @@ class SupervisedCometBFTNode:
         self._listener_closed = threading.Event()
         self._close_finished = threading.Event()
         self._closed = False
-        self._cleanup_error: Exception | None = None
+        # Keep failures from waiting on the child separate from failures that
+        # actually prevent the ABCI listener from shutting down.
+        self._process_wait_error: Exception | None = None
+        self._listener_shutdown_error: Exception | None = None
         self._monitor = threading.Thread(
             target=self._monitor_process,
             name="hnd-cometbft-abci-lifecycle",
@@ -196,24 +199,32 @@ class SupervisedCometBFTNode:
         try:
             self.abci_server.stop(grace=0).wait()
         except Exception as exc:
-            self._cleanup_error = exc
+            self._listener_shutdown_error = exc
         else:
             self._listener_closed.set()
         finally:
             self._close_finished.set()
 
+    def _raise_process_wait_error(self) -> None:
+        if self._process_wait_error is not None:
+            raise CometBFTSupervisorError(
+                "HND-SUPERVISOR-E-PROCESS-WAIT"
+            ) from self._process_wait_error
+
     def _raise_cleanup_error(self) -> None:
-        if self._cleanup_error is not None:
+        if self._listener_shutdown_error is not None:
             raise CometBFTSupervisorError(
                 "HND-SUPERVISOR-E-ABCI-LISTENER-CLEANUP"
-            ) from self._cleanup_error
+            ) from self._listener_shutdown_error
 
     def _monitor_process(self) -> None:
         try:
             self.cometbft_process.wait()
         except Exception as exc:
-            self._cleanup_error = exc
+            self._process_wait_error = exc
         finally:
+            # If process monitoring itself fails, close ABCI fail-closed and
+            # preserve the monitoring error as a distinct failure reason.
             self._close_listener()
 
     @property
@@ -222,12 +233,20 @@ class SupervisedCometBFTNode:
 
     @property
     def cleanup_error(self) -> Exception | None:
-        return self._cleanup_error
+        """Return an exception raised while stopping the ABCI listener, if any."""
+        return self._listener_shutdown_error
+
+    @property
+    def process_wait_error(self) -> Exception | None:
+        """Return an exception raised while waiting for the CometBFT child, if any."""
+        return self._process_wait_error
 
     def poll(self):
         result = self.cometbft_process.poll()
         if result is not None:
             self._close_listener()
+        self._raise_process_wait_error()
+        if result is not None:
             self._raise_cleanup_error()
         return result
 
@@ -236,10 +255,13 @@ class SupervisedCometBFTNode:
             result = self.cometbft_process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             raise
-        except Exception:
+        except Exception as exc:
+            if self._process_wait_error is None:
+                self._process_wait_error = exc
             self._close_listener()
             raise
         self._close_listener()
+        self._raise_process_wait_error()
         self._raise_cleanup_error()
         return result
 
