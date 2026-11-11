@@ -321,7 +321,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
             signed, ensure_ascii=True, allow_nan=False,
             sort_keys=True, separators=(",", ":"),
         ).encode("ascii")
-        signature = key.sign(b"HND-STATION2-WITNESS-ACK-V1\\x00" + canonical)
+        signature = key.sign(b"HND-STATION2-WITNESS-ACK-V1\x00" + canonical)
         receipt = {**signed, "signature": base64.b64encode(signature).decode("ascii")}
         intent = {
             "activation_id": activation_id,
