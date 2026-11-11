@@ -16,7 +16,9 @@ The current code has four distinct persistence operations:
 3. `EtcdV3AtomicActivationBackend.compare_and_activate` compares the current state/profile and writes the successor active-state and profile keys in one etcd transaction.
 4. The coordinator finalizes the remote intent only after it observes the local active state.
 
-The etcd backend's transaction currently contains only two puts: active-state and active-profile. It does not include the activation intent or a witness acknowledgement. The coordinator currently advances the two monotonic namespaces before the etcd activation transaction. Therefore the complete operation is not one atomic commit across all required records.
+The legacy `EtcdV3AtomicActivationBackend.compare_and_activate` transaction contains two puts: active-state and active-profile. PR #49 now also adds a separate candidate method, `compare_and_activate_with_intent`, which compares and writes five etcd keys in one transaction: active-state, active-profile, both monotonic namespace records, and an immutable `pending_witness` activation intent. That candidate method computes and stores an activation digest, but it does not write a witness acknowledgement or finalize the intent.
+
+The current `ActivationCoordinator` still calls the legacy two-key transaction path and advances the two monotonic namespaces sequentially before it. It does not call `compare_and_activate_with_intent`. Therefore the five-key transaction exists and has passing stubbed transaction tests, but is not yet the coordinator's active protocol. The complete Station 2 operation is not yet integrated or proven end-to-end.
 
 ## Required target protocol
 
@@ -56,7 +58,7 @@ After etcd commit, the coordinator requests witness advancement for the exact co
 ## Required implementation changes
 
 1. Extend the activation transaction contract with an immutable activation-intent record and both anti-rollback namespace records. Do not overload the current `ActivationState` with unvalidated arbitrary metadata.
-2. Implement an etcd transaction that compares every predecessor key and writes all etcd-owned successor keys in one request. Reject unknown/missing keys and malformed records.
+2. Integrate the candidate five-key etcd transaction into the coordinator, including exact predecessor comparisons and same-ID read-after-unknown-outcome reconciliation. Reject unknown/missing keys and malformed records.
 3. Replace the coordinator's two sequential anchor writes with the target transaction boundary. Keep the independent witness operation separate and explicitly post-commit; the witness is not an etcd key and must not be represented as one.
 4. Add same-ID reconciliation for: unknown etcd commit result, etcd committed/witness pending, witness committed/response lost, and finalization response lost.
 5. Add a three-member etcd integration environment with pinned image digest and verified v3 JSON gateway configuration. Tests must exercise quorum loss, leader change, concurrent compare-and-swap, member replacement, process crash, and old-snapshot restore.
