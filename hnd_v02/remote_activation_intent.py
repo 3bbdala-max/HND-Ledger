@@ -146,7 +146,7 @@ class RemoteActivationIntentClient:
             raise RemoteActivationProtocolError("HND-REMOTE-ACT-E-INTENT-SHAPE")
         if _validate_id(value["activation_id"]) != expected_id:
             raise RemoteActivationProtocolError("HND-REMOTE-ACT-E-ID-MISMATCH")
-        if value["state"] not in _STATES:
+        if type(value["state"]) is not str or value["state"] not in _STATES:
             raise RemoteActivationProtocolError("HND-REMOTE-ACT-E-STATE")
         predecessors, successors = value["predecessors"], value["successors"]
         if type(predecessors) is not dict or set(predecessors) != {"trust_manifest", "vsp_profile"}:
