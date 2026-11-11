@@ -13,6 +13,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 
 from hnd_v02.activation_transaction import ActivationState
+from hnd_v02.activation_witness import compute_activation_digest
 from hnd_v02.etcd_atomic_activation import EtcdV3AtomicActivationBackend
 
 
@@ -153,31 +154,48 @@ class LiveThreeMemberEtcdActivationTests(unittest.TestCase):
             trust_seq=0, profile_seq=1, height=21, profile=profile
         )
         activation_id = "ci-live-quorum-recovery-001"
+        expected_digest = compute_activation_digest(activation_id, state, profile)
         deadline = time.monotonic() + 20.0
         recovered = False
         last_error = None
         while time.monotonic() < deadline:
             try:
-                committed = self.backend.compare_and_activate_with_intent(
+                # Retry only this immutable activation ID. If the prior
+                # transaction committed but its response was lost, the CAS
+                # retry must reconcile the exact state and intent below.
+                self.backend.compare_and_activate_with_intent(
                     None, state, profile, activation_id=activation_id
                 )
-                if committed:
-                    recovered = True
-                    break
-                # A retry can observe a transaction that committed before its
-                # response was lost. Accept only the exact intended state.
-                if self.backend.read_active_state() == state:
-                    recovered = True
-                    break
+            except Exception as exc:
+                last_error = exc
+
+            try:
+                observed_state = self.backend.read_active_state()
+                if observed_state == state:
+                    observed_profile = self.backend.read_active_profile()
+                    intent = self.backend.read_activation_intent(activation_id)
+                    if (
+                        observed_profile == profile
+                        and type(intent) is dict
+                        and intent.get("state") == "pending_witness"
+                        and intent.get("activation_id") == activation_id
+                        and intent.get("activation_digest") == expected_digest
+                    ):
+                        recovered = True
+                        break
+                    last_error = AssertionError(
+                        "recovered etcd data did not match the exact activation "
+                        "profile and immutable witness intent"
+                    )
             except Exception as exc:
                 last_error = exc
             time.sleep(0.25)
 
         self.assertTrue(
             recovered,
-            f"etcd did not regain quorum and reconcile within 20s: {last_error!r}",
+            "etcd did not regain quorum and reconcile the exact activation "
+            f"within 20s: {last_error!r}",
         )
-        self.assertEqual(self.backend.read_active_state(), state)
 
 
 if __name__ == "__main__":
