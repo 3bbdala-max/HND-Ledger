@@ -338,6 +338,9 @@ def main() -> None:
             try:
                 abci_info = rpc_get("/abci_info")
                 print("HND_ABCI_INFO", json.dumps(abci_info, sort_keys=True), flush=True)
+                initial_abci_info = abci_info.get("result", {}).get("response", {})
+                initial_hnd_height = int(initial_abci_info.get("last_block_height", -1))
+                initial_hnd_app_hash = decode_rpc_bytes(initial_abci_info.get("last_block_app_hash"))
                 before = query_account(alice_id)
             except Exception as exc:
                 tail = node_log.read_text(encoding="utf-8", errors="replace")[-12000:]
@@ -378,6 +381,9 @@ def main() -> None:
             height_after_tx = int(
                 rpc_get("/status")["result"]["sync_info"]["latest_block_height"]
             )
+            post_tx_abci_info = rpc_get("/abci_info").get("result", {}).get("response", {})
+            post_tx_hnd_height = int(post_tx_abci_info.get("last_block_height", -1))
+            post_tx_hnd_app_hash = decode_rpc_bytes(post_tx_abci_info.get("last_block_app_hash"))
 
             stop_node(node)
             node = None
@@ -398,11 +404,60 @@ def main() -> None:
 
             node = start_node(binary, home, node_handle)
             restarted_status = wait_for_node(node, node_log)
+            # HREC02: CometBFT's latest block header carries the app hash
+            # committed by the preceding height. Compare it with the HND
+            # snapshot captured before the transaction, then independently
+            # compare the restored HND snapshot with its post-transaction value.
+            native_sync = restarted_status["result"]["sync_info"]
+            native_height = int(native_sync["latest_block_height"])
+            native_app_hash = decode_rpc_bytes(native_sync.get("latest_app_hash"))
+            restarted_abci = rpc_get("/abci_info").get("result", {}).get("response", {})
+            hnd_height = int(restarted_abci.get("last_block_height", -1))
+            hnd_app_hash = decode_rpc_bytes(restarted_abci.get("last_block_app_hash"))
+            if native_height != hnd_height:
+                raise AssertionError(
+                    f"HREC02 cross-store height mismatch: CometBFT={native_height}, HND={hnd_height}"
+                )
+            print("HREC02_CROSS_STORE_HASH_DIAGNOSTIC", json.dumps({
+                "native_height": native_height,
+                "hnd_height": hnd_height,
+                "native_app_hash_hex": native_app_hash.hex(),
+                "initial_hnd_height": initial_hnd_height,
+                "initial_hnd_app_hash_hex": initial_hnd_app_hash.hex(),
+                "post_tx_hnd_height": post_tx_hnd_height,
+                "post_tx_hnd_app_hash_hex": post_tx_hnd_app_hash.hex(),
+                "restored_hnd_app_hash_hex": hnd_app_hash.hex(),
+            }, sort_keys=True), flush=True)
+            if (
+                initial_hnd_height != native_height - 1
+                or not native_app_hash
+                or native_app_hash != initial_hnd_app_hash
+            ):
+                raise AssertionError(
+                    "HREC02 CometBFT header app hash does not match preceding HND committed state"
+                )
+            if (
+                post_tx_hnd_height != hnd_height
+                or not post_tx_hnd_app_hash
+                or hnd_app_hash != post_tx_hnd_app_hash
+            ):
+                raise AssertionError(
+                    "HREC02 restored HND app hash differs from post-transaction committed state"
+                )
+            if hnd_height != restored_app.last_committed_height:
+                raise AssertionError(
+                    "HREC02 ABCI Info height differs from restored HND application height"
+                )
             restored_account = wait_for_balance(
                 alice_id, INITIAL_ALICE_BALANCE - TRANSFER_AMOUNT
             )
             if restored_account != after:
                 raise AssertionError("account state changed across CometBFT/application restart")
+            print("HREC02_CROSS_STORE_RESTART_MATCH", json.dumps({
+                "cometbft_height": native_height,
+                "hnd_height": hnd_height,
+                "app_hash": hnd_app_hash.hex(),
+            }, sort_keys=True), flush=True)
 
             print(json.dumps({
                 "result": "COMETBFT_V040_SINGLE_NODE_SMOKE_OK",
