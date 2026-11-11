@@ -253,6 +253,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         self.assertEqual(intent["state"], "pending_witness")
         self.assertEqual(intent["activation_id"], "station2-bootstrap-001")
         self.assertEqual(intent["operator_ack_digest"], "3" * 64)
+        self.assertRegex(intent["activation_digest"], r"^[0-9a-f]{64}$")
 
     @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_atomic_intent_rejects_invalid_id_before_network(self, urlopen):
