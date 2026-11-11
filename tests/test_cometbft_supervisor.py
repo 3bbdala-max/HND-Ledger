@@ -3,6 +3,7 @@ import hashlib
 import os
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -117,7 +118,8 @@ class CometBFTSupervisorTests(unittest.TestCase):
         )
 
     def _launch(self, directory, *, valid_acks=True, expected_digest=None,
-                environment=_DEFAULT_ENVIRONMENT, witness_unavailable=False):
+                environment=_DEFAULT_ENVIRONMENT, witness_unavailable=False,
+                application_binding_valid=True, popen_failure=False):
         root = Path(directory)
         binary = root / "cometbft"
         binary.write_bytes(b"pinned-cometbft-test-binary")
@@ -141,6 +143,18 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 signing_key=witness_private_key,
             )
         )
+        self.application = object()
+        self.events = []
+        self.abci_server = MagicMock()
+        self.abci_server.stop.return_value.wait.return_value = None
+
+        def fake_start_grpc_server(application, *, bind_address, max_workers):
+            self.assertIs(application, self.application)
+            self.assertEqual(bind_address, "127.0.0.1:26658")
+            self.assertEqual(max_workers, 16)
+            self.assertEqual(self.backend.intent["state"], "finalized")
+            self.events.append("abci-listener")
+            return self.abci_server, 26658
 
         def fake_popen(args, **kwargs):
             inherited = kwargs["pass_fds"]
@@ -149,11 +163,26 @@ class CometBFTSupervisorTests(unittest.TestCase):
             os.lseek(fd, 0, os.SEEK_SET)
             pinned_bytes = os.read(fd, 1024)
             os.lseek(fd, 0, os.SEEK_SET)
+            self.assertEqual(self.backend.intent["state"], "finalized")
+            self.events.append("cometbft-spawn")
             self.calls.append((args, kwargs, self.backend.read_active_state(), pinned_bytes))
+            if popen_failure:
+                raise OSError("simulated CometBFT spawn failure")
             return self.child
 
-        result = start_authorized_cometbft(
+        with patch(
+            "hnd_v02.cometbft_supervisor.start_grpc_server",
+            side_effect=fake_start_grpc_server,
+        ):
+            result = start_authorized_cometbft(
             backend=self.backend,
+            application=self.application,
+            application_binding_verifier=(
+                lambda app, state, artifact: application_binding_valid
+                and app is self.application
+                and state == self.backend.read_active_state()
+                and artifact == self.profile
+            ),
             witness_client=self.witness_client,
             activation_id="supervisor-activation-test-001",
             expected_witness_id=_WITNESS_ID,
@@ -174,14 +203,17 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 if environment is _DEFAULT_ENVIRONMENT else environment
             ),
             popen=fake_popen,
-        )
+            )
         return result, binary, actual_digest
 
     def test_pinned_binary_starts_only_after_activation_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "node-home").mkdir()
-            (state, child), binary, _ = self._launch(directory)
-            self.assertIs(child, self.child)
+            (state, launch_result), binary, _ = self._launch(directory)
+            self.assertIs(launch_result["cometbft_process"], self.child)
+            self.assertIs(launch_result["abci_server"], self.abci_server)
+            self.assertEqual(launch_result["abci_port"], 26658)
+            self.assertEqual(self.events, ["abci-listener", "cometbft-spawn"])
             self.assertEqual(self.backend.read_active_state(), state)
             self.assertEqual(self.backend.intent["state"], "finalized")
             self.assertEqual(self.backend.intent["witness_receipt"]["witness_id"], _WITNESS_ID)
@@ -214,6 +246,24 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(self.calls, [])
             self.assertIsNone(self.backend.read_active_state())
 
+
+    def test_application_binding_mismatch_opens_no_listener_or_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(CometBFTSupervisorError, "APPLICATION-BINDING"):
+                self._launch(directory, application_binding_valid=False)
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+            self.assertEqual(self.backend.intent["state"], "finalized")
+
+    def test_cometbft_spawn_failure_closes_the_previously_opened_abci_listener(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(OSError, "simulated CometBFT spawn failure"):
+                self._launch(directory, popen_failure=True)
+            self.assertEqual(self.events, ["abci-listener", "cometbft-spawn"])
+            self.abci_server.stop.assert_called_once_with(grace=0)
+            self.abci_server.stop.return_value.wait.assert_called_once_with()
 
     def test_unavailable_witness_keeps_node_stopped_with_pending_intent(self):
         with tempfile.TemporaryDirectory() as directory:
