@@ -357,15 +357,27 @@ class EtcdV3AtomicActivationBackend:
             return None
         try:
             value = json.loads(raw.decode("utf-8"), object_pairs_hook=_object_without_duplicate_keys)
-            required = {
+            base_fields = {
                 "activation_id", "state", "activation_digest",
                 "trust_manifest_sequence", "trust_manifest_digest",
                 "profile_sequence", "profile_digest", "operator_ack_digest",
             }
-            if (type(value) is not dict or set(value) != required
-                    or value["activation_id"] != activation_id
-                    or value["state"] != "pending_witness"
-                    or type(value["activation_digest"]) is not str
+            if type(value) is not dict or value.get("activation_id") != activation_id:
+                raise ValueError("intent shape")
+            if value.get("state") == "pending_witness":
+                if set(value) != base_fields:
+                    raise ValueError("pending intent shape")
+            elif value.get("state") == "finalized":
+                if set(value) != base_fields | {"witness_receipt", "witness_counter"}:
+                    raise ValueError("finalized intent shape")
+                if type(value["witness_receipt"]) is not dict:
+                    raise ValueError("witness receipt shape")
+                if (type(value["witness_counter"]) is not int
+                        or not 1 <= value["witness_counter"] <= _MAX_SEQUENCE):
+                    raise ValueError("witness counter")
+            else:
+                raise ValueError("intent state")
+            if (type(value["activation_digest"]) is not str
                     or not _HEX64.fullmatch(value["activation_digest"])
                     or type(value["trust_manifest_sequence"]) is not int
                     or not 0 <= value["trust_manifest_sequence"] <= _MAX_SEQUENCE
@@ -377,7 +389,7 @@ class EtcdV3AtomicActivationBackend:
                     or not _HEX64.fullmatch(value["profile_digest"])
                     or type(value["operator_ack_digest"]) is not str
                     or not _HEX64.fullmatch(value["operator_ack_digest"])):
-                raise ValueError("intent shape")
+                raise ValueError("intent fields")
             return value
         except Exception as exc:
             raise EtcdAtomicActivationError("HND-ETCD-ACT-E-INTENT-CORRUPT") from exc
