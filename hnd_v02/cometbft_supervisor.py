@@ -123,14 +123,17 @@ def _verify_hnd_application_binding(
     if state.profile_digest != vsp_digest:
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-VSP-DIGEST-BINDING")
 
-    expected_binary = expected_binary_sha256.lower()
     if (
         type(expected_binary_sha256) is not str
         or len(expected_binary_sha256) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in expected_binary_sha256)
         or type(comet) is not dict
         or comet.get("binary_sha256") != expected_binary
         or context.get("cometbft_binary_sha256") != expected_binary
     ):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-BINARY-BINDING")
+    expected_binary = expected_binary_sha256.lower()
+    if comet.get("binary_sha256") != expected_binary or context.get("cometbft_binary_sha256") != expected_binary:
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-BINARY-BINDING")
 
     expected_context = {
