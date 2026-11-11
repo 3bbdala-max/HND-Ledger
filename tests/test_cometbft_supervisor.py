@@ -16,6 +16,7 @@ from pathlib import Path
 
 from hnd_v02.cometbft_supervisor import (
     CometBFTSupervisorError,
+    SupervisedCometBFTNode,
     start_authorized_cometbft,
 )
 from hnd_v02.activation_witness import compute_activation_digest, verify_witness_receipt
@@ -434,6 +435,53 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertTrue(node.listener_closed)
             self.abci_server.stop.assert_called_once_with(grace=0)
             self.abci_server.stop.return_value.wait.assert_called_once_with()
+
+    def test_process_wait_error_is_not_misclassified_as_listener_cleanup_error(self):
+        class _BrokenWaitProcess:
+            def wait(self, timeout=None):
+                raise RuntimeError("simulated process wait failure")
+
+            def poll(self):
+                return None
+
+        server = MagicMock()
+        server.stop.return_value.wait.return_value = None
+        node = SupervisedCometBFTNode(
+            abci_server=server,
+            abci_port=26658,
+            process=_BrokenWaitProcess(),
+        )
+        self.assertTrue(node._close_finished.wait(timeout=2))
+        self.assertTrue(node.listener_closed)
+        self.assertIsInstance(node.process_wait_error, RuntimeError)
+        self.assertIsNone(node.cleanup_error)
+        with self.assertRaisesRegex(
+            CometBFTSupervisorError, "HND-SUPERVISOR-E-PROCESS-WAIT"
+        ):
+            node.poll()
+        server.stop.assert_called_once_with(grace=0)
+
+    def test_listener_shutdown_error_remains_distinct_and_is_surfaced(self):
+        process = _FakeCometBFTProcess()
+        server = MagicMock()
+        server.stop.return_value.wait.side_effect = RuntimeError(
+            "simulated listener shutdown failure"
+        )
+        node = SupervisedCometBFTNode(
+            abci_server=server,
+            abci_port=26658,
+            process=process,
+        )
+        process.complete(0)
+        self.assertTrue(node._close_finished.wait(timeout=2))
+        with self.assertRaisesRegex(
+            CometBFTSupervisorError, "HND-SUPERVISOR-E-ABCI-LISTENER-CLEANUP"
+        ):
+            node.wait(timeout=2)
+        self.assertFalse(node.listener_closed)
+        self.assertIsNone(node.process_wait_error)
+        self.assertIsInstance(node.cleanup_error, RuntimeError)
+        server.stop.assert_called_once_with(grace=0)
 
     def test_cometbft_spawn_failure_closes_the_previously_opened_abci_listener(self):
         with tempfile.TemporaryDirectory() as directory:
