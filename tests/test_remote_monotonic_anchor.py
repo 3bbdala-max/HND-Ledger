@@ -111,11 +111,20 @@ class RemoteMonotonicAnchorTests(unittest.TestCase):
                 transport=self.service.transport,
             )
 
-    def test_rejects_invalid_records_before_network_call(self):
+    def test_rejects_invalid_records_and_sequence_skips_before_network_call(self):
         count = len(self.service.requests)
         with self.assertRaises(MonotonicAnchorError):
             self.anchor.compare_and_advance(
                 "trust-manifest", None, MonotonicRecord(-1, "a" * 64)
+            )
+        with self.assertRaises(MonotonicAnchorError):
+            self.anchor.compare_and_advance(
+                "trust-manifest", None, MonotonicRecord(1, "a" * 64)
+            )
+        with self.assertRaises(MonotonicAnchorError):
+            self.anchor.compare_and_advance(
+                "trust-manifest", MonotonicRecord(0, "b" * 64),
+                MonotonicRecord(2, "c" * 64),
             )
         self.assertEqual(len(self.service.requests), count)
 
