@@ -111,5 +111,50 @@ class LiveThreeMemberEtcdActivationTests(unittest.TestCase):
                       [candidate[2] for candidate in candidates])
 
 
+    def test_two_member_loss_blocks_activation_then_recovers(self):
+        """Stopping two Raft members must block writes until quorum returns."""
+        pid_file = os.environ.get("HND_ETCD_PID_FILE")
+        self.assertTrue(pid_file, "live etcd member PID file is required")
+        with open(pid_file, encoding="ascii") as stream:
+            pids = [int(line.strip()) for line in stream if line.strip()]
+        self.assertEqual(len(pids), 3, "expected exactly three etcd members")
+
+        stopped = pids[1:]
+        try:
+            for pid in stopped:
+                os.kill(pid, 19)  # SIGSTOP: preserve data dir for deterministic recovery
+            profile = b"station2-no-quorum-must-not-activate"
+            state = self._state(
+                trust_seq=0, profile_seq=1, height=20, profile=profile
+            )
+            with self.assertRaises(Exception) as caught:
+                self.backend.compare_and_activate_with_intent(
+                    None, state, profile, activation_id="ci-live-no-quorum-001"
+                )
+            self.assertIn(
+                "HND-ETCD-ACT-E-REQUEST",
+                str(caught.exception),
+                "quorum loss must fail closed as an unavailable transaction",
+            )
+        finally:
+            for pid in stopped:
+                try:
+                    os.kill(pid, 18)  # SIGCONT
+                except ProcessLookupError:
+                    pass
+
+        # Once the two members resume, the same cluster must regain quorum.
+        profile = b"station2-quorum-recovered"
+        state = self._state(
+            trust_seq=0, profile_seq=1, height=21, profile=profile
+        )
+        self.assertTrue(
+            self.backend.compare_and_activate_with_intent(
+                None, state, profile, activation_id="ci-live-quorum-recovery-001"
+            )
+        )
+        self.assertEqual(self.backend.read_active_state(), state)
+
+
 if __name__ == "__main__":
     unittest.main()
