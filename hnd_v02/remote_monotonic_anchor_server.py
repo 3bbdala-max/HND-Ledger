@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from hnd_v02.monotonic_anchor import (
     MonotonicAnchorConflict, MonotonicAnchorError, MonotonicRecord,
+    MonotonicStateAnchor,
 )
 from hnd_v02.sqlite_monotonic_anchor import SQLiteMonotonicAnchor
 
@@ -66,7 +67,7 @@ def _record(value, *, nullable: bool) -> MonotonicRecord | None:
 
 
 def dispatch_monotonic_anchor_request(
-    anchor: SQLiteMonotonicAnchor, route: str, payload: Mapping[str, Any]
+    anchor: MonotonicStateAnchor, route: str, payload: Mapping[str, Any]
 ) -> dict:
     """Dispatch the exact v1 read and compare-and-advance wire contract."""
     if route not in _ROUTES:
@@ -101,15 +102,17 @@ def dispatch_monotonic_anchor_request(
 
 
 def create_monotonic_anchor_server(
-    anchor: SQLiteMonotonicAnchor,
+    anchor: MonotonicStateAnchor,
     *,
     ssl_context: ssl.SSLContext,
     authorized_client_cert_sha256: set[str] | frozenset[str],
     address: tuple[str, int] = ("127.0.0.1", 9444),
 ) -> ThreadingHTTPServer:
     """Create a pinned mTLS server; caller provisions certs, CA and TLS context."""
-    if not isinstance(anchor, SQLiteMonotonicAnchor):
-        raise ValueError("a durable SQLiteMonotonicAnchor is required")
+    if not callable(getattr(anchor, "read_state", None)) or not callable(
+        getattr(anchor, "compare_and_advance", None)
+    ):
+        raise ValueError("a MonotonicStateAnchor implementation is required")
     if not isinstance(ssl_context, ssl.SSLContext):
         raise ValueError("a server SSLContext is required")
     if ssl_context.protocol not in (ssl.PROTOCOL_TLS_SERVER, ssl.PROTOCOL_TLS):
