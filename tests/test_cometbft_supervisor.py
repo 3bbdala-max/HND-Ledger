@@ -2,7 +2,9 @@
 import base64
 import hashlib
 import os
+import subprocess
 import tempfile
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -110,6 +112,30 @@ class _UnavailableWitness:
         raise TimeoutError("reference witness unavailable")
 
 
+class _FakeCometBFTProcess:
+    def __init__(self):
+        self._finished = threading.Event()
+        self.returncode = None
+
+    def wait(self, timeout=None):
+        if not self._finished.wait(timeout):
+            raise subprocess.TimeoutExpired("fake-cometbft", timeout)
+        return self.returncode
+
+    def poll(self):
+        return self.returncode if self._finished.is_set() else None
+
+    def complete(self, returncode=0):
+        self.returncode = returncode
+        self._finished.set()
+
+    def terminate(self):
+        self.complete(-15)
+
+    def kill(self):
+        self.complete(-9)
+
+
 class CometBFTSupervisorTests(unittest.TestCase):
     def setUp(self):
         self.fixture = ActivationBundleTests()
@@ -119,7 +145,13 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self._bind_fixture_to_real_hnd_genesis()
         self.digest = profile_digest(self.fixture.vsp.payload).hex()
         self.calls = []
-        self.child = object()
+        self.child = _FakeCometBFTProcess()
+        self.supervised_node = None
+
+    def tearDown(self):
+        if self.supervised_node is not None and not self.supervised_node.listener_closed:
+            self.child.complete(0)
+            self.supervised_node.wait(timeout=2)
 
     def _bind_fixture_to_real_hnd_genesis(self):
         """Make the VSP fixture and HND application share a valid synthetic Genesis."""
@@ -322,15 +354,17 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 ),
                 popen=fake_popen,
             )
+        self.supervised_node = result[1]
         return result, binary, actual_digest
 
     def test_pinned_binary_starts_only_after_activation_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "node-home").mkdir()
             (state, launch_result), binary, _ = self._launch(directory)
-            self.assertIs(launch_result["cometbft_process"], self.child)
-            self.assertIs(launch_result["abci_server"], self.abci_server)
-            self.assertEqual(launch_result["abci_port"], 26658)
+            self.assertIs(launch_result.cometbft_process, self.child)
+            self.assertIs(launch_result.abci_server, self.abci_server)
+            self.assertEqual(launch_result.abci_port, 26658)
+            self.assertFalse(launch_result.listener_closed)
             self.assertEqual(self.events, ["abci-listener", "cometbft-spawn"])
             self.assertEqual(self.backend.read_active_state(), state)
             self.assertEqual(self.backend.intent["state"], "finalized")
@@ -389,6 +423,17 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(self.events, [])
             self.assertEqual(self.calls, [])
             self.assertEqual(self.backend.intent["state"], "finalized")
+
+    def test_process_exit_automatically_closes_abci_listener(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            (_state, node), _binary, _digest = self._launch(directory)
+            self.assertFalse(node.listener_closed)
+            self.child.complete(0)
+            self.assertEqual(node.wait(timeout=2), 0)
+            self.assertTrue(node.listener_closed)
+            self.abci_server.stop.assert_called_once_with(grace=0)
+            self.abci_server.stop.return_value.wait.assert_called_once_with()
 
     def test_cometbft_spawn_failure_closes_the_previously_opened_abci_listener(self):
         with tempfile.TemporaryDirectory() as directory:
