@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -58,6 +59,24 @@ class SQLiteActivationIntentStoreTests(unittest.TestCase):
         self.store.finalize("activation-001", "3" * 64, "4" * 64)
         other = dict(self.request, activation_id="activation-002")
         self.assertEqual(self.store.prepare(other)["state"], "prepared")
+
+    def test_prepared_retry_fails_closed_when_singleton_guard_is_missing(self):
+        self.store.prepare(self.request)
+        with sqlite3.connect(self.path) as db:
+            db.execute("DELETE FROM active_activation_intent")
+        with self.assertRaisesRegex(RemoteActivationProtocolError, "GUARD-MISMATCH"):
+            self.store.prepare(self.request)
+
+    def test_finalized_retry_fails_closed_when_stale_guard_points_to_it(self):
+        self.store.prepare(self.request)
+        self.store.finalize("activation-001", "3" * 64, "4" * 64)
+        with sqlite3.connect(self.path) as db:
+            db.execute(
+                "INSERT INTO active_activation_intent VALUES(1, ?)",
+                ("activation-001",),
+            )
+        with self.assertRaisesRegex(RemoteActivationProtocolError, "GUARD-MISMATCH"):
+            self.store.prepare(self.request)
 
     def test_finalize_is_idempotent_and_survives_reopen(self):
         self.store.prepare(self.request)
