@@ -174,6 +174,7 @@ class SupervisedCometBFTNode:
         self.cometbft_process = process
         self._close_lock = threading.Lock()
         self._listener_closed = threading.Event()
+        self._close_finished = threading.Event()
         self._closed = False
         self._cleanup_error: Exception | None = None
         self._monitor = threading.Thread(
@@ -190,15 +191,22 @@ class SupervisedCometBFTNode:
                 self._closed = True
         if already_closing:
             # Another caller or the monitor owns the actual stop operation.
-            # Wait until its stop() call has completed before reporting closure.
-            self._listener_closed.wait()
+            self._close_finished.wait()
             return
         try:
             self.abci_server.stop(grace=0).wait()
         except Exception as exc:
             self._cleanup_error = exc
-        finally:
+        else:
             self._listener_closed.set()
+        finally:
+            self._close_finished.set()
+
+    def _raise_cleanup_error(self) -> None:
+        if self._cleanup_error is not None:
+            raise CometBFTSupervisorError(
+                "HND-SUPERVISOR-E-ABCI-LISTENER-CLEANUP"
+            ) from self._cleanup_error
 
     def _monitor_process(self) -> None:
         try:
@@ -220,6 +228,7 @@ class SupervisedCometBFTNode:
         result = self.cometbft_process.poll()
         if result is not None:
             self._close_listener()
+            self._raise_cleanup_error()
         return result
 
     def wait(self, timeout: float | None = None):
@@ -231,6 +240,7 @@ class SupervisedCometBFTNode:
             self._close_listener()
             raise
         self._close_listener()
+        self._raise_cleanup_error()
         return result
 
     def terminate(self) -> None:
