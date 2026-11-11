@@ -304,6 +304,28 @@ def main() -> None:
         config_path.write_text(config_text, encoding="utf-8")
 
         state_path = root / "hnd-application-state.json"
+
+        # Build the HREC04 rollback fixture from a separately initialized HND
+        # application before CometBFT starts. Capturing state_path after node
+        # startup is too late: InitChain and the first committed block may
+        # already have advanced the live application store.
+        genesis_fixture_dir = Path(
+            tempfile.mkdtemp(prefix="hnd-genesis-fixture-", dir=root)
+        )
+        genesis_fixture_app = HNDABCIApplication(
+            config=config,
+            manifest=manifest,
+            expected_genesis_hash=genesis_hash,
+            state_path=genesis_fixture_dir / "state.json",
+        )
+        genesis_fixture_app.init_chain(
+            chain_id=config.network_id,
+            app_state_bytes=genesis_fixture_app.application_genesis_bytes(),
+        )
+        genesis_state_bytes = genesis_fixture_app.state_path.read_bytes()
+        if genesis_fixture_app.last_committed_height != 0:
+            raise AssertionError("HREC04 Genesis fixture did not remain at height zero")
+
         app = HNDABCIApplication(
             config=config,
             manifest=manifest,
@@ -349,7 +371,6 @@ def main() -> None:
         try:
             node = start_node(binary, home, node_handle)
             status = wait_for_node(node, node_log)
-            genesis_state_bytes = state_path.read_bytes()
             try:
                 abci_info = rpc_get("/abci_info")
                 print("HND_ABCI_INFO", json.dumps(abci_info, sort_keys=True), flush=True)
