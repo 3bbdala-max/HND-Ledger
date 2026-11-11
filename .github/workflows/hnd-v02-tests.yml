@@ -94,6 +94,8 @@ jobs:
         run: python -m unittest -v tests.test_etcd_atomic_activation
       - name: Run strict HTTPS witness client transport tests
         run: python -m unittest -v tests.test_activation_witness_client
+      - name: Run witness-gated etcd activation coordinator tests
+        run: python -m unittest -v tests.test_witnessed_etcd_activation_coordinator
       - name: Run SQLite atomic activation reference backend tests
         run: python -m unittest -v tests.test_sqlite_atomic_activation
       - name: Run cross-layer station-two end-to-end activation tests
