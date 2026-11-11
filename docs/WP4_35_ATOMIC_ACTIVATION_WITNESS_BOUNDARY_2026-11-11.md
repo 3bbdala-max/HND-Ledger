@@ -34,6 +34,8 @@ The durable etcd transaction must compare the exact predecessor state and exact 
 
 The transaction must be a single etcd Raft commit. It must not claim final activation until the independent witness has acknowledged the same activation digest and sequence pair.
 
+The candidate etcd intent reader currently accepts only `pending_witness`. It deliberately rejects a `finalized` state because the record schema does not yet carry a verifiable witness receipt. No code path may promote the intent to finalized until an authenticated receipt format, trust-key configuration, signature verification, and a compare-and-swap finalization transaction are implemented and tested.
+
 The independent witness must:
 - be outside the etcd cluster's administrative and restore domain;
 - enforce linearizable, durable compare-and-advance semantics;
