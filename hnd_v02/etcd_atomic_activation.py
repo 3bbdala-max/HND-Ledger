@@ -36,6 +36,21 @@ class EtcdAtomicActivationError(ActivationTransactionError):
     """The etcd backend could not safely read or commit activation state."""
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so credentials and activation writes stay on one origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_no_redirect(request, *, timeout: float, context: ssl.SSLContext | None):
+    opener = urllib.request.build_opener(
+        _NoRedirectHandler,
+        urllib.request.HTTPSHandler(context=context),
+    )
+    return opener.open(request, timeout=timeout)
+
+
 class EtcdV3AtomicActivationBackend:
     """Atomic etcd v3 implementation of AtomicActivationBackend.
 
@@ -121,7 +136,7 @@ class EtcdV3AtomicActivationBackend:
             headers={"Content-Type": "application/json", "Accept": "application/json"},
         )
         try:
-            with urllib.request.urlopen(
+            with _open_no_redirect(
                 request, timeout=self.timeout, context=self.ssl_context
             ) as response:
                 raw = response.read(2 * 1024 * 1024 + 1)
