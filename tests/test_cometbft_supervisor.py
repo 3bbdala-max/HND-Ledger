@@ -212,7 +212,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self.fixture.manifest["witnesses"] = [
             {
                 "witness_id": f"witness-{index + 1}",
-                "signature": __import__("base64").b64encode(
+                "signature": base64.b64encode(
                     key.sign(witness_message(manifest_digest))
                 ).decode("ascii"),
             }
@@ -240,7 +240,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 "activation_height": 0,
                 "operator_id": operator_id,
                 "nonce": nonce,
-                "signature": __import__("base64").b64encode(
+                "signature": base64.b64encode(
                     private_key.sign(message)
                 ).decode("ascii"),
             })
