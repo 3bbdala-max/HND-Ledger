@@ -145,8 +145,23 @@ class SQLiteActivationIntentStore:
                     if row[0] != encoded_request:
                         db.rollback()
                         raise RemoteActivationProtocolError("HND-REMOTE-ACT-STORE-E-ID-CONFLICT")
+                    stored_intent = json.loads(row[1])
+                    guard = db.execute(
+                        "SELECT activation_id FROM active_activation_intent WHERE singleton=1"
+                    ).fetchone()
+                    if stored_intent["state"] == "prepared":
+                        if guard is None or guard[0] != activation_id:
+                            db.rollback()
+                            raise RemoteActivationProtocolError(
+                                "HND-REMOTE-ACT-STORE-E-GUARD-MISMATCH"
+                            )
+                    elif guard is not None and guard[0] == activation_id:
+                        db.rollback()
+                        raise RemoteActivationProtocolError(
+                            "HND-REMOTE-ACT-STORE-E-GUARD-MISMATCH"
+                        )
                     db.commit()
-                    return json.loads(row[1])
+                    return stored_intent
                 guard = db.execute(
                     "SELECT activation_id FROM active_activation_intent WHERE singleton=1"
                 ).fetchone()
