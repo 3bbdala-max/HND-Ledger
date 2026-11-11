@@ -175,34 +175,34 @@ class CometBFTSupervisorTests(unittest.TestCase):
             side_effect=fake_start_grpc_server,
         ):
             result = start_authorized_cometbft(
-            backend=self.backend,
-            application=self.application,
-            application_binding_verifier=(
-                lambda app, state, artifact: application_binding_valid
-                and app is self.application
-                and state == self.backend.read_active_state()
-                and artifact == self.profile
-            ),
-            witness_client=self.witness_client,
-            activation_id="supervisor-activation-test-001",
-            expected_witness_id=_WITNESS_ID,
-            expected_config_epoch=_CONFIG_EPOCH,
-            vsp_raw=self.fixture.vsp_raw,
-            trust_manifests=[self.fixture.manifest_raw],
-            operator_acks_raw=self.fixture.acks_raw if valid_acks else b"[]",
-            profile_artifact=self.profile,
-            context=self.fixture.vsp.ctx,
-            trusted_witness_keys=self.trusted_witness_keys,
-            expected_operator_keys=self.fixture.operator_public,
-            binary_path=str(binary),
-            expected_binary_sha256=expected_digest or actual_digest,
-            arguments=["start", "--home", str(root / "node-home")],
-            cwd=str(root),
-            environment=(
-                {"PATH": "/usr/bin"}
-                if environment is _DEFAULT_ENVIRONMENT else environment
-            ),
-            popen=fake_popen,
+                backend=self.backend,
+                application=self.application,
+                application_binding_verifier=(
+                    lambda app, state, artifact: application_binding_valid
+                    and app is self.application
+                    and state == self.backend.read_active_state()
+                    and artifact == self.profile
+                ),
+                witness_client=self.witness_client,
+                activation_id="supervisor-activation-test-001",
+                expected_witness_id=_WITNESS_ID,
+                expected_config_epoch=_CONFIG_EPOCH,
+                vsp_raw=self.fixture.vsp_raw,
+                trust_manifests=[self.fixture.manifest_raw],
+                operator_acks_raw=self.fixture.acks_raw if valid_acks else b"[]",
+                profile_artifact=self.profile,
+                context=self.fixture.vsp.ctx,
+                trusted_witness_keys=self.trusted_witness_keys,
+                expected_operator_keys=self.fixture.operator_public,
+                binary_path=str(binary),
+                expected_binary_sha256=expected_digest or actual_digest,
+                arguments=["start", "--home", str(root / "node-home")],
+                cwd=str(root),
+                environment=(
+                    {"PATH": "/usr/bin"}
+                    if environment is _DEFAULT_ENVIRONMENT else environment
+                ),
+                popen=fake_popen,
             )
         return result, binary, actual_digest
 
@@ -271,6 +271,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 self._launch(directory, witness_unavailable=True)
             self.assertEqual(self.calls, [])
+            self.assertEqual(self.events, [])
             self.assertIsNotNone(self.backend.read_active_state())
             self.assertEqual(self.backend.intent["state"], "pending_witness")
 
