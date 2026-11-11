@@ -1,6 +1,11 @@
 import base64
 import json
 import unittest
+import base64
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from hnd_v02.activation_witness import compute_activation_digest
+
 from unittest.mock import patch
 
 from hnd_v02.activation_transaction import ActivationState
@@ -295,6 +300,83 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
         with self.assertRaises(EtcdAtomicActivationError):
             self.backend().read_activation_intent("station2-bootstrap-001")
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_witness_receipt_required_and_verified_before_finalize(self, urlopen):
+        backend = self.backend()
+        proposed = state()
+        activation_id = "station2-witness-001"
+        digest = compute_activation_digest(activation_id, proposed, b"profile-v1")
+        key = Ed25519PrivateKey.generate()
+        public = key.public_key().public_bytes_raw()
+        signed = {
+            "schema": "hnd.station2.witness-ack.v1",
+            "activation_id": activation_id,
+            "activation_digest": digest,
+            "witness_id": "witness-a",
+            "config_epoch": 7,
+            "counter": 1,
+        }
+        canonical = json.dumps(
+            signed, ensure_ascii=True, allow_nan=False,
+            sort_keys=True, separators=(",", ":"),
+        ).encode("ascii")
+        signature = key.sign(b"HND-STATION2-WITNESS-ACK-V1\\x00" + canonical)
+        receipt = {**signed, "signature": base64.b64encode(signature).decode("ascii")}
+        intent = {
+            "activation_id": activation_id,
+            "state": "pending_witness",
+            "activation_digest": digest,
+            "trust_manifest_sequence": 0,
+            "trust_manifest_digest": "1" * 64,
+            "profile_sequence": 1,
+            "profile_digest": "2" * 64,
+            "operator_ack_digest": "3" * 64,
+        }
+        raw = json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        urlopen.side_effect = [
+            _Response({"kvs": [{"value": encoded(raw)}]}),
+            _Response({"succeeded": True}),
+        ]
+        finalized = backend.finalize_activation_intent(
+            activation_id, receipt,
+            trusted_witness_keys={"witness-a": public},
+            expected_witness_id="witness-a",
+            expected_config_epoch=7,
+        )
+        self.assertEqual(finalized["state"], "finalized")
+        self.assertEqual(finalized["witness_receipt"], receipt)
+        payload = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
+        self.assertEqual(len(payload["compare"]), 1)
+        self.assertEqual(payload["compare"][0]["target"], "VALUE")
+        self.assertEqual(
+            base64.b64decode(payload["compare"][0]["value"]), raw
+        )
+        self.assertEqual(len(payload["success"]), 1)
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_invalid_witness_receipt_never_submits_finalize_transaction(self, urlopen):
+        backend = self.backend()
+        intent = {
+            "activation_id": "station2-witness-002",
+            "state": "pending_witness",
+            "activation_digest": "4" * 64,
+            "trust_manifest_sequence": 0,
+            "trust_manifest_digest": "1" * 64,
+            "profile_sequence": 1,
+            "profile_digest": "2" * 64,
+            "operator_ack_digest": "3" * 64,
+        }
+        raw = json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
+        with self.assertRaises(EtcdAtomicActivationError):
+            backend.finalize_activation_intent(
+                "station2-witness-002", {"invalid": True},
+                trusted_witness_keys={},
+                expected_witness_id="witness-a",
+                expected_config_epoch=7,
+            )
+        self.assertEqual(urlopen.call_count, 1)
 
     @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_atomic_intent_rejects_invalid_id_before_network(self, urlopen):
