@@ -445,7 +445,7 @@ class EtcdV3AtomicActivationBackend:
 
         new_state_raw = self._encode_state(new_state)
         activation_digest = __import__("hashlib").sha256(
-            new_state_raw + b"\\0" + profile_artifact
+            new_state_raw + b"\x00" + profile_artifact
         ).hexdigest()
         intent = {
             "activation_id": activation_id,
