@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from hnd_v02.activation_transaction import ActivationState
 from hnd_v02.etcd_atomic_activation import (
-    EtcdAtomicActivationBackend, EtcdAtomicActivationError,
+    EtcdV3AtomicActivationBackend, EtcdAtomicActivationError,
 )
 
 
