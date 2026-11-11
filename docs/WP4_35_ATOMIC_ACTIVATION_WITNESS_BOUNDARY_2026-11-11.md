@@ -85,3 +85,37 @@ Station 2 cannot be declared complete until the target transaction, independent 
 - WP4.33 defines the Station 2 exit runbook.
 - WP4.34 defines the independent monotonic anchor architecture.
 - PR #49 adds an etcd v3 active-state/profile transaction backend, but does not yet implement this complete protocol.
+
+
+## Implementation progress addendum — 2026-11-11
+
+This addendum supersedes statements above that described receipt verification/finalization and coordinator integration as wholly unimplemented. It records the implementation now present on PR #49 head `4d4f5b08b480a7b0c591343134097643173a69b8`; it does not change the acceptance criteria or claim production readiness.
+
+### Implemented on the PR #49 candidate branch
+
+- `compare_and_activate_with_intent` performs a five-key etcd transaction: active state, active profile, trust-manifest monotonic record, VSP-profile monotonic record, and immutable pending-witness intent.
+- The activation digest commits to the activation identifier, complete activation state, and actual profile artifact bytes.
+- Ed25519 witness receipts are checked against pinned witness public keys and expected witness ID/config epoch, including activation ID/digest and monotonic counter constraints.
+- `finalize_activation_intent` uses a compare-and-swap on the exact pending intent bytes. It rejects invalid receipts, supports exact-receipt idempotent retries, and reconciles a lost transaction response by rereading the same activation ID.
+- The old finalization path without a verified receipt is fail-closed.
+- A witnessed coordinator implementation now sequences artifact validation, five-key transaction, witness acknowledgement, receipt finalization, and read-after-write checks. Tests exercise this coordinator seam.
+- A strict HTTPS/mTLS witness reference service/client and durable SQLite reference store exist. The store remains single-host and is not an independent production monotonic witness.
+
+### Current validation evidence
+
+On exact PR head `4d4f5b08b480a7b0c591343134097643173a69b8`:
+
+- PR workflow [43085630533](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43085630533): `hnd-v02-tests` and `cometbft-single-node-smoke` passed.
+- Push workflow [43085620438](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43085620438): `hnd-v02-tests` and `cometbft-single-node-smoke` passed.
+
+These are CI results for this SHA only. They do not demonstrate live etcd quorum behavior, independent witness fault isolation, or production deployment controls.
+
+### Remaining gaps — unchanged exit gates
+
+1. Prove the witnessed coordinator against a live, pinned three-member etcd cluster, including quorum loss, leader change, CAS races, member replacement, crash/restart, and old-snapshot restore.
+2. Implement/deploy an independently administered witness with durable linearizable anti-rollback semantics outside the etcd administrative and restore domain; SQLite on the same host is not sufficient.
+3. Complete lost-response and crash reconciliation across every boundary, including witness acknowledgement timeout/retry and finalization response loss, using the same immutable activation ID.
+4. Enforce verified startup authorization across every CometBFT/ABCI process launch path, not merely expose an authorization seam.
+5. Establish production certificate/key custody, trust configuration, operations, and independent review without inventing or assuming deployment credentials.
+
+PR #49 remains draft. Station 2 remains open until every WP4.33 acceptance gate is evidenced. No Config-v1 owner decisions DEC-01 through DEC-14 are changed by this addendum.
