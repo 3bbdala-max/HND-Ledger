@@ -185,9 +185,14 @@ class SupervisedCometBFTNode:
 
     def _close_listener(self) -> None:
         with self._close_lock:
-            if self._closed:
-                return
-            self._closed = True
+            already_closing = self._closed
+            if not already_closing:
+                self._closed = True
+        if already_closing:
+            # Another caller or the monitor owns the actual stop operation.
+            # Wait until its stop() call has completed before reporting closure.
+            self._listener_closed.wait()
+            return
         try:
             self.abci_server.stop(grace=0).wait()
         except Exception as exc:
@@ -258,7 +263,7 @@ def start_authorized_cometbft(
     abci_max_workers: int = 16,
     environment: Mapping[str, str] | None = None,
     popen: Any = subprocess.Popen,
-) -> tuple[Any, Any]:
+) -> tuple[ActivationState, SupervisedCometBFTNode]:
     """Authorize, bind ABCI, and start the pinned CometBFT process as one unit.
 
     The five-key etcd activation and independent witness acknowledgement are
