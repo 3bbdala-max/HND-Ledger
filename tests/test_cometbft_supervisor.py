@@ -1,4 +1,5 @@
 """Tests for the pinned CometBFT process supervisor boundary."""
+import base64
 import hashlib
 import os
 import tempfile
@@ -162,7 +163,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
         }
         for entry in self.fixture.manifest["governance_keys"]:
             private = private_by_key_id[entry["key_id"]]
-            entry["proof_of_possession"] = __import__("base64").b64encode(
+            entry["proof_of_possession"] = base64.b64encode(
                 private.sign(governance_pop_message(
                     chain_id=self.fixture.manifest["chain_id"],
                     hnd_genesis_sha256=genesis_hash,
