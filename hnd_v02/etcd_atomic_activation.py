@@ -351,7 +351,7 @@ class EtcdV3AtomicActivationBackend:
             }
             if (type(value) is not dict or set(value) != required
                     or value["activation_id"] != activation_id
-                    or value["state"] not in {"pending_witness", "finalized"}
+                    or value["state"] != "pending_witness"
                     or type(value["activation_digest"]) is not str
                     or not _HEX64.fullmatch(value["activation_digest"])
                     or type(value["trust_manifest_sequence"]) is not int
