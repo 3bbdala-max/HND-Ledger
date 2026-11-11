@@ -17,7 +17,7 @@ from typing import Any
 
 from hnd_v02.activation_transaction import ActivationState, AtomicActivationBackend
 from hnd_v02.abci_app import HNDABCIApplication
-from hnd_v02.genesis import genesis_manifest_hash
+from hnd_v02.genesis import genesis_manifest_hash, validate_genesis_manifest
 from hnd_v02.vsp_canonical import parse_vsp_envelope, profile_digest
 from hnd_v02.startup_authorization import authorize_then_start_witnessed
 from hnd_v02.cometbft_v040_server import start_grpc_server
@@ -100,6 +100,13 @@ def _verify_hnd_application_binding(
     try:
         payload = parse_vsp_envelope(vsp_raw)["payload"]
         vsp_digest = profile_digest(payload).hex()
+        manifest_valid, _manifest_reason = validate_genesis_manifest(
+            application.manifest,
+            config=application.config,
+            expected_genesis_hash=payload["hnd_genesis_sha256"],
+        )
+        if manifest_valid is not True:
+            raise ValueError("HND Genesis manifest does not validate against application config")
         manifest_digest = genesis_manifest_hash(application.manifest)
         comet = payload["cometbft"]
     except Exception as exc:
