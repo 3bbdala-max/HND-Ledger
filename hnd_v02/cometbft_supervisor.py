@@ -1,10 +1,9 @@
 """Fail-closed CometBFT process launch adapter for HND Station 2.
 
-This adapter binds the authorized activation transaction to a pinned executable
-and launches it only after activation commits. It is a supervisor building
-block, not a complete OS security boundary: production deployment must ensure
-this is the only permitted CometBFT launch path and protect the executable,
-evidence, backend, environment, and host from privileged modification.
+The executable is opened with O_NOFOLLOW and passed to the child by inherited
+file descriptor through /proc/self/fd. This prevents a path replacement between
+digest verification and exec. The installed inode must still be root-controlled
+and immutable against privileged writers; this is not a complete OS boundary.
 """
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ import os
 import stat
 import subprocess
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
 from hnd_v02.activation_transaction import AtomicActivationBackend
@@ -24,7 +22,28 @@ class CometBFTSupervisorError(RuntimeError):
     """The pinned CometBFT process could not be safely authorized or launched."""
 
 
-def _pinned_executable(path: str, expected_sha256: str) -> str:
+def _verify_open_executable(fd: int, expected_sha256: str) -> None:
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-FILE-TYPE")
+        if metadata.st_mode & 0o111 == 0:
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-NOT-EXECUTABLE")
+        os.lseek(fd, 0, os.SEEK_SET)
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        os.lseek(fd, 0, os.SEEK_SET)
+    except OSError as exc:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-READ") from exc
+    if digest.hexdigest() != expected_sha256.lower():
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-DIGEST-MISMATCH")
+
+
+def _open_pinned_executable(path: str, expected_sha256: str) -> tuple[int, str]:
     if type(path) is not str or not os.path.isabs(path):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-ABSOLUTE-PATH")
     if type(expected_sha256) is not str or len(expected_sha256) != 64:
@@ -33,20 +52,21 @@ def _pinned_executable(path: str, expected_sha256: str) -> str:
         int(expected_sha256, 16)
     except ValueError as exc:
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-DIGEST") from exc
+    if not hasattr(os, "O_NOFOLLOW") or not os.path.isdir("/proc/self/fd"):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-FD-EXEC-UNSUPPORTED")
 
-    candidate = Path(path)
+    flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
-        metadata = candidate.lstat()
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-            raise CometBFTSupervisorError("HND-SUPERVISOR-E-FILE-TYPE")
-        if metadata.st_mode & 0o111 == 0:
-            raise CometBFTSupervisorError("HND-SUPERVISOR-E-NOT-EXECUTABLE")
-        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        fd = os.open(path, flags)
     except OSError as exc:
-        raise CometBFTSupervisorError("HND-SUPERVISOR-E-READ") from exc
-    if digest != expected_sha256.lower():
-        raise CometBFTSupervisorError("HND-SUPERVISOR-E-DIGEST-MISMATCH")
-    return str(candidate)
+        code = "HND-SUPERVISOR-E-FILE-TYPE" if getattr(exc, "errno", None) in (20, 40) else "HND-SUPERVISOR-E-READ"
+        raise CometBFTSupervisorError(code) from exc
+    try:
+        _verify_open_executable(fd, expected_sha256)
+        return fd, f"/proc/self/fd/{fd}"
+    except Exception:
+        os.close(fd)
+        raise
 
 
 def start_authorized_cometbft(
@@ -66,47 +86,54 @@ def start_authorized_cometbft(
     environment: Mapping[str, str] | None = None,
     popen: Any = subprocess.Popen,
 ) -> tuple[Any, Any]:
-    """Authorize, atomically activate, then launch only the pinned binary.
+    """Authorize, atomically activate, then exec the digest-pinned open inode.
 
-    The executable digest is checked before evidence processing and again in
-    the launch callback. No shell is used. Callers must provide an immutable,
-    root-controlled binary path and must prevent all alternate launch routes.
-    The returned pair is (committed ActivationState, child process handle).
+    Linux /proc/self/fd is required. The executable descriptor remains open
+    until Popen has completed process creation and is explicitly inherited by
+    that child; replacing the original path cannot redirect the execution.
     """
-    executable = _pinned_executable(binary_path, expected_binary_sha256)
-    if type(arguments) not in (list, tuple) or any(type(arg) is not str for arg in arguments):
-        raise CometBFTSupervisorError("HND-SUPERVISOR-E-ARGUMENTS")
-    if type(cwd) is not str or not os.path.isabs(cwd) or not os.path.isdir(cwd):
-        raise CometBFTSupervisorError("HND-SUPERVISOR-E-CWD")
-    if environment is not None:
-        if not isinstance(environment, Mapping) or any(
-            type(key) is not str or type(value) is not str for key, value in environment.items()
-        ):
-            raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
-        child_environment = dict(environment)
-    else:
-        child_environment = None
-
-    def launch_after_commit(_state: Any) -> Any:
-        _pinned_executable(executable, expected_binary_sha256)
-        return popen(
-            [executable, *arguments],
-            executable=executable,
-            cwd=cwd,
-            env=child_environment,
-            shell=False,
-            close_fds=True,
-            start_new_session=True,
-        )
-
-    return authorize_then_start(
-        backend=backend,
-        vsp_raw=vsp_raw,
-        trust_manifests=trust_manifests,
-        operator_acks_raw=operator_acks_raw,
-        profile_artifact=profile_artifact,
-        context=context,
-        trusted_witness_keys=trusted_witness_keys,
-        expected_operator_keys=expected_operator_keys,
-        launch=launch_after_commit,
+    executable_fd, executable_ref = _open_pinned_executable(
+        binary_path, expected_binary_sha256
     )
+    try:
+        if type(arguments) not in (list, tuple) or any(type(arg) is not str for arg in arguments):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-ARGUMENTS")
+        if type(cwd) is not str or not os.path.isabs(cwd) or not os.path.isdir(cwd):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-CWD")
+        if environment is not None:
+            if not isinstance(environment, Mapping) or any(
+                type(key) is not str or type(value) is not str for key, value in environment.items()
+            ):
+                raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
+            child_environment = dict(environment)
+        else:
+            child_environment = None
+
+        def launch_after_commit(_state: Any) -> Any:
+            # Re-hash the same open inode immediately before exec; never reopen
+            # the mutable pathname after the initial O_NOFOLLOW open.
+            _verify_open_executable(executable_fd, expected_binary_sha256)
+            return popen(
+                [executable_ref, *arguments],
+                executable=executable_ref,
+                cwd=cwd,
+                env=child_environment,
+                shell=False,
+                close_fds=True,
+                pass_fds=(executable_fd,),
+                start_new_session=True,
+            )
+
+        return authorize_then_start(
+            backend=backend,
+            vsp_raw=vsp_raw,
+            trust_manifests=trust_manifests,
+            operator_acks_raw=operator_acks_raw,
+            profile_artifact=profile_artifact,
+            context=context,
+            trusted_witness_keys=trusted_witness_keys,
+            expected_operator_keys=expected_operator_keys,
+            launch=launch_after_commit,
+        )
+    finally:
+        os.close(executable_fd)

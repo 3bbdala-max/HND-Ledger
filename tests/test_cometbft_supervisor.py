@@ -1,5 +1,6 @@
 """Tests for the pinned CometBFT process supervisor boundary."""
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,7 +40,13 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self.backend = self._backend(root / "activation.sqlite3")
 
         def fake_popen(args, **kwargs):
-            self.calls.append((args, kwargs, self.backend.read_active_state()))
+            inherited = kwargs["pass_fds"]
+            self.assertEqual(len(inherited), 1)
+            fd = inherited[0]
+            os.lseek(fd, 0, os.SEEK_SET)
+            pinned_bytes = os.read(fd, 1024)
+            os.lseek(fd, 0, os.SEEK_SET)
+            self.calls.append((args, kwargs, self.backend.read_active_state(), pinned_bytes))
             return self.child
 
         result = start_authorized_cometbft(
@@ -67,11 +74,16 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertIs(child, self.child)
             self.assertEqual(self.backend.read_active_state(), state)
             self.assertEqual(len(self.calls), 1)
-            args, kwargs, state_at_spawn = self.calls[0]
-            self.assertEqual(args, [str(binary), "start", "--home", str(Path(directory) / "node-home")])
+            args, kwargs, state_at_spawn, pinned_bytes = self.calls[0]
+            fd = kwargs["pass_fds"][0]
+            self.assertEqual(args, [f"/proc/self/fd/{fd}", "start", "--home", str(Path(directory) / "node-home")])
+            self.assertEqual(kwargs["executable"], f"/proc/self/fd/{fd}")
+            self.assertEqual(pinned_bytes, b"pinned-cometbft-test-binary")
             self.assertEqual(state_at_spawn, state)
             self.assertIs(kwargs["shell"], False)
             self.assertIs(kwargs["start_new_session"], True)
+            self.assertIs(kwargs["close_fds"], True)
+            self.assertEqual(kwargs["pass_fds"], (fd,))
             self.assertEqual(kwargs["env"], {"PATH": "/usr/bin"})
 
     def test_wrong_binary_digest_never_activates_or_spawns(self):
@@ -99,8 +111,8 @@ class CometBFTSupervisorTests(unittest.TestCase):
             link = root / "cometbft"
             link.symlink_to(target)
             with self.assertRaisesRegex(CometBFTSupervisorError, "FILE-TYPE"):
-                from hnd_v02.cometbft_supervisor import _pinned_executable
-                _pinned_executable(str(link), hashlib.sha256(b"binary").hexdigest())
+                from hnd_v02.cometbft_supervisor import _open_pinned_executable
+                _open_pinned_executable(str(link), hashlib.sha256(b"binary").hexdigest())
             self.assertEqual(self.calls, [])
 
 
