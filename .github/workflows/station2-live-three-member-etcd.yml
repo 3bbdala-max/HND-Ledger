@@ -163,6 +163,10 @@ jobs:
           data="${RUNNER_TEMP}/etcd-data"
           cert="${RUNNER_TEMP}/etcd-certs"
           pid_file="${RUNNER_TEMP}/etcd-pids"
+          ctl="${bin}/etcdctl"
+          args=(--cacert "${HND_ETCD_CA_FILE}" --cert "${HND_ETCD_CLIENT_CERT}" --key "${HND_ETCD_CLIENT_KEY}")
+          endpoints="https://127.0.0.1:2379,https://127.0.0.1:3379,https://127.0.0.1:4379"
+          "${ctl}" "${args[@]}" --endpoints="${endpoints}" put /hnd/station2/restart-persistence-check "persisted-before-crash"
           old_pid="$(sed -n '3p' "${pid_file}")"
           test -n "${old_pid}"
           kill -9 "${old_pid}"
@@ -170,11 +174,9 @@ jobs:
             if ! kill -0 "${old_pid}" 2>/dev/null; then break; fi
             sleep 1
           done
-          nohup "${bin}/etcd"             --name n3             --data-dir "${data}/n3"             --listen-client-urls "https://127.0.0.1:4379"             --advertise-client-urls "https://127.0.0.1:4379"             --listen-peer-urls "https://127.0.0.1:4380"             --initial-advertise-peer-urls "https://127.0.0.1:4380"             --initial-cluster "n1=https://127.0.0.1:2380,n2=https://127.0.0.1:3380,n3=https://127.0.0.1:4380"             --initial-cluster-token "hnd-station2-live-ci"             --initial-cluster-state new             --cert-file "${cert}/server.crt"             --key-file "${cert}/server.key"             --trusted-ca-file "${cert}/ca.crt"             --client-cert-auth=true             --peer-cert-file "${cert}/server.crt"             --peer-key-file "${cert}/server.key"             --peer-trusted-ca-file "${cert}/ca.crt"             --peer-client-cert-auth=true             --enable-grpc-gateway=true             --logger=zap             --log-outputs "${RUNNER_TEMP}/n3-restarted.log"             > "${RUNNER_TEMP}/n3-restarted.stdout" 2>&1 &
+          nohup "${bin}/etcd"             --name n3             --data-dir "${data}/n3"             --listen-client-urls "https://127.0.0.1:4379"             --advertise-client-urls "https://127.0.0.1:4379"             --listen-peer-urls "https://127.0.0.1:4380"             --initial-advertise-peer-urls "https://127.0.0.1:4380"             --initial-cluster "n1=https://127.0.0.1:2380,n2=https://127.0.0.1:3380,n3=https://127.0.0.1:4380"             --initial-cluster-token "hnd-station2-live-ci"             --initial-cluster-state existing             --cert-file "${cert}/server.crt"             --key-file "${cert}/server.key"             --trusted-ca-file "${cert}/ca.crt"             --client-cert-auth=true             --peer-cert-file "${cert}/server.crt"             --peer-key-file "${cert}/server.key"             --peer-trusted-ca-file "${cert}/ca.crt"             --peer-client-cert-auth=true             --enable-grpc-gateway=true             --logger=zap             --log-outputs "${RUNNER_TEMP}/n3-restarted.log"             > "${RUNNER_TEMP}/n3-restarted.stdout" 2>&1 &
           new_pid=$!
           echo "${new_pid}" >> "${pid_file}"
-          ctl="${bin}/etcdctl"
-          args=(--cacert "${HND_ETCD_CA_FILE}" --cert "${HND_ETCD_CLIENT_CERT}" --key "${HND_ETCD_CLIENT_KEY}")
           ready=0
           for attempt in $(seq 1 60); do
             if "${ctl}" "${args[@]}" --endpoints="https://127.0.0.1:4379" endpoint health; then
@@ -184,7 +186,9 @@ jobs:
             sleep 2
           done
           test "${ready}" -eq 1
-          "${ctl}" "${args[@]}"             --endpoints=https://127.0.0.1:2379,https://127.0.0.1:3379,https://127.0.0.1:4379             endpoint status --cluster
+          restored="$( "${ctl}" "${args[@]}" --endpoints="${endpoints}" get /hnd/station2/restart-persistence-check --print-value-only )"
+          test "${restored}" = "persisted-before-crash"
+          "${ctl}" "${args[@]}" --endpoints="${endpoints}" endpoint status --cluster
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt
       - name: Install hash-verified JCS dependency required by activation evidence verifier
