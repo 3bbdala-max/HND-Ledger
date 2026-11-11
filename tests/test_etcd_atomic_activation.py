@@ -139,8 +139,7 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         backend = self.backend(validator=lambda artifact, digest: False)
         with self.assertRaises(EtcdAtomicActivationError):
             backend.compare_and_activate(None, state(), b"tampered")
-        self.assertEqual(urlopen.call_count, 1)
-        self.assertTrue(urlopen.call_args.args[0].full_url.endswith("/v3/kv/range"))
+        urlopen.assert_not_called()
 
     @patch("hnd_v02.etcd_atomic_activation.urllib.request.urlopen")
     def test_state_and_profile_reads_decode_and_validate_pair(self, urlopen):
