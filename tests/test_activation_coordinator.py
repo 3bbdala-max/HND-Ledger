@@ -216,6 +216,9 @@ class ActivationCoordinatorEndToEndRecoveryTests(unittest.TestCase):
         with patch(
             "hnd_v02.activation_coordinator.verify_activation_bundle_with_manifest_chain",
             return_value=evidence,
+        ), patch(
+            "hnd_v02.activation_transaction.verify_activation_bundle_with_manifest_chain",
+            return_value=evidence,
         ):
             # First attempt durably prepares, advances both anchors and commits
             # locally, but loses the local response. It must not finalize yet.
