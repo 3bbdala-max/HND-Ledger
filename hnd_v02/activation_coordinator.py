@@ -12,7 +12,7 @@ from hnd_v02.activation_bundle import verify_activation_bundle_with_manifest_cha
 from hnd_v02.activation_transaction import (
     ActivationState, AtomicActivationBackend, activate_verified_bundle,
 )
-from hnd_v02.monotonic_anchor import MonotonicRecord
+from hnd_v02.monotonic_anchor import MonotonicRecord, MonotonicStateAnchor
 from hnd_v02.remote_activation_intent import (
     ActivationIntent, RemoteActivationProtocolError,
 )
@@ -50,7 +50,7 @@ class ActivationCoordinator:
     process. Callers must keep startup disabled unless this method returns.
     """
 
-    def __init__(self, *, intent_client, anchor: RemoteMonotonicAnchor,
+    def __init__(self, *, intent_client, anchor: MonotonicStateAnchor,
                  backend: AtomicActivationBackend):
         if not callable(getattr(intent_client, "prepare", None)) or not callable(
             getattr(intent_client, "read_intent", None)
