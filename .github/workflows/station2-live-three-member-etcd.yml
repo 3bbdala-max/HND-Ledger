@@ -101,6 +101,7 @@ jobs:
           start_member n2 3379 3380
           start_member n3 4379 4380
           echo "HND_ETCD_ENDPOINT=https://127.0.0.1:2379" >> "${GITHUB_ENV}"
+          echo "HND_ETCD_PID_FILE=${RUNNER_TEMP}/etcd-pids" >> "${GITHUB_ENV}"
       - name: Wait for all three members to become healthy
         shell: bash
         run: |
