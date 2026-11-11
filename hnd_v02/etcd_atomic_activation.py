@@ -152,7 +152,21 @@ class EtcdV3AtomicActivationBackend:
 
     def read_active_state(self) -> ActivationState | None:
         raw, _ = self._range(self._key("active-state"))
-        return None if raw is None else self._decode_state(raw)
+        profile, _ = self._range(self._key("active-profile"))
+        if raw is None:
+            if profile is not None:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-ORPHAN-PROFILE")
+            return None
+        state = self._decode_state(raw)
+        if profile is None:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-MISSING")
+        try:
+            valid = self.profile_validator(profile, state.profile_digest)
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-VALIDATION") from exc
+        if valid is not True:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-DIGEST")
+        return state
 
     def read_active_profile(self) -> bytes | None:
         raw, _ = self._range(self._key("active-profile"))
@@ -204,13 +218,37 @@ class EtcdV3AtomicActivationBackend:
 
         state_key = self._key("active-state")
         profile_key = self._key("active-profile")
+        current_profile, _ = self._range(profile_key)
         if expected_current is None:
-            compare = [{"key": state_key, "target": "CREATE", "create_revision": "0"}]
+            if current_profile is not None:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-ORPHAN-PROFILE")
+            compare = [
+                {"key": state_key, "target": "CREATE", "create_revision": "0"},
+                {"key": profile_key, "target": "CREATE", "create_revision": "0"},
+            ]
         else:
-            compare = [{
-                "key": state_key, "target": "VALUE",
-                "value": self._b64(self._encode_state(expected_current)),
-            }]
+            if current_profile is None:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-PROFILE-MISSING")
+            try:
+                current_profile_valid = self.profile_validator(
+                    current_profile, expected_current.profile_digest
+                )
+            except Exception as exc:
+                raise EtcdAtomicActivationError(
+                    "HND-ETCD-ACT-E-CURRENT-PROFILE-VALIDATION"
+                ) from exc
+            if current_profile_valid is not True:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-CURRENT-PROFILE-DIGEST")
+            compare = [
+                {
+                    "key": state_key, "target": "VALUE",
+                    "value": self._b64(self._encode_state(expected_current)),
+                },
+                {
+                    "key": profile_key, "target": "VALUE",
+                    "value": self._b64(current_profile),
+                },
+            ]
         payload = {
             "compare": compare,
             "success": [
