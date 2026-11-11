@@ -18,6 +18,10 @@ import urllib.request
 from typing import Callable
 from urllib.parse import urlsplit
 
+from hnd_v02.activation_witness import (
+    compute_activation_digest, verify_witness_receipt,
+)
+
 from hnd_v02.activation_transaction import (
     ActivationState, ActivationTransactionError, _validate_state,
 )
@@ -378,6 +382,97 @@ class EtcdV3AtomicActivationBackend:
         except Exception as exc:
             raise EtcdAtomicActivationError("HND-ETCD-ACT-E-INTENT-CORRUPT") from exc
 
+
+    def finalize_activation_intent(
+        self,
+        activation_id: str,
+        witness_receipt: dict,
+        *,
+        trusted_witness_keys: dict[str, bytes],
+        expected_witness_id: str,
+        expected_config_epoch: int,
+    ) -> dict:
+        """Finalize one pending intent only after verifying its pinned witness ACK.
+
+        The intent update is a compare-and-swap on the exact bytes read from etcd.
+        Retries with the same verified receipt are idempotent; a different receipt
+        or activation commitment is rejected. The witness remains an independent
+        service and its anti-rollback properties are deployment responsibilities.
+        """
+        activation_id = self._validate_activation_id(activation_id)
+        key = self._key("activation-intents/" + activation_id)
+        raw, _ = self._range(key)
+        if raw is None:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-INTENT-NOT-FOUND")
+        try:
+            intent = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_object_without_duplicate_keys,
+            )
+            if type(intent) is not dict or intent.get("activation_id") != activation_id:
+                raise ValueError("intent shape")
+            if intent.get("state") not in {"pending_witness", "finalized"}:
+                raise ValueError("intent state")
+            digest = intent.get("activation_digest")
+            if type(digest) is not str or not _HEX64.fullmatch(digest):
+                raise ValueError("intent digest")
+            verified = verify_witness_receipt(
+                witness_receipt,
+                trusted_witness_keys=trusted_witness_keys,
+                expected_activation_id=activation_id,
+                expected_activation_digest=digest,
+                expected_witness_id=expected_witness_id,
+                expected_config_epoch=expected_config_epoch,
+            )
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-WITNESS-RECEIPT") from exc
+
+        if intent["state"] == "finalized":
+            if intent.get("witness_receipt") != witness_receipt:
+                raise EtcdAtomicActivationError("HND-ETCD-ACT-E-FINALIZE-CONFLICT")
+            return intent
+
+        finalized = dict(intent)
+        finalized["state"] = "finalized"
+        finalized["witness_receipt"] = witness_receipt
+        finalized["witness_counter"] = verified.counter
+        result = self._post("/v3/kv/txn", {
+            "compare": [{
+                "key": key, "target": "VALUE", "value": self._b64(raw),
+            }],
+            "success": [{
+                "request_put": {
+                    "key": key,
+                    "value": self._b64(json.dumps(
+                        finalized, sort_keys=True, separators=(",", ":")
+                    ).encode("utf-8")),
+                }
+            }],
+            "failure": [],
+        })
+        if type(result.get("succeeded")) is not bool:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-FINALIZE-TXN-SHAPE")
+        if result["succeeded"]:
+            return finalized
+        # CAS may have succeeded while its response was lost, or another writer
+        # may have finalized. Re-read the same ID and accept only exact receipt.
+        observed_raw, _ = self._range(key)
+        if observed_raw is None:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-FINALIZE-UNKNOWN")
+        try:
+            observed = json.loads(
+                observed_raw.decode("utf-8"),
+                object_pairs_hook=_object_without_duplicate_keys,
+            )
+        except Exception as exc:
+            raise EtcdAtomicActivationError("HND-ETCD-ACT-E-FINALIZE-CORRUPT") from exc
+        if (type(observed) is dict and observed.get("state") == "finalized"
+                and observed.get("activation_id") == activation_id
+                and observed.get("activation_digest") == digest
+                and observed.get("witness_receipt") == witness_receipt):
+            return observed
+        raise EtcdAtomicActivationError("HND-ETCD-ACT-E-FINALIZE-CAS-CONFLICT")
+
     def compare_and_activate_with_intent(
         self,
         expected_current: ActivationState | None,
@@ -453,9 +548,9 @@ class EtcdV3AtomicActivationBackend:
             ]
 
         new_state_raw = self._encode_state(new_state)
-        activation_digest = hashlib.sha256(
-            new_state_raw + b"\x00" + profile_artifact
-        ).hexdigest()
+        activation_digest = compute_activation_digest(
+            activation_id, new_state, profile_artifact
+        )
         intent = {
             "activation_id": activation_id,
             "state": "pending_witness",
