@@ -7,6 +7,7 @@ on:
       - feat/station2-vsp-rotation-activation
       - feat/station2-monotonic-anchor-contract
       - feat/station2-atomic-activation-contract
+      - feat/station2-config-schema-dumper
   pull_request:
     branches:
       - phase-0.2-planning
@@ -14,6 +15,7 @@ on:
       - feat/station2-trust-manifest-rotation
       - feat/station2-vsp-rotation-activation
       - feat/station2-atomic-activation-contract
+      - feat/station2-config-schema-dumper
       - main
 
 jobs:
@@ -111,6 +113,22 @@ jobs:
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
           go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
           "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
+      - name: Generate pinned CometBFT recursive config field/default inventory
+        run: |
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_config_schema_dump.go" > "$RUNNER_TEMP/cometbft-v040-config-inventory.json"
+          python - "$RUNNER_TEMP/cometbft-v040-config-inventory.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert data["source_commit"] == "0880b4d378f347ab16e54ec677ff50d803f37d62"
+          fields = data["fields"]
+          paths = [item["go_path"] for item in fields]
+          assert len(paths) >= 100, f"unexpectedly small config inventory: {len(paths)}"
+          assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
+          assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
+          print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
+          PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
         run: |
           home="$RUNNER_TEMP/hnd-remote-only-negative"
