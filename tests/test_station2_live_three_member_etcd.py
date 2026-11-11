@@ -143,15 +143,39 @@ class LiveThreeMemberEtcdActivationTests(unittest.TestCase):
                 except ProcessLookupError:
                     pass
 
-        # Once the two members resume, the same cluster must regain quorum.
+        # Raft election and linearizable reads can remain unavailable briefly
+        # after SIGCONT. Retry the same immutable activation ID until quorum
+        # returns; reconcile an ambiguous response by reading the committed state.
+        import time
+
         profile = b"station2-quorum-recovered"
         state = self._state(
             trust_seq=0, profile_seq=1, height=21, profile=profile
         )
+        activation_id = "ci-live-quorum-recovery-001"
+        deadline = time.monotonic() + 20.0
+        recovered = False
+        last_error = None
+        while time.monotonic() < deadline:
+            try:
+                committed = self.backend.compare_and_activate_with_intent(
+                    None, state, profile, activation_id=activation_id
+                )
+                if committed:
+                    recovered = True
+                    break
+                # A retry can observe a transaction that committed before its
+                # response was lost. Accept only the exact intended state.
+                if self.backend.read_active_state() == state:
+                    recovered = True
+                    break
+            except Exception as exc:
+                last_error = exc
+            time.sleep(0.25)
+
         self.assertTrue(
-            self.backend.compare_and_activate_with_intent(
-                None, state, profile, activation_id="ci-live-quorum-recovery-001"
-            )
+            recovered,
+            f"etcd did not regain quorum and reconcile within 20s: {last_error!r}",
         )
         self.assertEqual(self.backend.read_active_state(), state)
 
