@@ -21,7 +21,8 @@ from hnd_v02.abci_app import HNDABCIApplication
 from hnd_v02.genesis import genesis_manifest_hash
 from hnd_v02.operator_ack import acknowledgement_message
 from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, public_key_b64
-from hnd_v02.trust_manifest import trust_manifest_digest, witness_message
+from hnd_v02.trust_manifest import governance_pop_message, trust_manifest_digest, witness_message
+from hnd_v02.vsp_verify import governance_key_id
 from hnd_v02.vsp_canonical import profile_digest
 from tests.test_activation_bundle import ActivationBundleTests
 
@@ -153,8 +154,27 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self.fixture.vsp.payload["cometbft"]["binary_sha256"] = binary_hash
         self.fixture.vsp_raw = self.fixture.vsp.signed()
 
-        # Re-sign the bootstrap manifest after changing its HND Genesis binding.
+        # Re-sign governance proofs-of-possession because they bind the HND Genesis hash.
         self.fixture.manifest["hnd_genesis_sha256"] = genesis_hash
+        private_by_key_id = {
+            governance_key_id(public): private
+            for private, public in zip(self.fixture.vsp.gpriv, self.fixture.vsp.gpub)
+        }
+        for entry in self.fixture.manifest["governance_keys"]:
+            private = private_by_key_id[entry["key_id"]]
+            entry["proof_of_possession"] = __import__("base64").b64encode(
+                private.sign(governance_pop_message(
+                    chain_id=self.fixture.manifest["chain_id"],
+                    hnd_genesis_sha256=genesis_hash,
+                    cometbft_genesis_sha256=self.fixture.manifest["cometbft_genesis_sha256"],
+                    nonce=self.fixture.manifest["nonce"],
+                    key_id=entry["key_id"],
+                    public_key=entry["public_key"],
+                    role_id=entry["role_id"],
+                ))
+            ).decode("ascii")
+
+        # The manifest digest excludes witness signatures but includes the new PoPs.
         manifest_digest = trust_manifest_digest(self.fixture.manifest)
         self.fixture.manifest["witnesses"] = [
             {
