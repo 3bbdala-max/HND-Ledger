@@ -158,14 +158,21 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         state_value = encoded(EtcdV3AtomicActivationBackend._encode_state(proposed))
         profile_value = encoded(b"profile-v1")
         urlopen.side_effect = [
-            _Response({"kvs": [{"value": state_value, "mod_revision": "7"}]}),
-            _Response({"kvs": [{"value": profile_value, "mod_revision": "7"}]}),
+            _Response({"responses": [
+                {"response_range": {"kvs": [{"value": state_value, "mod_revision": "7"}]}},
+                {"response_range": {"kvs": [{"value": profile_value, "mod_revision": "7"}]}},
+            ]}),
             _Response({"kvs": [{"value": profile_value, "mod_revision": "7"}]}),
         ]
         backend = self.backend()
         self.assertEqual(backend.read_active_state(), proposed)
         self.assertEqual(backend.read_active_profile(), b"profile-v1")
-        self.assertEqual(urlopen.call_count, 3)
+        self.assertEqual(urlopen.call_count, 2)
+        txn_request = urlopen.call_args_list[0].args[0]
+        self.assertTrue(txn_request.full_url.endswith("/v3/kv/txn"))
+        txn_payload = json.loads(txn_request.data.decode("utf-8"))
+        self.assertEqual(len(txn_payload["success"]), 2)
+        self.assertTrue(all("request_range" in item for item in txn_payload["success"]))
 
     @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_orphan_profile_and_missing_profile_fail_closed(self, urlopen):
