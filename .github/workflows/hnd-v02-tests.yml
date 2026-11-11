@@ -74,6 +74,8 @@ jobs:
         run: python -m unittest -v tests.test_cometbft_v040_profile
       - name: Run external monotonic trust-anchor contract tests
         run: python -m unittest -v tests.test_monotonic_anchor
+      - name: Run strict mutual-TLS remote monotonic anchor client tests
+        run: python -m unittest -v tests.test_remote_monotonic_anchor
       - name: Run atomic profile activation transaction contract tests
         run: python -m unittest -v tests.test_activation_transaction
       - name: Run durable SQLite monotonic-anchor reference adapter tests
