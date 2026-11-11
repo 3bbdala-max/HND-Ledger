@@ -164,6 +164,20 @@ def stop_node(process: subprocess.Popen | None) -> None:
         process.wait(timeout=5)
 
 
+
+def wait_for_node_exit(process: subprocess.Popen, log_path: Path, *, timeout: int = 45) -> int:
+    """Wait for an expected CometBFT startup rejection and return its exit code."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        code = process.poll()
+        if code is not None:
+            if code == 0:
+                raise AssertionError("CometBFT unexpectedly exited successfully")
+            return code
+        time.sleep(0.2)
+    tail = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
+    raise TimeoutError(f"CometBFT did not reject the mismatched application state:\\n{tail}")
+
 def start_node(binary: str, home: Path, log_handle):
     env = os.environ.copy()
     env["CMTHOME"] = str(home)
@@ -335,6 +349,7 @@ def main() -> None:
         try:
             node = start_node(binary, home, node_handle)
             status = wait_for_node(node, node_log)
+            genesis_state_bytes = state_path.read_bytes()
             try:
                 abci_info = rpc_get("/abci_info")
                 print("HND_ABCI_INFO", json.dumps(abci_info, sort_keys=True), flush=True)
@@ -458,6 +473,127 @@ def main() -> None:
                 "hnd_height": hnd_height,
                 "app_hash": hnd_app_hash.hex(),
             }, sort_keys=True), flush=True)
+
+            # HREC04: restore an older but internally valid HND Genesis store.
+            # CometBFT v0.40.0 must replay its retained blocks into the app and
+            # recover the committed transfer without silently changing history.
+            stop_node(node)
+            node = None
+            server.stop(grace=0).wait()
+            state_path.write_bytes(genesis_state_bytes)
+            behind_app = HNDABCIApplication(
+                config=config,
+                manifest=manifest,
+                expected_genesis_hash=genesis_hash,
+                state_path=state_path,
+            )
+            if behind_app.last_committed_height != 0:
+                raise AssertionError("HREC04 fixture is not the Genesis application state")
+            server, _ = start_grpc_server(
+                behind_app, bind_address=ABCI_LISTEN, max_workers=16
+            )
+            node = start_node(binary, home, node_handle)
+            wait_for_node(node, node_log)
+            wait_for_balance(alice_id, INITIAL_ALICE_BALANCE - TRANSFER_AMOUNT)
+            replay_deadline = time.monotonic() + 30
+            while time.monotonic() < replay_deadline:
+                replay_status = rpc_get("/status")["result"]["sync_info"]
+                replay_native_height = int(replay_status["latest_block_height"])
+                replay_hnd_height = int(
+                    rpc_get("/abci_info")["result"]["response"]["last_block_height"]
+                )
+                if replay_hnd_height == replay_native_height:
+                    break
+                time.sleep(0.2)
+            else:
+                raise AssertionError(
+                    f"HREC04 replay did not converge: CometBFT={replay_native_height}, HND={replay_hnd_height}"
+                )
+            replayed_account = query_account(alice_id)
+            if replayed_account["balance"] != INITIAL_ALICE_BALANCE - TRANSFER_AMOUNT:
+                raise AssertionError("HREC04 replay changed the committed transfer result")
+            print("HREC04_OLDER_VALID_STORE_REPLAY_OK", json.dumps({
+                "cometbft_height": replay_native_height,
+                "hnd_height": replay_hnd_height,
+                "alice_balance": replayed_account["balance"],
+            }, sort_keys=True), flush=True)
+
+            # Freeze the native store at its observed height before testing
+            # application-ahead and equal-height/hash-mismatch rejection.
+            stop_node(node)
+            node = None
+            server.stop(grace=0).wait()
+
+            # HREC05: a valid HND state one height ahead of the CometBFT block
+            # store must be rejected by the pinned native handshake.
+            ahead_app = HNDABCIApplication(
+                config=config,
+                manifest=manifest,
+                expected_genesis_hash=genesis_hash,
+                state_path=state_path,
+            )
+            ahead_app.finalize_block(
+                height=replay_native_height + 1, transactions=[]
+            )
+            ahead_app.commit()
+            if ahead_app.last_committed_height != replay_native_height + 1:
+                raise AssertionError("HREC05 ahead-state fixture was not committed")
+            server, _ = start_grpc_server(
+                ahead_app, bind_address=ABCI_LISTEN, max_workers=16
+            )
+            node = start_node(binary, home, node_handle)
+            wait_for_node_exit(node, node_log)
+            node_handle.flush()
+            ahead_log = node_log.read_text(encoding="utf-8", errors="replace")
+            if "is higher than core" not in ahead_log:
+                raise AssertionError(
+                    "HREC05 expected CometBFT app-height-ahead rejection was not recorded"
+                )
+            print("HREC05_APP_AHEAD_REJECTED", json.dumps({
+                "cometbft_height": replay_native_height,
+                "hnd_height": ahead_app.last_committed_height,
+                "exit_code": node.returncode,
+            }, sort_keys=True), flush=True)
+            stop_node(node)
+            node = None
+            server.stop(grace=0).wait()
+
+            # HREC06: construct a different, internally valid HND history at
+            # exactly the CometBFT store height. The native handshake must
+            # reject the equal-height AppHash mismatch rather than accept it.
+            state_path.write_bytes(genesis_state_bytes)
+            mismatch_app = HNDABCIApplication(
+                config=config,
+                manifest=manifest,
+                expected_genesis_hash=genesis_hash,
+                state_path=state_path,
+            )
+            for mismatch_height in range(1, replay_native_height + 1):
+                mismatch_app.finalize_block(height=mismatch_height, transactions=[])
+                mismatch_app.commit()
+            if mismatch_app.last_committed_height != replay_native_height:
+                raise AssertionError("HREC06 mismatch fixture height does not match CometBFT")
+            if mismatch_app.committed_state_hash == hnd_app_hash.hex():
+                raise AssertionError("HREC06 fixture unexpectedly has the canonical app hash")
+            server, _ = start_grpc_server(
+                mismatch_app, bind_address=ABCI_LISTEN, max_workers=16
+            )
+            node = start_node(binary, home, node_handle)
+            wait_for_node_exit(node, node_log)
+            node_handle.flush()
+            mismatch_log = node_log.read_text(encoding="utf-8", errors="replace")
+            if "state.AppHash does not match AppHash after replay" not in mismatch_log:
+                raise AssertionError(
+                    "HREC06 expected equal-height AppHash mismatch rejection was not recorded"
+                )
+            print("HREC06_EQUAL_HEIGHT_APP_HASH_MISMATCH_REJECTED", json.dumps({
+                "cometbft_height": replay_native_height,
+                "hnd_height": mismatch_app.last_committed_height,
+                "exit_code": node.returncode,
+            }, sort_keys=True), flush=True)
+            stop_node(node)
+            node = None
+            server.stop(grace=0).wait()
 
             print(json.dumps({
                 "result": "COMETBFT_V040_SINGLE_NODE_SMOKE_OK",
