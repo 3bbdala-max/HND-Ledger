@@ -33,7 +33,7 @@ python -m unittest -v test_hnd.py
 - `docs/WP4_1_COMETBFT_ABCI_PYTHON_FEASIBILITY_2026-10-31.md`: pinned Python ABCI gRPC feasibility and integration plan.
 - `docs/WP4_2_ABCI_APPLICATION_CORE_2026-10-31.md`: WP4.2 scope, limitations, and CI evidence.
 - `hnd_v02/cometbft_v040_server.py`: Python ABCI gRPC transport for CometBFT v0.40.0.
-- `hnd_v02/cometbft_supervisor.py`: combined witness-gated HND startup path; it validates the HND application/Genesis/VSP binding, pins the CometBFT binary by digest and open file descriptor, opens the ABCI listener, and starts CometBFT as one supervised operation.
+- `hnd_v02/cometbft_supervisor.py`: combined witness-gated HND startup path; it validates the HND application/Genesis/VSP binding, pins the CometBFT binary by digest and open file descriptor, opens the ABCI listener, starts CometBFT, and closes the listener automatically when the child exits. Listener-cleanup errors are surfaced to the caller.
 - **Direct ABCI CLI startup is disabled.** `cometbft_v040_server.main` fails closed; the low-level `start_grpc_server` function is a transport primitive for disposable integration-test harnesses, not a production entry point.
 - **Deployment gate remains open:** the mandatory deployment binding verifier must validate the actual CometBFT Genesis file and TOML profile using the complete source-pinned v0.40.0 profile schema. Production also requires an independently administered witness outside the etcd failure/restore domain and OS/service policy that denies alternate direct launch paths. SQLite witness components remain test/reference only.
 - `scripts/generate_cometbft_v040_python.sh`: generates pinned v0.40.0 Python bindings and gogoproto dependency.
