@@ -199,6 +199,7 @@ def load_cometbft_v040_profile_schema(
         type(inventory["schema_version"]) is not int
         or inventory["schema_version"] != 1
         or inventory["source_commit"] != COMETBFT_V040_SOURCE_COMMIT
+        or inventory["root_type"] != "config.Config"
         or inventory["template_complete"] is not True
     ):
         raise CometBFTProfileError("schema inventory is not complete for pinned CometBFT v0.40.0")
@@ -208,10 +209,24 @@ def load_cometbft_v040_profile_schema(
         raise CometBFTProfileError("schema inventory template digest is invalid")
     if type(inventory["fields"]) is not list or not inventory["fields"]:
         raise CometBFTProfileError("schema inventory fields are missing")
-    if type(inventory["tables"]) is not list or any(type(x) is not str for x in inventory["tables"]):
+    if (
+        type(inventory["tables"]) is not list
+        or any(type(value) is not str or not value for value in inventory["tables"])
+        or inventory["tables"] != sorted(set(inventory["tables"]))
+    ):
         raise CometBFTProfileError("schema inventory table list is invalid")
     if type(inventory["excluded_source_fields"]) is not list:
         raise CometBFTProfileError("schema inventory excluded-source list is invalid")
+    excluded_go_paths = set()
+    for excluded in inventory["excluded_source_fields"]:
+        if (
+            type(excluded) is not dict
+            or set(excluded) != {"path", "go_path", "go_type", "reason"}
+            or any(type(excluded[key]) is not str or not excluded[key] for key in excluded)
+            or excluded["go_path"] in excluded_go_paths
+        ):
+            raise CometBFTProfileError("schema inventory excluded-source field is malformed")
+        excluded_go_paths.add(excluded["go_path"])
     expected_tables = {
         ".".join(path.split(".")[:index])
         for entry in inventory["fields"]
@@ -247,6 +262,7 @@ def load_cometbft_v040_profile_schema(
         policy_bound = policy_inventory_digest == inventory_digest
 
     field_map: dict[str, Mapping[str, Any]] = {}
+    go_paths = set()
     for entry in inventory["fields"]:
         if type(entry) is not dict:
             raise CometBFTProfileError("schema inventory field entry must be an object")
@@ -258,9 +274,20 @@ def load_cometbft_v040_profile_schema(
         if not required.issubset(entry) or set(entry) - required - optional:
             raise CometBFTProfileError("schema inventory field descriptor key set mismatch")
         path = entry["path"]
-        if type(path) is not str or not path or path in field_map:
+        if (
+            type(path) is not str or not path or path in field_map
+            or type(entry["go_path"]) is not str or not entry["go_path"]
+            or entry["go_path"] in go_paths
+            or type(entry["go_type"]) is not str or not entry["go_type"]
+            or type(entry["toml_type"]) is not str
+            or entry["has_default"] is not True
+            or "default" not in entry
+        ):
             raise CometBFTProfileError("schema inventory has an invalid or duplicate field path")
+        go_paths.add(entry["go_path"])
         field_map[path] = entry
+    if list(field_map) != sorted(field_map):
+        raise CometBFTProfileError("schema inventory fields are not in canonical path order")
 
     scopes = policy["scopes"]
     unknown_scopes = set(scopes) - set(field_map)
