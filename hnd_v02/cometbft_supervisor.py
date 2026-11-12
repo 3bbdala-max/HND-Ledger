@@ -527,8 +527,8 @@ def start_authorized_cometbft(
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-APPLICATION-BINDING")
 
         # Reject bad deployment files before the witnessed etcd activation
-        # mutates durable state. The exact byte strings are retained by this
-        # call and are the same artifacts the deployment verifier inspected.
+        # mutates durable state. The same home files are re-read after witness
+        # finalization and immediately before the ABCI listener is opened.
         try:
             _validate_cometbft_home_argument(arguments, cwd, cometbft_home)
             parsed_vsp_payload = parse_vsp_envelope(vsp_raw)["payload"]
@@ -557,6 +557,15 @@ def start_authorized_cometbft(
                     vsp_raw=vsp_raw,
                     context=context,
                     expected_binary_sha256=expected_binary_sha256,
+                )
+                _validate_cometbft_home_argument(arguments, cwd, cometbft_home)
+                _verify_cometbft_deployment_artifacts(
+                    application=application,
+                    vsp_payload=parse_vsp_envelope(vsp_raw)["payload"],
+                    context=context,
+                    cometbft_home=cometbft_home,
+                    profile_artifact=profile_artifact,
+                    profile_schema=profile_schema,
                 )
                 application_is_bound = application_binding_verifier(
                     application, state, profile_artifact
