@@ -4,8 +4,9 @@ import unittest
 from dataclasses import replace
 
 from hnd_v02.anti_rollback_reference import (
-    AnchorUnavailable, AmbiguousCommit, OfflineAntiRollbackModel,
-    AnchorRecord, ReferenceModelError, StaleTransition, SyntheticAnchor, _mac,
+    AnchorUnavailable, AmbiguousCommit, HistoricalOperation,
+    OfflineAntiRollbackModel, AnchorRecord, ReferenceModelError,
+    StaleTransition, SyntheticAnchor, _mac,
 )
 
 
@@ -506,6 +507,51 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
             restarted.restore(previous.generation_id, dual_control=True)
         self.assertEqual(self.anchor.read(), pending)
         self.assertFalse(restarted.signing_allowed("synthetic-host-1"))
+
+
+    def test_historical_committed_retries_do_not_authorize_current_state(self):
+        first_state = {"height": 7, "app_hash": "historical-first"}
+        first = self.prepare_commit("historical-first", first_state)
+        second_state = {"height": 8, "app_hash": "current-second"}
+        second = self.prepare_commit("current-second", second_state)
+
+        # Existing operation APIs may return the historical committed outcome.
+        self.assertEqual(
+            self.model.prepare(
+                operation_id="historical-first", host_id="synthetic-host-1",
+                state=first_state, height=7,
+            ),
+            first,
+        )
+        self.assertEqual(self.model.commit("historical-first"), first)
+        self.assertEqual(self.model.reconcile("historical-first"), first)
+
+        historical = self.model.operation_outcome("historical-first")
+        self.assertEqual(historical.record, first)
+        self.assertFalse(historical.is_current)
+        self.assertEqual(historical.current_sequence, second.sequence)
+        self.assertEqual(historical.current_operation_id, second.operation_id)
+        with self.assertRaises(HistoricalOperation):
+            self.model.confirm_current("historical-first")
+
+        current = self.model.operation_outcome("current-second")
+        self.assertEqual(current.record, second)
+        self.assertTrue(current.is_current)
+        self.assertEqual(current.current_sequence, second.sequence)
+        self.assertEqual(current.current_operation_id, second.operation_id)
+        self.assertEqual(self.model.confirm_current("current-second"), second)
+        self.assertTrue(self.model.signing_allowed("synthetic-host-1"))
+
+    def test_current_state_confirmation_is_unknown_when_anchor_is_unavailable(self):
+        committed = self.prepare_commit()
+        self.anchor.available = False
+
+        with self.assertRaises(AnchorUnavailable):
+            self.model.operation_outcome(committed.operation_id)
+        with self.assertRaises(AnchorUnavailable):
+            self.model.confirm_current(committed.operation_id)
+        self.assertFalse(self.model.signing_allowed("synthetic-host-1"))
+
 
 
 if __name__ == "__main__":
