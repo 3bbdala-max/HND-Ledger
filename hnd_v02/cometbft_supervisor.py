@@ -402,10 +402,12 @@ def start_authorized_cometbft(
 ) -> tuple[ActivationState, SupervisedCometBFTNode]:
     """Authorize, bind ABCI, and start the pinned CometBFT process as one unit.
 
-    The five-key etcd activation and independent witness acknowledgement are
-    mandatory. The application binding is checked before the ABCI listener is
-    opened. CometBFT is spawned only after that listener is ready; if spawning
-    fails, the listener is stopped before the error is returned. The returned
+    The actual CometBFT Genesis bytes and parsed TOML profile are bound to
+    the VSP before activation begins. The five-key etcd activation and
+    independent witness acknowledgement are mandatory. The HND application
+    binding is checked before the ABCI listener is opened. CometBFT is spawned
+    only after that listener is ready; if spawning fails, the listener is
+    stopped before the error is returned. The returned
     SupervisedCometBFTNode closes ABCI automatically when the child exits.
     Linux /proc/self/fd is required, and the executable descriptor remains open
     until Popen completes process creation.
@@ -436,6 +438,26 @@ def start_authorized_cometbft(
         if not callable(application_binding_verifier):
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-APPLICATION-BINDING")
 
+        # Reject bad deployment files before the witnessed etcd activation
+        # mutates durable state. The exact byte strings are retained by this
+        # call and are the same artifacts the deployment verifier inspected.
+        try:
+            parsed_vsp_payload = parse_vsp_envelope(vsp_raw)["payload"]
+            _verify_cometbft_deployment_artifacts(
+                application=application,
+                vsp_payload=parsed_vsp_payload,
+                context=context,
+                genesis_raw=cometbft_genesis_raw,
+                profile_raw=profile_artifact,
+                profile_schema=profile_schema,
+            )
+        except CometBFTSupervisorError:
+            raise
+        except Exception as exc:
+            raise CometBFTSupervisorError(
+                "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-ARTIFACT-BINDING"
+            ) from exc
+
         def launch_after_commit(state: Any) -> Any:
             # The witness receipt is finalized before this callback is entered.
             # Bind the exact application only after that authorization succeeds.
@@ -446,15 +468,6 @@ def start_authorized_cometbft(
                     vsp_raw=vsp_raw,
                     context=context,
                     expected_binary_sha256=expected_binary_sha256,
-                )
-                parsed_vsp_payload = parse_vsp_envelope(vsp_raw)["payload"]
-                _verify_cometbft_deployment_artifacts(
-                    application=application,
-                    vsp_payload=parsed_vsp_payload,
-                    context=context,
-                    genesis_raw=cometbft_genesis_raw,
-                    profile_raw=profile_artifact,
-                    profile_schema=profile_schema,
                 )
                 application_is_bound = application_binding_verifier(
                     application, state, profile_artifact
