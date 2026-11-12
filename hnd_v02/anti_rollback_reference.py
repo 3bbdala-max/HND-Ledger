@@ -120,6 +120,15 @@ class SyntheticAnchor:
             current_sequence = self._record.sequence if self._record else 0
             if current_sequence != expected_sequence:
                 raise StaleTransition("anchor compare-and-swap predecessor is stale")
+            # A PREPARED record is the single in-flight transition. A later
+            # operation must not supersede it: doing so would strand the first
+            # operation outside the current anchor record and make recovery
+            # ambiguous. Exact retries and its PREPARED->COMMITTED transition
+            # were handled above by the operation-ID branch.
+            if self._record is not None and self._record.status == "PREPARED":
+                raise ReferenceModelError(
+                    "another operation is already PREPARED; only that operation may be retried or committed"
+                )
             if record.sequence != expected_sequence + 1:
                 raise StaleTransition("anchor sequence must increase by exactly one")
             expected_predecessor = _digest(self._record.unsigned()) if self._record else "0" * 64
@@ -221,6 +230,10 @@ class OfflineAntiRollbackModel:
         existing = self.anchor.operation(operation_id)
         if existing is not None:
             self._validate_identity(existing)
+            if existing.status == "PREPARED" and current != existing:
+                raise ReferenceModelError(
+                    "prepared operation is no longer the current anchor record"
+                )
             if (
                 existing.state_digest != _digest(state)
                 or existing.height != height
