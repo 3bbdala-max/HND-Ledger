@@ -169,6 +169,31 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.assertEqual(committed, retried_after_commit)
         self.assertEqual(retried_after_commit.status, "COMMITTED")
 
+    def test_new_operation_cannot_supersede_pending_prepare(self):
+        first = self.model.prepare(
+            operation_id="first-pending", host_id="synthetic-host-1",
+            state=self.state, height=7,
+        )
+        with self.assertRaisesRegex(
+            ReferenceModelError, "another operation is already PREPARED"
+        ):
+            self.model.prepare(
+                operation_id="second-pending", host_id="synthetic-host-1",
+                state={"height": 8, "app_hash": "must-not-supersede"},
+                height=8,
+            )
+
+        # The rejected operation must not replace or strand the first prepare.
+        self.assertEqual(self.anchor.read(), first)
+        self.assertIsNone(self.anchor.operation("second-pending"))
+        self.assertFalse(self.model.signing_allowed("synthetic-host-1"))
+
+        # The original operation remains recoverable and can commit normally.
+        committed = self.model.commit("first-pending")
+        self.assertEqual(self.anchor.read(), committed)
+        self.assertEqual(committed.status, "COMMITTED")
+        self.assertTrue(self.model.signing_allowed("synthetic-host-1"))
+
     def test_prepare_rejects_operation_id_reuse_with_conflicting_payload(self):
         self.model.prepare(operation_id="same", host_id="synthetic-host-1",
                            state=self.state, height=7)
