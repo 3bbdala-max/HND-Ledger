@@ -69,11 +69,12 @@ def dispatch_activation_request(
             if set(payload) != {"activation_id"}:
                 raise ActivationIntentHTTPError(400, "HND-ACT-SERVER-E-READ-SHAPE")
             return {"intent": store.read_intent(payload["activation_id"])}
-        if set(payload) != {"activation_id", "profile_digest", "operator_ack_digest"}:
-            raise ActivationIntentHTTPError(400, "HND-ACT-SERVER-E-FINALIZE-SHAPE")
-        return store.finalize(
-            payload["activation_id"], payload["profile_digest"],
-            payload["operator_ack_digest"],
+        # Legacy finalize is deliberately disabled: it has no independently
+        # verified witness receipt and must never release the activation guard.
+        # A witnessed finalization route will be enabled only when the receipt
+        # verifier, pinned witness identity/epoch, and durable CAS are wired in.
+        raise ActivationIntentHTTPError(
+            409, "HND-ACT-SERVER-E-WITNESS-RECEIPT-REQUIRED"
         )
     except RemoteActivationProtocolError as exc:
         code = str(exc)

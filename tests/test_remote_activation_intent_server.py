@@ -30,7 +30,7 @@ class RemoteActivationIntentServerTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_prepare_read_finalize_dispatch_round_trip(self):
+    def test_unwitnessed_finalize_is_rejected_and_intent_remains_prepared(self):
         prepared = dispatch_activation_request(
             self.store, "/v2/activation/prepare", self.request
         )
@@ -40,14 +40,18 @@ class RemoteActivationIntentServerTests(unittest.TestCase):
             {"activation_id": self.request["activation_id"]},
         )
         self.assertEqual(read["intent"], prepared)
-        finalized = dispatch_activation_request(
-            self.store, "/v2/activation/finalize", {
-                "activation_id": self.request["activation_id"],
-                "profile_digest": "3" * 64,
-                "operator_ack_digest": "4" * 64,
-            },
-        )
-        self.assertEqual(finalized["state"], "finalized")
+        with self.assertRaises(ActivationIntentHTTPError) as caught:
+            dispatch_activation_request(
+                self.store, "/v2/activation/finalize", {
+                    "activation_id": self.request["activation_id"],
+                    "profile_digest": "3" * 64,
+                    "operator_ack_digest": "4" * 64,
+                },
+            )
+        self.assertEqual(caught.exception.status, 409)
+        self.assertIn("WITNESS-RECEIPT-REQUIRED", str(caught.exception))
+        still_prepared = self.store.read_intent(self.request["activation_id"])
+        self.assertEqual(still_prepared["state"], "prepared")
 
     def test_duplicate_prepare_conflict_is_fail_closed(self):
         dispatch_activation_request(self.store, "/v2/activation/prepare", self.request)

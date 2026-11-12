@@ -309,7 +309,12 @@ def start_grpc_server(
     bind_address: str = "127.0.0.1:26658",
     max_workers: int = 16,
 ):
-    """Start a CometBFT-compatible ABCI gRPC server and return (server, port)."""
+    """Low-level listener primitive for isolated test harnesses only.
+
+    Production startup is orchestrated by cometbft_supervisor.start_authorized_cometbft,
+    which verifies the independent witness and application binding before calling
+    this function and closes the listener if CometBFT process creation fails.
+    """
     if type(max_workers) is not int or max_workers < 4:
         raise ValueError("max_workers must be an integer >= 4 for ABCI concurrency")
     _validate_loopback_bind_address(bind_address)
@@ -324,52 +329,19 @@ def start_grpc_server(
     return server, port
 
 
+
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="HND CometBFT v0.40.0 ABCI gRPC server")
-    parser.add_argument("--manifest", required=True, help="canonical HND Genesis manifest JSON")
-    parser.add_argument("--genesis-hash", required=True, help="independently pinned Genesis manifest SHA-256")
-    parser.add_argument("--network-id", required=True)
-    parser.add_argument("--protocol-version", type=int, default=2)
-    parser.add_argument("--max-amount", type=int, required=True)
-    parser.add_argument("--state-path", required=True)
-    parser.add_argument(
-        "--recovery",
-        action="store_true",
-        help="require an existing durable HND state file; refuse fresh-state fallback",
+    """Reject standalone startup; production must use the witnessed supervisor."""
+    parser = argparse.ArgumentParser(
+        description="HND CometBFT v0.40.0 ABCI gRPC server"
     )
-    parser.add_argument("--listen", default="127.0.0.1:26658")
-    args = parser.parse_args(argv)
-
-    try:
-        manifest = strict_json_loads(
-            Path(args.manifest).read_bytes(),
-            label="manifest",
-        )
-    except (OSError, StrictJSONError) as exc:
-        parser.error(f"cannot load strict manifest JSON: {exc}")
-    if type(manifest) is not dict:
-        parser.error("manifest must be a JSON object")
-    actual_genesis_hash = genesis_manifest_hash(manifest)
-    if actual_genesis_hash != args.genesis_hash:
-        parser.error("manifest does not match the independently supplied --genesis-hash")
-
-    config = ProtocolConfig(
-        network_id=args.network_id,
-        protocol_version=args.protocol_version,
-        max_amount=args.max_amount,
+    parser.parse_args(argv)
+    parser.error(
+        "HND-ABCI-E-DIRECT-START-DISABLED: standalone ABCI startup is disabled; "
+        "use the combined start_authorized_cometbft deployment supervisor "
+        "with an independently authenticated witness and an exact application "
+        "binding verifier"
     )
-    if manifest.get("network_id") != config.network_id:
-        parser.error("manifest network_id does not match --network-id")
-    application = HNDABCIApplication(
-        config=config,
-        manifest=manifest,
-        expected_genesis_hash=args.genesis_hash,
-        state_path=args.state_path,
-        require_existing_state=args.recovery,
-    )
-    server, port = start_grpc_server(application, bind_address=args.listen)
-    print(f"HND ABCI gRPC listening on {args.listen} (port {port})")
-    server.wait_for_termination()
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -7,6 +7,7 @@ on:
       - feat/station2-vsp-rotation-activation
       - feat/station2-monotonic-anchor-contract
       - feat/station2-atomic-activation-contract
+      - feat/station2-etcd-atomic-activation-backend
       - feat/station2-config-schema-dumper
       - feat/station2-sqlite-anchor-reference
       - feat/station2-sqlite-atomic-activation-reference
@@ -89,6 +90,12 @@ jobs:
         run: python -m unittest -v tests.test_activation_transaction
       - name: Run durable SQLite monotonic-anchor reference adapter tests
         run: python -m unittest -v tests.test_sqlite_monotonic_anchor
+      - name: Run etcd v3 atomic activation backend tests
+        run: python -m unittest -v tests.test_etcd_atomic_activation
+      - name: Run strict HTTPS witness client transport tests
+        run: python -m unittest -v tests.test_activation_witness_client
+      - name: Run witness-gated etcd activation coordinator tests
+        run: python -m unittest -v tests.test_witnessed_etcd_activation_coordinator
       - name: Run SQLite atomic activation reference backend tests
         run: python -m unittest -v tests.test_sqlite_atomic_activation
       - name: Run cross-layer station-two end-to-end activation tests
@@ -97,8 +104,8 @@ jobs:
         run: python -m unittest -v tests.test_startup_authorization
       - name: Run crash-reconcilable activation coordinator anchor recovery tests
         run: python -m unittest -v tests.test_activation_coordinator
-      - name: Run pinned CometBFT process supervisor ordering tests
-        run: python -m unittest -v tests.test_cometbft_supervisor
+      - name: Run witnessed CometBFT and ABCI startup gate tests
+        run: python -m unittest -v tests.test_cometbft_supervisor tests.test_cometbft_v040_startup_gate
       - name: Run isolated v0.2 tests
         run: >-
           python -m unittest -v
@@ -116,8 +123,96 @@ jobs:
           tests.test_v02_strict_json
           tests.test_workflow_contract
 
+  cometbft-v040-config-inventory:
+    name: Generate and retain the pinned CometBFT v0.40.0 profile inventory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out HND
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Set up Go for CometBFT v0.40.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.25.0"
+      - name: Fetch the exact pinned CometBFT source
+        run: |
+          git init --quiet "$RUNNER_TEMP/cometbft-src"
+          git -C "$RUNNER_TEMP/cometbft-src" remote add origin https://github.com/cometbft/cometbft.git
+          git -C "$RUNNER_TEMP/cometbft-src" fetch --quiet --depth 1 origin 0880b4d378f347ab16e54ec677ff50d803f37d62
+          git -C "$RUNNER_TEMP/cometbft-src" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/cometbft-src" rev-parse HEAD)" = "0880b4d378f347ab16e54ec677ff50d803f37d62"
+      - name: Generate source-derived TOML inventory
+        run: |
+          mkdir -p "$RUNNER_TEMP/cometbft-v040-schema-review"
+          cd "$RUNNER_TEMP/cometbft-src"
+          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_config_schema_dump.go" > "$RUNNER_TEMP/cometbft-v040-schema-review/inventory.json"
+          cp "$GITHUB_WORKSPACE/hnd_v02/cometbft_v040_profile_scope_policy.json" "$RUNNER_TEMP/cometbft-v040-schema-review/scope_policy_template.json"
+      - name: Reconcile source inventory and prove unreviewed policy fails closed
+        run: |
+          python - "$RUNNER_TEMP/cometbft-v040-schema-review/inventory.json" "$RUNNER_TEMP/cometbft-v040-schema-review/scope_policy_template.json" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          from hnd_v02.cometbft_v040_profile import (
+              CometBFTProfileError,
+              load_cometbft_v040_profile_schema,
+              parse_cometbft_v040_profile,
+          )
+
+          inventory_path = Path(sys.argv[1])
+          inventory_raw = inventory_path.read_bytes()
+          policy_raw = Path(sys.argv[2]).read_bytes()
+          inventory = json.loads(inventory_raw)
+          assert inventory["schema_version"] == 1
+          assert inventory["source_commit"] == "0880b4d378f347ab16e54ec677ff50d803f37d62"
+          assert inventory["template_complete"] is True
+          assert len(inventory["rendered_template_sha256"]) == 64
+          fields = inventory["fields"]
+          field_paths = [entry["path"] for entry in fields]
+          assert field_paths and field_paths == sorted(set(field_paths))
+          assert all(entry["has_default"] is True for entry in fields)
+          expected_paths = {
+              "proxy_app",
+              "p2p.libp2p.enabled",
+              "p2p.libp2p.bootstrap_peers",
+              "statesync.chunk_fetchers",
+              "consensus.timeout_commit",
+          }
+          assert expected_paths.issubset(set(field_paths))
+          schema = load_cometbft_v040_profile_schema(inventory_raw, policy_raw)
+          assert len(schema.fields) == len(fields)
+          assert schema.inventory_sha256 == hashlib.sha256(inventory_raw).hexdigest()
+          assert schema.rendered_template_sha256 == inventory["rendered_template_sha256"]
+          assert schema.complete is False
+          try:
+              parse_cometbft_v040_profile(
+                  b'proxy_app = "tcp://127.0.0.1:26658"\n',
+                  schema,
+              )
+          except CometBFTProfileError:
+              pass
+          else:
+              raise AssertionError("unreviewed scope policy unexpectedly authorized the profile")
+          print(
+              "COMETBFT_V040_SCHEMA_INVENTORY_OK_BUT_POLICY_NOT_AUTHORIZED "
+              f"fields={len(fields)} tables={len(inventory['tables'])} "
+              f"inventory_sha256={hashlib.sha256(inventory_raw).hexdigest()}"
+          )
+          PY
+      - name: Upload generated inventory and unreviewed scope template for review
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cometbft-v040-schema-review-${{ github.sha }}
+          path: ${{ runner.temp }}/cometbft-v040-schema-review/
+          if-no-files-found: error
+          retention-days: 30
+
   cometbft-single-node-smoke:
-    needs: hnd-v02-tests
+    needs: [hnd-v02-tests, cometbft-v040-config-inventory]
     runs-on: ubuntu-latest
     steps:
       - name: Check out HND
@@ -145,24 +240,6 @@ jobs:
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
           go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
           "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
-      - name: Generate pinned CometBFT recursive config field/default inventory
-        run: |
-          cd "$RUNNER_TEMP/cometbft-src"
-          go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_config_schema_dump.go" > "$RUNNER_TEMP/cometbft-v040-config-inventory.json"
-          python - "$RUNNER_TEMP/cometbft-v040-config-inventory.json" <<'PY'
-          import json, sys
-          from pathlib import Path
-          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          assert data["source_commit"] == "0880b4d378f347ab16e54ec677ff50d803f37d62"
-          fields = data["fields"]
-          paths = [item["go_path"] for item in fields]
-          assert len(paths) >= 100, f"unexpectedly small config inventory: {len(fields)}"
-          assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
-          assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
-          assert any("default_json" in item for item in fields), "config defaults were not captured"
-          assert all(item.get("default_json") != "UNSERIALIZABLE" for item in fields), "unserializable default sentinel found"
-          print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
-          PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
         run: |
           home="$RUNNER_TEMP/hnd-remote-only-negative"
