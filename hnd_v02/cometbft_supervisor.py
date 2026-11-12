@@ -185,10 +185,36 @@ def _verify_cometbft_deployment_artifacts(
 ) -> None:
     """Bind the exact CometBFT Genesis bytes and parsed TOML profile to VSP.
 
-    The ProfileSchema must be produced by the reviewed deployment packaging for
-    the pinned CometBFT source commit. A caller-supplied 'complete' flag alone
-    is not proof that a schema inventory was correctly classified.
+    The ProfileSchema must come from the source-derived inventory loader and
+    an independently reviewed exhaustive scope manifest. Its inventory,
+    manifest, and rendered-template digests must also match the trusted
+    deployment context; a caller-supplied 'complete' flag alone is insufficient.
     """
+    schema_digests = (
+        profile_schema.inventory_sha256,
+        profile_schema.scope_manifest_sha256,
+        profile_schema.rendered_template_sha256,
+    )
+    if (
+        type(profile_schema) is not ProfileSchema
+        or profile_schema.scope_policy_reviewed is not True
+        or any(
+            type(value) is not str
+            or len(value) != 64
+            or any(char not in "0123456789abcdef" for char in value)
+            for value in schema_digests
+        )
+        or context.get("cometbft_profile_schema_inventory_sha256")
+            != profile_schema.inventory_sha256
+        or context.get("cometbft_profile_scope_manifest_sha256")
+            != profile_schema.scope_manifest_sha256
+        or context.get("cometbft_profile_schema_template_sha256")
+            != profile_schema.rendered_template_sha256
+    ):
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-PROFILE-SCHEMA-PROVENANCE"
+        )
+
     genesis_raw = _read_cometbft_home_file(
         cometbft_home, "genesis.json", max_bytes=16 * 1024 * 1024
     )
