@@ -190,14 +190,17 @@ def _verify_cometbft_deployment_artifacts(
     manifest, and rendered-template digests must also match the trusted
     deployment context; a caller-supplied 'complete' flag alone is insufficient.
     """
+    if type(profile_schema) is not ProfileSchema:
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-PROFILE-SCHEMA-PROVENANCE"
+        )
     schema_digests = (
         profile_schema.inventory_sha256,
         profile_schema.scope_manifest_sha256,
         profile_schema.rendered_template_sha256,
     )
     if (
-        type(profile_schema) is not ProfileSchema
-        or profile_schema.scope_policy_reviewed is not True
+        profile_schema.scope_policy_reviewed is not True
         or any(
             type(value) is not str
             or len(value) != 64
