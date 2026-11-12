@@ -205,6 +205,16 @@ class SyntheticAnchor:
             item = self._operations.get(operation_id)
             return item[1] if item else None
 
+    def operation_snapshot(
+        self, operation_id: str
+    ) -> tuple[AnchorRecord | None, AnchorRecord | None]:
+        """Atomically read one historical operation and the latest anchor record."""
+        with self._lock:
+            if not self.available:
+                raise AnchorUnavailable("synthetic anchor unavailable")
+            item = self._operations.get(operation_id)
+            return (item[1] if item else None, self._record)
+
 
 class OfflineAntiRollbackModel:
     """Protocol simulator with immutable synthetic generations and host fencing."""
@@ -333,11 +343,10 @@ class OfflineAntiRollbackModel:
         A historical COMMITTED record is not current-state or signing authorization.
         Anchor unavailability propagates as AnchorUnavailable (unknown/blocked).
         """
-        historical = self.anchor.operation(operation_id)
+        historical, current = self.anchor.operation_snapshot(operation_id)
         if historical is None:
             raise ReferenceModelError("operation not present at anchor")
         self._validate_identity(historical)
-        current = self.anchor.read()
         if current is not None:
             self._validate_identity(current)
         same_identity = current is not None and (
