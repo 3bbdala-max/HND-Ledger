@@ -94,7 +94,6 @@ def _type_from_toml_name(toml_type: str) -> type:
         "string": str,
         "boolean": bool,
         "integer": int,
-        "float": float,
         "array": list,
     }
     try:
@@ -213,6 +212,14 @@ def load_cometbft_v040_profile_schema(
         raise CometBFTProfileError("schema inventory table list is invalid")
     if type(inventory["excluded_source_fields"]) is not list:
         raise CometBFTProfileError("schema inventory excluded-source list is invalid")
+    expected_tables = {
+        ".".join(path.split(".")[:index])
+        for entry in inventory["fields"]
+        if type(entry) is dict and type(entry.get("path")) is str
+        for index in range(1, len(entry["path"].split(".")))
+    }
+    if set(inventory["tables"]) != expected_tables:
+        raise CometBFTProfileError("schema inventory table/field coverage mismatch")
 
     expected_policy_keys = {
         "schema_version", "source_commit", "inventory_sha256",
