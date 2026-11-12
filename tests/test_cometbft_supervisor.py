@@ -704,7 +704,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 self._launch(
                     directory,
                     arguments=[
-                        "start", "--home", str(Path(directory) / "node-home"),
+                        "node", "--home", str(Path(directory) / "node-home"),
                         "--config", "/tmp/unreviewed-config.toml",
                     ],
                 )
