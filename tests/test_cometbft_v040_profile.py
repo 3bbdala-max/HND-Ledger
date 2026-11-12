@@ -123,9 +123,9 @@ class CometBFTProfileTests(unittest.TestCase):
         self.assertEqual(loaded.inventory_sha256, hashlib.sha256(inventory_raw).hexdigest())
 
         normalized = parse_cometbft_v040_profile(
-            b'proxy_app = "tcp://127.0.0.1:26658"\\n'
-            b'[statesync]\\nchunk_fetchers = "9"\\n'
-            b'[[p2p.libp2p.bootstrap_peers]]\\nhost = "node.example:26656"\\nid = "peer-id"\\n',
+            b'proxy_app = "tcp://127.0.0.1:26658"\n'
+            b'[statesync]\nchunk_fetchers = "9"\n'
+            b'[[p2p.libp2p.bootstrap_peers]]\nhost = "node.example:26656"\nid = "peer-id"\n',
             loaded,
         )
         self.assertEqual(normalized["statesync.chunk_fetchers"], "9")
@@ -143,7 +143,7 @@ class CometBFTProfileTests(unittest.TestCase):
         unreviewed = load_cometbft_v040_profile_schema(inventory_raw, unreviewed_raw)
         self.assertFalse(unreviewed.complete)
         with self.assertRaisesRegex(CometBFTProfileError, "complete schema"):
-            parse_cometbft_v040_profile(b'proxy_app = "tcp://127.0.0.1:26658"\\n', unreviewed)
+            parse_cometbft_v040_profile(b'proxy_app = "tcp://127.0.0.1:26658"\n', unreviewed)
 
         inventory_raw, partial_raw = source_inventory_fixture(complete_scopes=False)
         partial = load_cometbft_v040_profile_schema(inventory_raw, partial_raw)
@@ -158,8 +158,8 @@ class CometBFTProfileTests(unittest.TestCase):
         inventory = json.loads(inventory_raw)
         inventory["source_commit"] = "0" * 40
         wrong_source = json.dumps(inventory).encode("utf-8")
-        loaded = load_cometbft_v040_profile_schema(wrong_source, policy_raw)
-        self.assertFalse(loaded.complete)
+        with self.assertRaises(CometBFTProfileError):
+            load_cometbft_v040_profile_schema(wrong_source, policy_raw)
 
         with self.assertRaises(CometBFTProfileError):
             load_cometbft_v040_profile_schema(
