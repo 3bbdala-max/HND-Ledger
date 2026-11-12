@@ -362,7 +362,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             cometbft_home.rename(external_home)
             cometbft_home.symlink_to(external_home, target_is_directory=True)
         launch_arguments = (
-            ["start", "--home", str(cometbft_home)]
+            ["node", "--home", str(cometbft_home)]
             if arguments is None else arguments
         )
         binary = root / "cometbft"
@@ -483,7 +483,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(len(self.calls), 1)
             args, kwargs, state_at_spawn, pinned_bytes = self.calls[0]
             fd = kwargs["pass_fds"][0]
-            self.assertEqual(args, [f"/proc/self/fd/{fd}", "start", "--home", str(Path(directory) / "node-home")])
+            self.assertEqual(args, [f"/proc/self/fd/{fd}", "node", "--home", str(Path(directory) / "node-home")])
             self.assertEqual(kwargs["executable"], f"/proc/self/fd/{fd}")
             self.assertEqual(pinned_bytes, b"pinned-cometbft-test-binary")
             self.assertEqual(state_at_spawn, state)
@@ -688,7 +688,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 self._launch(
                     directory,
                     arguments=[
-                        "start", "--home", str(Path(directory) / "node-home"),
+                        "node", "--home", str(Path(directory) / "node-home"),
                         "--proxy_app=tcp://127.0.0.1:29999",
                     ],
                 )
