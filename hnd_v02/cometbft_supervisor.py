@@ -116,20 +116,17 @@ def _validate_cometbft_home_argument(
 ) -> None:
     if type(cometbft_home) is not str or not os.path.isabs(cometbft_home):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
-    supplied_homes = []
-    for index, argument in enumerate(arguments):
-        if argument == "--home":
-            if index + 1 >= len(arguments):
-                raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
-            supplied_homes.append(arguments[index + 1])
-        elif argument.startswith("--home="):
-            supplied_homes.append(argument.split("=", 1)[1])
-        elif argument == "--config" or argument.startswith("--config="):
-            # Only HOME/config/config.toml is validated by this supervisor.
-            raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-CONFIG-OVERRIDE")
-    if len(supplied_homes) != 1:
-        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
-    supplied = supplied_homes[0]
+    # No additional flags are accepted: several CometBFT flags can override
+    # config.toml values, which would invalidate the profile digest we checked.
+    if (
+        type(arguments) not in (list, tuple)
+        or len(arguments) != 3
+        or arguments[0] != "start"
+        or arguments[1] != "--home"
+        or type(arguments[2]) is not str
+    ):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-CLI-OVERRIDE")
+    supplied = arguments[2]
     if not os.path.isabs(supplied):
         supplied = os.path.join(cwd, supplied)
     if os.path.normpath(supplied) != os.path.normpath(cometbft_home):
@@ -517,9 +514,12 @@ def start_authorized_cometbft(
         # variables can inject libraries or alter symbol resolution even when
         # the executable itself is pinned by digest and file descriptor.
         if any(
-            key.startswith("LD_") or key == "GLIBC_TUNABLES"
+            key.startswith(("LD_", "CMT_", "TM_"))
+            or key in {"GLIBC_TUNABLES", "CMTHOME", "TMHOME"}
             for key in environment
         ):
+            # CometBFT v0.40 uses CMT_* configuration overrides and CMTHOME;
+            # older TM_* / TMHOME names are also denied to avoid fallback paths.
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
         child_environment = dict(environment)
 
@@ -585,6 +585,17 @@ def start_authorized_cometbft(
                     application,
                     bind_address=abci_bind_address,
                     max_workers=abci_max_workers,
+                )
+                # Re-read the exact files immediately before exec as well as
+                # before listener bind. Deployment policy must keep these files
+                # immutable; this second check narrows the bind-to-exec window.
+                _verify_cometbft_deployment_artifacts(
+                    application=application,
+                    vsp_payload=parse_vsp_envelope(vsp_raw)["payload"],
+                    context=context,
+                    cometbft_home=cometbft_home,
+                    profile_artifact=profile_artifact,
+                    profile_schema=profile_schema,
                 )
                 # Re-hash the same open inode immediately before exec; never reopen
                 # the mutable pathname after the initial O_NOFOLLOW open.
