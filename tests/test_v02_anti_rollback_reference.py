@@ -542,6 +542,22 @@ class TestOfflineAntiRollbackReference(unittest.TestCase):
         self.assertEqual(self.model.confirm_current("current-second"), second)
         self.assertTrue(self.model.signing_allowed("synthetic-host-1"))
 
+    def test_operation_snapshot_pairs_history_with_latest_anchor_record(self):
+        first_state = {"height": 7, "app_hash": "snapshot-first"}
+        first = self.prepare_commit("snapshot-first", first_state)
+        pending = self.model.prepare(
+            operation_id="snapshot-pending", host_id="synthetic-host-1",
+            state={"height": 8, "app_hash": "snapshot-pending"}, height=8,
+        )
+
+        historical, current = self.anchor.operation_snapshot(first.operation_id)
+        self.assertEqual(historical, first)
+        self.assertEqual(current, pending)
+        outcome = self.model.operation_outcome(first.operation_id)
+        self.assertFalse(outcome.is_current)
+        self.assertEqual(outcome.current_operation_id, pending.operation_id)
+
+
     def test_current_state_confirmation_is_unknown_when_anchor_is_unavailable(self):
         committed = self.prepare_commit()
         self.anchor.available = False
