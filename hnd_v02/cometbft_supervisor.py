@@ -27,7 +27,6 @@ from hnd_v02.cometbft_v040_profile import (
     cometbft_v040_profile_digest,
     parse_cometbft_v040_profile,
 )
-from hnd_v02.transaction import canonical_json
 from hnd_v02.startup_authorization import authorize_then_start_witnessed
 from hnd_v02.cometbft_v040_server import start_grpc_server
 
@@ -84,7 +83,7 @@ def _verify_cometbft_deployment_artifacts(
     """
     if type(genesis_raw) is not bytes or not genesis_raw or len(genesis_raw) > 16 * 1024 * 1024:
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-GENESIS-INPUT")
-    if genesis_raw.startswith(b"\\xef\\xbb\\xbf"):
+    if genesis_raw.startswith(b"\xef\xbb\xbf"):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-GENESIS-INPUT")
     try:
         genesis = json.loads(
