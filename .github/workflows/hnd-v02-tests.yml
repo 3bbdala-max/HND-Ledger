@@ -210,7 +210,7 @@ jobs:
           assert schema.complete is False
           try:
               parse_cometbft_v040_profile(
-                  b'proxy_app = "tcp://127.0.0.1:26658"\\n',
+                  b'proxy_app = "tcp://127.0.0.1:26658"\n',
                   schema,
               )
           except CometBFTProfileError:
