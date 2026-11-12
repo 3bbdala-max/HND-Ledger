@@ -107,9 +107,21 @@ class LiveThreeMemberEtcdActivationTests(unittest.TestCase):
         self.assertEqual(sorted(results), [False, True])
 
         observed = self.backend.read_active_state()
-        self.assertIn(observed, [candidate[1] for candidate in candidates])
-        self.assertIn(self.backend.read_active_profile(),
-                      [candidate[2] for candidate in candidates])
+        winners = [candidate for candidate in candidates if candidate[1] == observed]
+        self.assertEqual(len(winners), 1, "active state must identify exactly one CAS winner")
+        winning_id, winning_state, winning_profile = winners[0]
+        self.assertEqual(self.backend.read_active_profile(), winning_profile)
+
+        # The immutable witness intent must belong to the same CAS winner as
+        # the active state/profile pair; checking independent membership would
+        # not detect a cross-wired profile or intent.
+        winning_intent = self.backend.read_activation_intent(winning_id)
+        self.assertEqual(winning_intent["state"], "pending_witness")
+        self.assertEqual(winning_intent["activation_id"], winning_id)
+        self.assertEqual(
+            winning_intent["activation_digest"],
+            compute_activation_digest(winning_id, winning_state, winning_profile),
+        )
 
 
     def test_two_member_loss_blocks_activation_then_recovers(self):
