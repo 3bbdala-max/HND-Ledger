@@ -521,7 +521,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             ):
                 self._launch(
                     directory,
-                    deployment_profile_raw=self.profile + b'unknown_hnd_test_field = true\\n',
+                    deployment_profile_raw=self.profile + b'unknown_hnd_test_field = true\n',
                 )
             self.assertIsNone(self.backend.read_active_state())
             self.assertEqual(self.events, [])
