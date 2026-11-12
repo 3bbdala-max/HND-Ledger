@@ -149,7 +149,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
     def setUp(self):
         self.fixture = ActivationBundleTests()
         self.fixture.setUp()
-        self.profile = b'proxy_app = "tcp://127.0.0.1:26658"\\n'
+        self.profile = b'proxy_app = "tcp://127.0.0.1:26658"\n'
         self.profile_schema = ProfileSchema(
             source_commit=COMETBFT_V040_SOURCE_COMMIT,
             fields={
@@ -236,7 +236,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             ),
         }
         self.cometbft_genesis_raw = (
-            json.dumps(genesis_document, sort_keys=True, indent=2) + "\\n"
+            json.dumps(genesis_document, sort_keys=True, indent=2) + "\n"
         ).encode("utf-8")
         cometbft_genesis_hash = hashlib.sha256(
             self.cometbft_genesis_raw
