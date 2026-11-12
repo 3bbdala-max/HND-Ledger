@@ -158,6 +158,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 ),
             },
             complete=True,
+            inventory_sha256="1" * 64,
+            scope_manifest_sha256="2" * 64,
+            rendered_template_sha256="3" * 64,
+            scope_policy_reviewed=True,
         )
         self.binary_bytes = b"pinned-cometbft-test-binary"
         self._bind_fixture_to_real_hnd_genesis()
@@ -247,6 +251,9 @@ class CometBFTSupervisorTests(unittest.TestCase):
         context["cometbft_genesis_sha256"] = cometbft_genesis_hash
         context["cometbft_profile_sha256"] = profile_hash
         context["cometbft_source_commit"] = COMETBFT_V040_SOURCE_COMMIT
+        context["cometbft_profile_schema_inventory_sha256"] = self.profile_schema.inventory_sha256
+        context["cometbft_profile_scope_manifest_sha256"] = self.profile_schema.scope_manifest_sha256
+        context["cometbft_profile_schema_template_sha256"] = self.profile_schema.rendered_template_sha256
         self.fixture.vsp.payload["hnd_genesis_sha256"] = genesis_hash
         self.fixture.vsp.payload["cometbft"]["binary_sha256"] = binary_hash
         self.fixture.vsp.payload["cometbft"]["genesis_sha256"] = cometbft_genesis_hash
@@ -329,9 +336,9 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 application_network_mismatch=False, application_genesis_mismatch=False,
                 deployment_genesis_raw=None, deployment_profile_raw=None,
                 symlink_genesis_file=False, symlink_config_dir=False,
-                symlink_home_dir=False, mutate_profile_after_listener=False,
-                mutate_genesis_after_listener=False, listener_cleanup_failure=False,
-                arguments=None):
+                symlink_home_dir=False, schema_provenance_mismatch=False,
+                mutate_profile_after_listener=False, mutate_genesis_after_listener=False,
+                listener_cleanup_failure=False, arguments=None):
         root = Path(directory)
         cometbft_home = root / "node-home"
         config_dir = cometbft_home / "config"
@@ -396,6 +403,9 @@ class CometBFTSupervisorTests(unittest.TestCase):
             )
         if application_genesis_mismatch:
             self.application.expected_genesis_hash = "0" * 64
+        deployment_context = dict(self.fixture.vsp.ctx)
+        if schema_provenance_mismatch:
+            deployment_context["cometbft_profile_schema_inventory_sha256"] = "9" * 64
         self.events = []
         self.abci_server = MagicMock()
         self.abci_server.stop.return_value.wait.return_value = None
@@ -455,7 +465,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 trust_manifests=[self.fixture.manifest_raw],
                 operator_acks_raw=self.fixture.acks_raw if valid_acks else b"[]",
                 profile_artifact=profile_file_bytes,
-                context=self.fixture.vsp.ctx,
+                context=deployment_context,
                 trusted_witness_keys=self.trusted_witness_keys,
                 expected_operator_keys=self.fixture.operator_public,
                 binary_path=str(binary),
@@ -554,6 +564,16 @@ class CometBFTSupervisorTests(unittest.TestCase):
                     directory,
                     deployment_genesis_raw=self.cometbft_genesis_raw + b" ",
                 )
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_unpinned_profile_schema_digest_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "PROFILE-SCHEMA-PROVENANCE"
+            ):
+                self._launch(directory, schema_provenance_mismatch=True)
             self.assertIsNone(self.backend.read_active_state())
             self.assertEqual(self.events, [])
             self.assertEqual(self.calls, [])
