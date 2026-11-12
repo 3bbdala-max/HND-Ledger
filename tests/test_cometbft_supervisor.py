@@ -330,7 +330,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 deployment_genesis_raw=None, deployment_profile_raw=None,
                 symlink_genesis_file=False, symlink_config_dir=False,
                 symlink_home_dir=False, mutate_profile_after_listener=False,
-                arguments=None):
+                listener_cleanup_failure=False, arguments=None):
         root = Path(directory)
         cometbft_home = root / "node-home"
         config_dir = cometbft_home / "config"
@@ -398,6 +398,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self.events = []
         self.abci_server = MagicMock()
         self.abci_server.stop.return_value.wait.return_value = None
+        if listener_cleanup_failure:
+            self.abci_server.stop.return_value.wait.side_effect = RuntimeError(
+                "simulated listener cleanup failure"
+            )
 
         def fake_start_grpc_server(application, *, bind_address, max_workers):
             self.assertIs(application, self.application)
@@ -407,7 +411,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.events.append("abci-listener")
             if mutate_profile_after_listener:
                 (config_dir / "config.toml").write_bytes(
-                    profile_file_bytes + b"# changed after initial preflight\\n"
+                    profile_file_bytes + b"# changed after initial preflight\n"
                 )
             return self.abci_server, 26658
 
@@ -629,6 +633,19 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(self.events, ["abci-listener", "cometbft-spawn"])
             self.abci_server.stop.assert_called_once_with(grace=0)
             self.abci_server.stop.return_value.wait.assert_called_once_with()
+
+    def test_spawn_failure_with_listener_cleanup_failure_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "ABCI-LISTENER-CLEANUP"
+            ):
+                self._launch(
+                    directory,
+                    popen_failure=True,
+                    listener_cleanup_failure=True,
+                )
+            self.assertEqual(self.events, ["abci-listener", "cometbft-spawn"])
+            self.abci_server.stop.assert_called_once_with(grace=0)
 
     def test_unavailable_witness_keeps_node_stopped_with_pending_intent(self):
         with tempfile.TemporaryDirectory() as directory:
