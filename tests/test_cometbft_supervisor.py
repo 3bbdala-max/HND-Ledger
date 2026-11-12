@@ -499,6 +499,34 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(self.calls, [])
             self.assertEqual(self.backend.intent["state"], "finalized")
 
+    def test_modified_cometbft_genesis_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-ARTIFACT-BINDING"
+            ):
+                self._launch(
+                    directory,
+                    deployment_genesis_raw=self.cometbft_genesis_raw + b" ",
+                )
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_unknown_cometbft_profile_field_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-ARTIFACT-BINDING"
+            ):
+                self._launch(
+                    directory,
+                    deployment_profile_raw=self.profile + b'unknown_hnd_test_field = true\\n',
+                )
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
     def test_process_exit_automatically_closes_abci_listener(self):
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "node-home").mkdir()
