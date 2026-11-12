@@ -328,7 +328,9 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 application_binding_valid=True, popen_failure=False,
                 application_network_mismatch=False, application_genesis_mismatch=False,
                 deployment_genesis_raw=None, deployment_profile_raw=None,
-                symlink_genesis_file=False, arguments=None):
+                symlink_genesis_file=False, symlink_config_dir=False,
+                symlink_home_dir=False, mutate_profile_after_listener=False,
+                arguments=None):
         root = Path(directory)
         cometbft_home = root / "node-home"
         config_dir = cometbft_home / "config"
@@ -351,6 +353,14 @@ class CometBFTSupervisorTests(unittest.TestCase):
             genesis_path.unlink()
             genesis_path.symlink_to(target)
         (config_dir / "config.toml").write_bytes(profile_file_bytes)
+        if symlink_config_dir:
+            external_config = root / "external-config"
+            config_dir.rename(external_config)
+            config_dir.symlink_to(external_config, target_is_directory=True)
+        if symlink_home_dir:
+            external_home = root / "external-node-home"
+            cometbft_home.rename(external_home)
+            cometbft_home.symlink_to(external_home, target_is_directory=True)
         launch_arguments = (
             ["start", "--home", str(cometbft_home)]
             if arguments is None else arguments
@@ -395,6 +405,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertEqual(max_workers, 16)
             self.assertEqual(self.backend.intent["state"], "finalized")
             self.events.append("abci-listener")
+            if mutate_profile_after_listener:
+                (config_dir / "config.toml").write_bytes(
+                    profile_file_bytes + b"# changed after initial preflight\\n"
+                )
             return self.abci_server, 26658
 
         def fake_popen(args, **kwargs):
@@ -690,6 +704,38 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertIsNone(self.backend.read_active_state())
             self.assertEqual(self.events, [])
             self.assertEqual(self.calls, [])
+
+    def test_symlinked_cometbft_config_directory_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-FILE"
+            ):
+                self._launch(directory, symlink_config_dir=True)
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_symlinked_cometbft_home_directory_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-FILE"
+            ):
+                self._launch(directory, symlink_home_dir=True)
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_profile_changed_after_listener_bind_is_rejected_and_listener_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "PROFILE-FILE-MISMATCH"
+            ):
+                self._launch(directory, mutate_profile_after_listener=True)
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, ["abci-listener"])
+            self.assertEqual(self.calls, [])
+            self.abci_server.stop.assert_called_once_with(grace=0)
+            self.abci_server.stop.return_value.wait.assert_called_once_with()
 
     def test_symlinked_executable_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
