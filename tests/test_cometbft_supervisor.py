@@ -330,7 +330,8 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 deployment_genesis_raw=None, deployment_profile_raw=None,
                 symlink_genesis_file=False, symlink_config_dir=False,
                 symlink_home_dir=False, mutate_profile_after_listener=False,
-                listener_cleanup_failure=False, arguments=None):
+                mutate_genesis_after_listener=False, listener_cleanup_failure=False,
+                arguments=None):
         root = Path(directory)
         cometbft_home = root / "node-home"
         config_dir = cometbft_home / "config"
@@ -412,6 +413,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
             if mutate_profile_after_listener:
                 (config_dir / "config.toml").write_bytes(
                     profile_file_bytes + b"# changed after initial preflight\n"
+                )
+            if mutate_genesis_after_listener:
+                (config_dir / "genesis.json").write_bytes(
+                    genesis_file_bytes + b" "
                 )
             return self.abci_server, 26658
 
@@ -721,6 +726,21 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertIsNone(self.backend.read_active_state())
             self.assertEqual(self.events, [])
             self.assertEqual(self.calls, [])
+
+    def test_genesis_changed_after_listener_bind_is_rejected_before_spawn(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-ARTIFACT-BINDING"
+            ):
+                self._launch(directory, mutate_genesis_after_listener=True)
+            # The witness transaction is already finalized before callback work.
+            # The changed Genesis blocks CometBFT spawn and the listener is shut.
+            self.assertIsNotNone(self.backend.read_active_state())
+            self.assertEqual(self.backend.intent["state"], "finalized")
+            self.assertEqual(self.events, ["abci-listener"])
+            self.assertEqual(self.calls, [])
+            self.abci_server.stop.assert_called_once_with(grace=0)
+            self.abci_server.stop.return_value.wait.assert_called_once_with()
 
     def test_symlinked_cometbft_config_directory_is_rejected_before_activation(self):
         with tempfile.TemporaryDirectory() as directory:
