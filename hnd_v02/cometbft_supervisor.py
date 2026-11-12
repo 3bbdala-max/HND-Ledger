@@ -67,13 +67,82 @@ def _roster_projection(records):
     return projected
 
 
+def _read_cometbft_home_file(home: str, filename: str, *, max_bytes: int) -> bytes:
+    """Read a regular file below HOME/config without following path symlinks."""
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    file_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    home_fd = config_fd = file_fd = None
+    try:
+        home_fd = os.open(home, directory_flags)
+        config_fd = os.open("config", directory_flags, dir_fd=home_fd)
+        file_fd = os.open(filename, file_flags, dir_fd=config_fd)
+        metadata = os.fstat(file_fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > max_bytes:
+            raise CometBFTSupervisorError(
+                "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-FILE"
+            )
+        chunks = []
+        total = 0
+        while True:
+            chunk = os.read(file_fd, min(1024 * 1024, max_bytes + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > max_bytes:
+                raise CometBFTSupervisorError(
+                    "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-FILE"
+                )
+        return b"".join(chunks)
+    except CometBFTSupervisorError:
+        raise
+    except OSError as exc:
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-FILE"
+        ) from exc
+    finally:
+        for descriptor in (file_fd, config_fd, home_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
+def _validate_cometbft_home_argument(
+    arguments: Sequence[str], cwd: str, cometbft_home: str
+) -> None:
+    if type(cometbft_home) is not str or not os.path.isabs(cometbft_home):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
+    supplied_homes = []
+    for index, argument in enumerate(arguments):
+        if argument == "--home":
+            if index + 1 >= len(arguments):
+                raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
+            supplied_homes.append(arguments[index + 1])
+        elif argument.startswith("--home="):
+            supplied_homes.append(argument.split("=", 1)[1])
+        elif argument == "--config" or argument.startswith("--config="):
+            # Only HOME/config/config.toml is validated by this supervisor.
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-CONFIG-OVERRIDE")
+    if len(supplied_homes) != 1:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
+    supplied = supplied_homes[0]
+    if not os.path.isabs(supplied):
+        supplied = os.path.join(cwd, supplied)
+    if os.path.normpath(supplied) != os.path.normpath(cometbft_home):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-HOME")
+
+
 def _verify_cometbft_deployment_artifacts(
     *,
     application: Any,
     vsp_payload: Mapping,
     context: Mapping,
-    genesis_raw: bytes,
-    profile_raw: bytes,
+    cometbft_home: str,
+    profile_artifact: bytes,
     profile_schema: ProfileSchema,
 ) -> None:
     """Bind the exact CometBFT Genesis bytes and parsed TOML profile to VSP.
@@ -82,8 +151,16 @@ def _verify_cometbft_deployment_artifacts(
     the pinned CometBFT source commit. A caller-supplied 'complete' flag alone
     is not proof that a schema inventory was correctly classified.
     """
-    if type(genesis_raw) is not bytes or not genesis_raw or len(genesis_raw) > 16 * 1024 * 1024:
-        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-GENESIS-INPUT")
+    genesis_raw = _read_cometbft_home_file(
+        cometbft_home, "genesis.json", max_bytes=16 * 1024 * 1024
+    )
+    profile_raw = _read_cometbft_home_file(
+        cometbft_home, "config.toml", max_bytes=1_048_576
+    )
+    if type(profile_artifact) is not bytes or profile_artifact != profile_raw:
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-PROFILE-FILE-MISMATCH"
+        )
     if genesis_raw.startswith(b"\xef\xbb\xbf"):
         raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-GENESIS-INPUT")
     try:
@@ -402,7 +479,7 @@ def start_authorized_cometbft(
     expected_operator_keys: Mapping[str, bytes],
     binary_path: str,
     expected_binary_sha256: str,
-    cometbft_genesis_raw: bytes,
+    cometbft_home: str,
     profile_schema: ProfileSchema,
     arguments: Sequence[str],
     cwd: str,
@@ -453,13 +530,14 @@ def start_authorized_cometbft(
         # mutates durable state. The exact byte strings are retained by this
         # call and are the same artifacts the deployment verifier inspected.
         try:
+            _validate_cometbft_home_argument(arguments, cwd, cometbft_home)
             parsed_vsp_payload = parse_vsp_envelope(vsp_raw)["payload"]
             _verify_cometbft_deployment_artifacts(
                 application=application,
                 vsp_payload=parsed_vsp_payload,
                 context=context,
-                genesis_raw=cometbft_genesis_raw,
-                profile_raw=profile_artifact,
+                cometbft_home=cometbft_home,
+                profile_artifact=profile_artifact,
                 profile_schema=profile_schema,
             )
         except CometBFTSupervisorError:
