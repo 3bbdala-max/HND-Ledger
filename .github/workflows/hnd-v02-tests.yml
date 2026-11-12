@@ -152,23 +152,41 @@ jobs:
           go build -o "$RUNNER_TEMP/cometbft" ./cmd/cometbft
           go build -o "$RUNNER_TEMP/hnd-cometbft-remote-only" "$GITHUB_WORKSPACE/scripts/cometbft_v040_remote_only_main.go"
           "$RUNNER_TEMP/hnd-cometbft-remote-only" start --help >/dev/null
-      - name: Generate pinned CometBFT recursive config field/default inventory
+      - name: Generate and reconcile pinned CometBFT v0.40.0 TOML inventory
         run: |
           cd "$RUNNER_TEMP/cometbft-src"
           go run "$GITHUB_WORKSPACE/scripts/cometbft_v040_config_schema_dump.go" > "$RUNNER_TEMP/cometbft-v040-config-inventory.json"
           python - "$RUNNER_TEMP/cometbft-v040-config-inventory.json" <<'PY'
-          import json, sys
+          import hashlib, json, sys
           from pathlib import Path
-          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+
+          path = Path(sys.argv[1])
+          raw = path.read_bytes()
+          data = json.loads(raw)
+          assert data["schema_version"] == 1
           assert data["source_commit"] == "0880b4d378f347ab16e54ec677ff50d803f37d62"
+          assert data["template_complete"] is True
+          assert len(data["rendered_template_sha256"]) == 64
           fields = data["fields"]
-          paths = [item["go_path"] for item in fields]
-          assert len(paths) >= 100, f"unexpectedly small config inventory: {len(fields)}"
-          assert len(paths) == len(set(paths)), "duplicate Go field paths in generated inventory"
-          assert any(item.get("mapstructure") == "libp2p" for item in fields), "nested libp2p config missing"
-          assert any("default_json" in item for item in fields), "config defaults were not captured"
-          assert all(item.get("default_json") != "UNSERIALIZABLE" for item in fields), "unserializable default sentinel found"
-          print(f"COMETBFT_V040_CONFIG_INVENTORY_OK fields={len(fields)}")
+          paths = [item["path"] for item in fields]
+          assert paths and len(paths) == len(set(paths)), "duplicate or empty TOML field inventory"
+          assert all(item["has_default"] is True for item in fields), "field without actual DefaultConfig TOML value"
+          expected = {
+              "proxy_app",
+              "p2p.libp2p.enabled",
+              "p2p.libp2p.bootstrap_peers",
+              "statesync.chunk_fetchers",
+              "consensus.timeout_commit",
+          }
+          assert expected.issubset(set(paths)), "pinned TOML inventory omitted a required section or special TOML type"
+          assert data["tables"], "rendered TOML table inventory is empty"
+          assert isinstance(data["excluded_source_fields"], list)
+          print(
+              "COMETBFT_V040_CONFIG_TOML_INVENTORY_OK "
+              f"fields={len(fields)} tables={len(data['tables'])} "
+              f"excluded_source_fields={len(data['excluded_source_fields'])} "
+              f"inventory_sha256={hashlib.sha256(raw).hexdigest()}"
+          )
           PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
         run: |
