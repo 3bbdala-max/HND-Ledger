@@ -681,8 +681,10 @@ def start_authorized_cometbft(
                 if abci_server is not None:
                     try:
                         abci_server.stop(grace=0).wait()
-                    except Exception:
-                        pass
+                    except Exception as cleanup_exc:
+                        raise CometBFTSupervisorError(
+                            "HND-SUPERVISOR-E-ABCI-LISTENER-CLEANUP"
+                        ) from cleanup_exc
                 raise
 
         return authorize_then_start_witnessed(
