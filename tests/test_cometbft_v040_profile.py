@@ -39,15 +39,6 @@ def source_inventory_fixture(*, reviewed=True, complete_scopes=True, bind_policy
         "rendered_template_sha256": "a" * 64,
         "template_complete": True,
         "fields": [
-        "fields": [
-            {
-                "path": "statesync.chunk_fetchers",
-                "go_path": "StateSync.ChunkFetchers",
-                "go_type": "int32",
-                "toml_type": "string",
-                "default": "4",
-                "has_default": True,
-            },
             {
                 "path": "p2p.libp2p.bootstrap_peers",
                 "go_path": "P2P.LibP2PConfig.BootstrapPeers",
@@ -78,13 +69,20 @@ def source_inventory_fixture(*, reviewed=True, complete_scopes=True, bind_policy
                     },
                 ],
             },
-        ],
             {
                 "path": "proxy_app",
                 "go_path": "BaseConfig.ProxyApp",
                 "go_type": "string",
                 "toml_type": "string",
                 "default": "tcp://127.0.0.1:26658",
+                "has_default": True,
+            },
+            {
+                "path": "statesync.chunk_fetchers",
+                "go_path": "StateSync.ChunkFetchers",
+                "go_type": "int32",
+                "toml_type": "string",
+                "default": "4",
                 "has_default": True,
             },
         ],
