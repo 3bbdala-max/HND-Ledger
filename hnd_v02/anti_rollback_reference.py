@@ -27,6 +27,10 @@ class StaleTransition(ReferenceModelError):
     pass
 
 
+class HistoricalOperation(ReferenceModelError):
+    """The operation committed, but is no longer the current anchor state."""
+
+
 class AmbiguousCommit(ReferenceModelError):
     """The caller did not receive the result; reconcile by operation ID."""
 
@@ -68,6 +72,23 @@ class AnchorRecord:
         return {k: v for k, v in self.__dict__.items() if k != "mac"}
 
 
+@dataclass(frozen=True)
+class OperationOutcome:
+    """Historical operation result plus an explicit latest-anchor comparison."""
+
+    record: AnchorRecord
+    is_current: bool
+    current_sequence: int | None
+    current_operation_id: str | None
+
+
+def _transaction_digest(record: AnchorRecord) -> str:
+    return _digest({
+        key: value for key, value in record.unsigned().items()
+        if key != "status"
+    })
+
+
 class SyntheticAnchor:
     """Thread-safe in-memory compare-and-swap anchor; no durability guarantee."""
 
@@ -98,10 +119,7 @@ class SyntheticAnchor:
             if host_id != self._active_host or host_epoch != self._host_epoch:
                 raise StaleTransition("fenced host cannot change anchor state")
             prior = self._operations.get(record.operation_id)
-            transaction_digest = _digest({
-                key: value for key, value in record.unsigned().items()
-                if key != "status"
-            })
+            transaction_digest = _transaction_digest(record)
             if prior:
                 if prior[0] != transaction_digest:
                     raise ReferenceModelError("operation ID reused with conflicting payload")
@@ -210,6 +228,7 @@ class OfflineAntiRollbackModel:
 
     def prepare(self, *, operation_id: str, host_id: str, state: dict,
                 height: int, round: int = 0, step: int = 1) -> AnchorRecord:
+        """Prepare/retry an operation; a COMMITTED return is historical outcome only."""
         if not operation_id or not host_id:
             raise ValueError("operation_id and host_id are required")
         if not self.anchor.host_is_current(host_id, self._host_epoch):
@@ -270,6 +289,7 @@ class OfflineAntiRollbackModel:
         return stored
 
     def commit(self, operation_id: str, *, simulate_lost_reply: bool = False) -> AnchorRecord:
+        """Commit/retry one operation; use confirm_current for signing readiness."""
         if not self.anchor.host_is_current(self._active_host, self._host_epoch):
             raise ReferenceModelError("fenced host cannot commit state")
         prepared = self._prepared.get(operation_id) or self.anchor.operation(operation_id)
@@ -295,6 +315,7 @@ class OfflineAntiRollbackModel:
         return result
 
     def reconcile(self, operation_id: str) -> AnchorRecord:
+        """Resolve the operation's historical outcome, not current-state authorization."""
         record = self.anchor.operation(operation_id)
         if record is None:
             raise ReferenceModelError("operation not present at anchor")
@@ -304,6 +325,59 @@ class OfflineAntiRollbackModel:
         state = self.generations.get(record.generation_id)
         if state is None or _digest(state) != record.state_digest:
             raise ReferenceModelError("committed generation unavailable or corrupted")
+        return record
+
+    def operation_outcome(self, operation_id: str) -> OperationOutcome:
+        """Report an operation's outcome and whether it is still the latest anchor state.
+
+        A historical COMMITTED record is not current-state or signing authorization.
+        Anchor unavailability propagates as AnchorUnavailable (unknown/blocked).
+        """
+        historical = self.anchor.operation(operation_id)
+        if historical is None:
+            raise ReferenceModelError("operation not present at anchor")
+        self._validate_identity(historical)
+        current = self.anchor.read()
+        if current is not None:
+            self._validate_identity(current)
+        same_identity = current is not None and (
+            current.network_id == historical.network_id
+            and current.genesis_hash == historical.genesis_hash
+            and current.validator_id == historical.validator_id
+            and current.signer_id == historical.signer_id
+            and current.schema_version == historical.schema_version
+        )
+        is_current = bool(
+            current is not None
+            and current.operation_id == historical.operation_id
+            and current.sequence == historical.sequence
+            and hmac.compare_digest(
+                _transaction_digest(current), _transaction_digest(historical)
+            )
+            and hmac.compare_digest(current.state_digest, historical.state_digest)
+            and same_identity
+            and current.status == historical.status
+        )
+        return OperationOutcome(
+            record=historical,
+            is_current=is_current,
+            current_sequence=current.sequence if current is not None else None,
+            current_operation_id=current.operation_id if current is not None else None,
+        )
+
+    def confirm_current(self, operation_id: str) -> AnchorRecord:
+        """Require a matching latest COMMITTED anchor record and intact generation."""
+        outcome = self.operation_outcome(operation_id)
+        record = outcome.record
+        if not outcome.is_current:
+            raise HistoricalOperation(
+                "operation committed historically but is not the current anchor record"
+            )
+        if record.status != "COMMITTED":
+            raise ReferenceModelError("current anchor operation is not COMMITTED")
+        state = self.generations.get(record.generation_id)
+        if state is None or _digest(state) != record.state_digest:
+            raise ReferenceModelError("current committed generation missing or corrupted")
         return record
 
     def restore(self, generation_id: str, *, dual_control: bool = False) -> dict:
@@ -331,12 +405,10 @@ class OfflineAntiRollbackModel:
             record = self.anchor.read()
             if record is None or record.status != "COMMITTED":
                 return False
-            self._validate_identity(record)
-            state = self.generations.get(record.generation_id)
+            current = self.confirm_current(record.operation_id)
             return (
-                self.anchor.host_is_current(host_id, self._host_epoch)
-                and state is not None
-                and _digest(state) == record.state_digest
+                current == record
+                and self.anchor.host_is_current(host_id, self._host_epoch)
             )
         except ReferenceModelError:
             return False
