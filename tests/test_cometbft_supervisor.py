@@ -327,7 +327,8 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 environment=_DEFAULT_ENVIRONMENT, witness_unavailable=False,
                 application_binding_valid=True, popen_failure=False,
                 application_network_mismatch=False, application_genesis_mismatch=False,
-                deployment_genesis_raw=None, deployment_profile_raw=None):
+                deployment_genesis_raw=None, deployment_profile_raw=None,
+                symlink_genesis_file=False, arguments=None):
         root = Path(directory)
         cometbft_home = root / "node-home"
         config_dir = cometbft_home / "config"
@@ -342,8 +343,18 @@ class CometBFTSupervisorTests(unittest.TestCase):
             if deployment_profile_raw is None
             else deployment_profile_raw
         )
-        (config_dir / "genesis.json").write_bytes(genesis_file_bytes)
+        genesis_path = config_dir / "genesis.json"
+        genesis_path.write_bytes(genesis_file_bytes)
+        if symlink_genesis_file:
+            target = root / "external-genesis.json"
+            target.write_bytes(genesis_file_bytes)
+            genesis_path.unlink()
+            genesis_path.symlink_to(target)
         (config_dir / "config.toml").write_bytes(profile_file_bytes)
+        launch_arguments = (
+            ["start", "--home", str(cometbft_home)]
+            if arguments is None else arguments
+        )
         binary = root / "cometbft"
         binary.write_bytes(self.binary_bytes)
         binary.chmod(0o755)
@@ -428,7 +439,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 expected_binary_sha256=expected_digest or actual_digest,
                 cometbft_home=str(cometbft_home),
                 profile_schema=self.profile_schema,
-                arguments=["start", "--home", str(root / "node-home")],
+                arguments=launch_arguments,
                 cwd=str(root),
                 environment=(
                     {"PATH": "/usr/bin"}
@@ -624,7 +635,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertIsNone(self.backend.read_active_state())
 
     def test_dynamic_loader_environment_overrides_are_rejected(self):
-        for key in ("LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "GLIBC_TUNABLES"):
+        for key in (
+            "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "GLIBC_TUNABLES",
+            "CMT_PROXY_APP", "CMT_P2P_LADDR", "CMTHOME", "TMHOME", "TM_PROXY_APP",
+        ):
             with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
                 (Path(directory) / "node-home").mkdir()
                 with self.assertRaisesRegex(CometBFTSupervisorError, "ENVIRONMENT"):
@@ -634,6 +648,48 @@ class CometBFTSupervisorTests(unittest.TestCase):
                     )
                 self.assertEqual(self.calls, [])
                 self.assertIsNone(self.backend.read_active_state())
+
+    def test_cli_config_overrides_are_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "COMETBFT-CLI-OVERRIDE"
+            ):
+                self._launch(
+                    directory,
+                    arguments=[
+                        "start", "--home", str(Path(directory) / "node-home"),
+                        "--proxy_app=tcp://127.0.0.1:29999",
+                    ],
+                )
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_alternate_cometbft_config_path_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "COMETBFT-CLI-OVERRIDE"
+            ):
+                self._launch(
+                    directory,
+                    arguments=[
+                        "start", "--home", str(Path(directory) / "node-home"),
+                        "--config", "/tmp/unreviewed-config.toml",
+                    ],
+                )
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
+
+    def test_symlinked_cometbft_genesis_file_is_rejected_before_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-FILE"
+            ):
+                self._launch(directory, symlink_genesis_file=True)
+            self.assertIsNone(self.backend.read_active_state())
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.calls, [])
 
     def test_symlinked_executable_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
