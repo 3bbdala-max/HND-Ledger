@@ -277,7 +277,7 @@ func walkStruct(
 				})
 				continue
 			}
-			if err := walkStruct(fieldType, fv, path, document, fields, excluded); err != nil {
+			if err := walkStruct(sf.Type, fv, path, document, fields, excluded); err != nil {
 				return err
 			}
 			continue
