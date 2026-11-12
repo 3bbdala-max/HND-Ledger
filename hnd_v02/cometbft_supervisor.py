@@ -9,6 +9,7 @@ and immutable against privileged writers; this is not a complete OS boundary.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 import subprocess
@@ -20,12 +21,114 @@ from hnd_v02.activation_transaction import ActivationState, AtomicActivationBack
 from hnd_v02.abci_app import HNDABCIApplication
 from hnd_v02.genesis import genesis_manifest_hash, validate_genesis_manifest
 from hnd_v02.vsp_canonical import parse_vsp_envelope, profile_digest
+from hnd_v02.vsp_verify import validate_roster
+from hnd_v02.cometbft_v040_profile import (
+    ProfileSchema,
+    cometbft_v040_profile_digest,
+    parse_cometbft_v040_profile,
+)
+from hnd_v02.transaction import canonical_json
 from hnd_v02.startup_authorization import authorize_then_start_witnessed
 from hnd_v02.cometbft_v040_server import start_grpc_server
 
 
 class CometBFTSupervisorError(RuntimeError):
     """The pinned CometBFT process could not be safely authorized or launched."""
+
+
+def _reject_duplicate_json_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(token):
+    raise ValueError(f"non-standard JSON constant: {token}")
+
+
+def _roster_projection(records):
+    if type(records) is not list:
+        raise ValueError("CometBFT Genesis validators must be an array")
+    projected = []
+    for record in records:
+        if type(record) is not dict:
+            raise ValueError("CometBFT Genesis validator must be an object")
+        key = record.get("pub_key")
+        if type(key) is not dict:
+            raise ValueError("CometBFT Genesis validator public key is missing")
+        projected.append({
+            "address": str(record.get("address", "")).lower(),
+            "pub_key": key,
+            "power": record.get("power"),
+        })
+    return projected
+
+
+def _verify_cometbft_deployment_artifacts(
+    *,
+    application: Any,
+    vsp_payload: Mapping,
+    context: Mapping,
+    genesis_raw: bytes,
+    profile_raw: bytes,
+    profile_schema: ProfileSchema,
+) -> None:
+    """Bind the exact CometBFT Genesis bytes and parsed TOML profile to VSP.
+
+    The ProfileSchema must be produced by the reviewed deployment packaging for
+    the pinned CometBFT source commit. A caller-supplied 'complete' flag alone
+    is not proof that a schema inventory was correctly classified.
+    """
+    if type(genesis_raw) is not bytes or not genesis_raw or len(genesis_raw) > 16 * 1024 * 1024:
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-GENESIS-INPUT")
+    if genesis_raw.startswith(b"\\xef\\xbb\\xbf"):
+        raise CometBFTSupervisorError("HND-SUPERVISOR-E-COMETBFT-GENESIS-INPUT")
+    try:
+        genesis = json.loads(
+            genesis_raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_reject_duplicate_json_pairs,
+            parse_constant=_reject_json_constant,
+        )
+        if type(genesis) is not dict:
+            raise ValueError("CometBFT Genesis document must be an object")
+        genesis_digest = hashlib.sha256(genesis_raw).hexdigest()
+        payload_comet = vsp_payload["cometbft"]
+        if genesis_digest != payload_comet["genesis_sha256"]:
+            raise ValueError("CometBFT Genesis byte digest does not match VSP")
+        if genesis.get("chain_id") != vsp_payload["chain_id"]:
+            raise ValueError("CometBFT Genesis chain ID does not match VSP")
+        validators = genesis.get("validators")
+        validate_roster(vsp_payload, validators)
+        if _roster_projection(context.get("cometbft_genesis_validators")) != _roster_projection(validators):
+            raise ValueError("caller context validators differ from actual Genesis")
+        if context.get("cometbft_genesis_chain_id") != genesis["chain_id"]:
+            raise ValueError("caller context chain ID differs from actual Genesis")
+
+        expected_app_state = json.loads(
+            application.application_genesis_bytes().decode("utf-8", errors="strict")
+        )
+        if genesis.get("app_state") != expected_app_state:
+            raise ValueError("CometBFT Genesis app_state differs from HND application Genesis")
+
+        normalized_profile = parse_cometbft_v040_profile(profile_raw, profile_schema)
+        profile_hash = cometbft_v040_profile_digest(normalized_profile, profile_schema)
+        if profile_hash != payload_comet["profile_sha256"]:
+            raise ValueError("CometBFT normalized profile digest does not match VSP")
+        if profile_hash != context.get("cometbft_profile_sha256"):
+            raise ValueError("caller context profile digest differs from actual profile")
+        if genesis_digest != context.get("cometbft_genesis_sha256"):
+            raise ValueError("caller context Genesis digest differs from actual Genesis")
+        if profile_schema.source_commit != payload_comet["source_commit"]:
+            raise ValueError("profile schema source commit differs from VSP")
+    except CometBFTSupervisorError:
+        raise
+    except Exception as exc:
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-ARTIFACT-BINDING"
+        ) from exc
 
 
 def _verify_open_executable(fd: int, expected_sha256: str) -> None:
@@ -289,6 +392,8 @@ def start_authorized_cometbft(
     expected_operator_keys: Mapping[str, bytes],
     binary_path: str,
     expected_binary_sha256: str,
+    cometbft_genesis_raw: bytes,
+    profile_schema: ProfileSchema,
     arguments: Sequence[str],
     cwd: str,
     abci_bind_address: str = "127.0.0.1:26658",
@@ -342,6 +447,15 @@ def start_authorized_cometbft(
                     vsp_raw=vsp_raw,
                     context=context,
                     expected_binary_sha256=expected_binary_sha256,
+                )
+                parsed_vsp_payload = parse_vsp_envelope(vsp_raw)["payload"]
+                _verify_cometbft_deployment_artifacts(
+                    application=application,
+                    vsp_payload=parsed_vsp_payload,
+                    context=context,
+                    genesis_raw=cometbft_genesis_raw,
+                    profile_raw=profile_artifact,
+                    profile_schema=profile_schema,
                 )
                 application_is_bound = application_binding_verifier(
                     application, state, profile_artifact
