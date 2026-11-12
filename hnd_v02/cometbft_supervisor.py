@@ -27,6 +27,7 @@ from hnd_v02.cometbft_v040_profile import (
     cometbft_v040_profile_digest,
     parse_cometbft_v040_profile,
 )
+from hnd_v02.transaction import canonical_json
 from hnd_v02.startup_authorization import authorize_then_start_witnessed
 from hnd_v02.cometbft_v040_server import start_grpc_server
 
@@ -106,10 +107,15 @@ def _verify_cometbft_deployment_artifacts(
         if context.get("cometbft_genesis_chain_id") != genesis["chain_id"]:
             raise ValueError("caller context chain ID differs from actual Genesis")
 
+        expected_app_state_raw = application.application_genesis_bytes()
         expected_app_state = json.loads(
-            application.application_genesis_bytes().decode("utf-8", errors="strict")
+            expected_app_state_raw.decode("utf-8", errors="strict")
         )
-        if genesis.get("app_state") != expected_app_state:
+        actual_app_state = genesis.get("app_state")
+        if (
+            type(actual_app_state) is not dict
+            or canonical_json(actual_app_state) != expected_app_state_raw
+        ):
             raise ValueError("CometBFT Genesis app_state differs from HND application Genesis")
 
         normalized_profile = parse_cometbft_v040_profile(profile_raw, profile_schema)
@@ -120,8 +126,13 @@ def _verify_cometbft_deployment_artifacts(
             raise ValueError("caller context profile digest differs from actual profile")
         if genesis_digest != context.get("cometbft_genesis_sha256"):
             raise ValueError("caller context Genesis digest differs from actual Genesis")
-        if profile_schema.source_commit != payload_comet["source_commit"]:
-            raise ValueError("profile schema source commit differs from VSP")
+        if (
+            profile_schema.source_commit != payload_comet["source_commit"]
+            or context.get("cometbft_source_commit") != profile_schema.source_commit
+            or payload_comet["version"] != "v0.40.0"
+            or context.get("cometbft_version") != payload_comet["version"]
+        ):
+            raise ValueError("profile schema source/version differs from VSP context")
     except CometBFTSupervisorError:
         raise
     except Exception as exc:
