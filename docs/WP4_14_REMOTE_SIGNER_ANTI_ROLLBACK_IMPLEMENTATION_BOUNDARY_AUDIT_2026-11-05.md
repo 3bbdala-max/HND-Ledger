@@ -134,3 +134,17 @@ The test module remains synthetic-model coverage even if it passes. It cannot su
 **Final disposition:** the current work is valuable design and test scaffolding, not production anti-double-sign certification. Keep production validator signing disabled until the independent durable anchor, signer integration, concurrent exclusion, rollback rejection, crash-boundary tests, and operator/key-custody controls are implemented and independently reviewed.
 
 No source, test, workflow, signer key, or runtime configuration was changed. No tests were executed during this review. This report is not a security certification or launch approval.
+
+
+## 8. Addendum — 2026-11-12: single pending PREPARED operation
+
+A repository-addressable state-machine gap described in §4.1 has now been addressed in the **offline synthetic reference model only**.
+
+- Source change: [`cf1f76833c900ae68b8d07615775f781bbda352b`](https://github.com/3bbdala-max/HND-Ledger/commit/cf1f76833c900ae68b8d07615775f781bbda352b), file `hnd_v02/anti_rollback_reference.py`.
+- Regression test: [`2ccdd536606542256785d92a7e8e4bd6a7348e0f`](https://github.com/3bbdala-max/HND-Ledger/commit/2ccdd536606542256785d92a7e8e4bd6a7348e0f), file `tests/test_v02_anti_rollback_reference.py`, test `test_new_operation_cannot_supersede_pending_prepare`.
+- The anchor now rejects a distinct operation while its current record is PREPARED. The existing operation-ID path still handles exact retries and the matching PREPARED-to-COMMITTED transition. A model retry of a PREPARED operation is also rejected if that record is no longer the current anchor record.
+- The regression verifies that a second operation cannot replace or strand the first, that signing remains disabled while PREPARED, and that the original operation can still commit.
+
+**Execution evidence limitation:** the current workflow already includes `tests.test_v02_anti_rollback_reference` in `Run isolated v0.2 tests`. However, exact-commit runs [43173902846](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43173902846) (source commit) and [43173931354](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43173931354) (test commit) failed before any job step was created; the HND job reports an empty step list and no runner assignment, while the dependent CometBFT job was skipped. A rerun of the latter (attempt 2) failed the same way. No test-step failure name or runner log is available, so this is not classified as a code-test failure and **no passing result is claimed**. CI execution remains unverified pending restoration of GitHub Actions job execution.
+
+This change closes only the identified synthetic-model state-machine edge case. It does not add a durable independent anchor, connect the model to CometBFT/FilePV, gate a production signature-release path, or establish production anti-double-sign protection. All production gates in §§6–7 remain open.
