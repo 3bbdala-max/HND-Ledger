@@ -89,6 +89,7 @@ class SQLiteActivationWitnessStore:
             raise ActivationWitnessStoreError("HND-WITNESS-STORE-E-ACTIVATION-ID")
         if type(activation_digest) is not str or not _HEX64.fullmatch(activation_digest):
             raise ActivationWitnessStoreError("HND-WITNESS-STORE-E-DIGEST")
+        db = None
         try:
             with closing(sqlite3.connect(self.database, timeout=10, isolation_level=None)) as db:
                 db.execute("PRAGMA synchronous=FULL")
@@ -139,14 +140,14 @@ class SQLiteActivationWitnessStore:
                 return receipt
         except ActivationWitnessStoreError:
             try:
-                if db.in_transaction:
+                if db is not None and db.in_transaction:
                     db.execute("ROLLBACK")
             except Exception:
                 pass
             raise
         except (sqlite3.Error, ValueError, UnicodeError) as exc:
             try:
-                if db.in_transaction:
+                if db is not None and db.in_transaction:
                     db.execute("ROLLBACK")
             except Exception:
                 pass
