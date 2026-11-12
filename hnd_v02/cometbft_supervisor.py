@@ -162,7 +162,7 @@ def _validate_cometbft_home_argument(
     if (
         type(arguments) not in (list, tuple)
         or len(arguments) != 3
-        or arguments[0] != "start"
+        or arguments[0] != "node"
         or arguments[1] != "--home"
         or type(arguments[2]) is not str
     ):
