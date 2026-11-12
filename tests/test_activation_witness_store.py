@@ -1,5 +1,7 @@
+import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
@@ -52,6 +54,17 @@ class SQLiteActivationWitnessStoreTests(unittest.TestCase):
         store.acknowledge("activation-1", "a" * 64)
         with self.assertRaises(ActivationWitnessStoreError):
             store.acknowledge("activation-1", "b" * 64)
+
+    def test_connection_failure_is_reported_as_store_error(self):
+        store = self.store()
+        with patch(
+            "hnd_v02.activation_witness_store.sqlite3.connect",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            with self.assertRaisesRegex(
+                ActivationWitnessStoreError, "HND-WITNESS-STORE-E-WRITE"
+            ):
+                store.acknowledge("activation-1", "a" * 64)
 
     def test_config_epoch_change_cannot_rewrite_existing_ack(self):
         self.store().acknowledge("activation-1", "a" * 64)
