@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -82,9 +81,9 @@ func tomlType(v any) (string, error) {
 		return "integer", nil
 	case float64:
 		return "float", nil
-	case []any, []interface{}:
+	case []any:
 		return "array", nil
-	case map[string]any, map[string]interface{}:
+	case map[string]any:
 		return "table", nil
 	default:
 		return "", fmt.Errorf("unsupported TOML value type %T", v)
