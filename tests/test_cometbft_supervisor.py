@@ -1,6 +1,7 @@
 """Tests for the pinned CometBFT process supervisor boundary."""
 import base64
 import hashlib
+import json
 import os
 import subprocess
 import tempfile
@@ -28,6 +29,13 @@ from hnd_v02.transaction import ProtocolConfig, account_id_for_public_key, publi
 from hnd_v02.trust_manifest import governance_pop_message, trust_manifest_digest, witness_message
 from hnd_v02.vsp_verify import governance_key_id
 from hnd_v02.vsp_canonical import profile_digest
+from hnd_v02.cometbft_v040_profile import (
+    COMETBFT_V040_SOURCE_COMMIT,
+    FieldRule,
+    ProfileSchema,
+    cometbft_v040_profile_digest,
+    parse_cometbft_v040_profile,
+)
 from tests.test_activation_bundle import ActivationBundleTests
 
 
@@ -141,7 +149,16 @@ class CometBFTSupervisorTests(unittest.TestCase):
     def setUp(self):
         self.fixture = ActivationBundleTests()
         self.fixture.setUp()
-        self.profile = b"reviewed-profile-artifact-v1"
+        self.profile = b'proxy_app = "tcp://127.0.0.1:26658"\\n'
+        self.profile_schema = ProfileSchema(
+            source_commit=COMETBFT_V040_SOURCE_COMMIT,
+            fields={
+                "proxy_app": FieldRule(
+                    str, "shared", "tcp://127.0.0.1:26658", True
+                ),
+            },
+            complete=True,
+        )
         self.binary_bytes = b"pinned-cometbft-test-binary"
         self._bind_fixture_to_real_hnd_genesis()
         self.digest = profile_digest(self.fixture.vsp.payload).hex()
@@ -182,14 +199,65 @@ class CometBFTSupervisorTests(unittest.TestCase):
         genesis_hash = genesis_manifest_hash(manifest)
         binary_hash = hashlib.sha256(self.binary_bytes).hexdigest()
 
+        # The HND app object is deliberately uninitialized; its immutable Genesis
+        # view is enough to construct the exact CometBFT app_state fixture.
+        self.application = HNDABCIApplication.__new__(HNDABCIApplication)
+        self.application.config = config
+        self.application.manifest = manifest
+        self.application.expected_genesis_hash = genesis_hash
+
+        normalized_profile = parse_cometbft_v040_profile(
+            self.profile, self.profile_schema
+        )
+        profile_hash = cometbft_v040_profile_digest(
+            normalized_profile, self.profile_schema
+        )
+        genesis_validators = [
+            {
+                "address": record["consensus_address"].upper(),
+                "pub_key": {
+                    "type": "tendermint/PubKeyEd25519",
+                    "value": record["consensus_pubkey"],
+                },
+                "power": str(record["voting_power"]),
+            }
+            for record in self.fixture.vsp.payload["validators"]
+        ]
+        context["cometbft_genesis_validators"] = genesis_validators
+        genesis_document = {
+            "genesis_time": "2026-01-01T00:00:00Z",
+            "chain_id": context["chain_id"],
+            "initial_height": "1",
+            "consensus_params": {},
+            "validators": genesis_validators,
+            "app_hash": "",
+            "app_state": json.loads(
+                self.application.application_genesis_bytes().decode("utf-8")
+            ),
+        }
+        self.cometbft_genesis_raw = (
+            json.dumps(genesis_document, sort_keys=True, indent=2) + "\\n"
+        ).encode("utf-8")
+        cometbft_genesis_hash = hashlib.sha256(
+            self.cometbft_genesis_raw
+        ).hexdigest()
+
         context["hnd_genesis_sha256"] = genesis_hash
         context["cometbft_binary_sha256"] = binary_hash
+        context["cometbft_genesis_sha256"] = cometbft_genesis_hash
+        context["cometbft_profile_sha256"] = profile_hash
+        context["cometbft_source_commit"] = COMETBFT_V040_SOURCE_COMMIT
         self.fixture.vsp.payload["hnd_genesis_sha256"] = genesis_hash
         self.fixture.vsp.payload["cometbft"]["binary_sha256"] = binary_hash
+        self.fixture.vsp.payload["cometbft"]["genesis_sha256"] = cometbft_genesis_hash
+        self.fixture.vsp.payload["cometbft"]["profile_sha256"] = profile_hash
+        self.fixture.vsp.payload["cometbft"]["source_commit"] = COMETBFT_V040_SOURCE_COMMIT
         self.fixture.vsp_raw = self.fixture.vsp.signed()
 
-        # Re-sign governance proofs-of-possession because they bind the HND Genesis hash.
+        # Re-sign governance proofs-of-possession because they bind both Genesis hashes.
         self.fixture.manifest["hnd_genesis_sha256"] = genesis_hash
+        self.fixture.manifest["cometbft_genesis_sha256"] = cometbft_genesis_hash
+        self.fixture.manifest["cometbft_source_commit"] = COMETBFT_V040_SOURCE_COMMIT
         private_by_key_id = {
             governance_key_id(public): private
             for private, public in zip(self.fixture.vsp.gpriv, self.fixture.vsp.gpub)
@@ -248,11 +316,6 @@ class CometBFTSupervisorTests(unittest.TestCase):
         acknowledgements.sort(key=lambda row: row["operator_id"])
         self.fixture.acks_raw = rfc8785.dumps(acknowledgements)
 
-        self.application = HNDABCIApplication.__new__(HNDABCIApplication)
-        self.application.config = config
-        self.application.manifest = manifest
-        self.application.expected_genesis_hash = genesis_hash
-
     def _backend(self, _path):
         return _WitnessedMemoryBackend(
             profile_validator=lambda artifact, digest: (
@@ -263,7 +326,8 @@ class CometBFTSupervisorTests(unittest.TestCase):
     def _launch(self, directory, *, valid_acks=True, expected_digest=None,
                 environment=_DEFAULT_ENVIRONMENT, witness_unavailable=False,
                 application_binding_valid=True, popen_failure=False,
-                application_network_mismatch=False, application_genesis_mismatch=False):
+                application_network_mismatch=False, application_genesis_mismatch=False,
+                deployment_genesis_raw=None, deployment_profile_raw=None):
         root = Path(directory)
         binary = root / "cometbft"
         binary.write_bytes(self.binary_bytes)
@@ -341,12 +405,22 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 vsp_raw=self.fixture.vsp_raw,
                 trust_manifests=[self.fixture.manifest_raw],
                 operator_acks_raw=self.fixture.acks_raw if valid_acks else b"[]",
-                profile_artifact=self.profile,
+                profile_artifact=(
+                    self.profile
+                    if deployment_profile_raw is None
+                    else deployment_profile_raw
+                ),
                 context=self.fixture.vsp.ctx,
                 trusted_witness_keys=self.trusted_witness_keys,
                 expected_operator_keys=self.fixture.operator_public,
                 binary_path=str(binary),
                 expected_binary_sha256=expected_digest or actual_digest,
+                cometbft_genesis_raw=(
+                    self.cometbft_genesis_raw
+                    if deployment_genesis_raw is None
+                    else deployment_genesis_raw
+                ),
+                profile_schema=self.profile_schema,
                 arguments=["start", "--home", str(root / "node-home")],
                 cwd=str(root),
                 environment=(
