@@ -748,7 +748,11 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 CometBFTSupervisorError, "PROFILE-FILE-MISMATCH"
             ):
                 self._launch(directory, mutate_profile_after_listener=True)
-            self.assertIsNone(self.backend.read_active_state())
+            # Witnessed activation has finalized before the launch callback.
+            # The changed deployment file must block listener attachment to a
+            # CometBFT child, but it cannot roll back the committed activation.
+            self.assertIsNotNone(self.backend.read_active_state())
+            self.assertEqual(self.backend.intent["state"], "finalized")
             self.assertEqual(self.events, ["abci-listener"])
             self.assertEqual(self.calls, [])
             self.abci_server.stop.assert_called_once_with(grace=0)
