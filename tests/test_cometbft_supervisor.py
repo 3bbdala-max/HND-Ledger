@@ -329,6 +329,21 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 application_network_mismatch=False, application_genesis_mismatch=False,
                 deployment_genesis_raw=None, deployment_profile_raw=None):
         root = Path(directory)
+        cometbft_home = root / "node-home"
+        config_dir = cometbft_home / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        genesis_file_bytes = (
+            self.cometbft_genesis_raw
+            if deployment_genesis_raw is None
+            else deployment_genesis_raw
+        )
+        profile_file_bytes = (
+            self.profile
+            if deployment_profile_raw is None
+            else deployment_profile_raw
+        )
+        (config_dir / "genesis.json").write_bytes(genesis_file_bytes)
+        (config_dir / "config.toml").write_bytes(profile_file_bytes)
         binary = root / "cometbft"
         binary.write_bytes(self.binary_bytes)
         binary.chmod(0o755)
@@ -405,21 +420,13 @@ class CometBFTSupervisorTests(unittest.TestCase):
                 vsp_raw=self.fixture.vsp_raw,
                 trust_manifests=[self.fixture.manifest_raw],
                 operator_acks_raw=self.fixture.acks_raw if valid_acks else b"[]",
-                profile_artifact=(
-                    self.profile
-                    if deployment_profile_raw is None
-                    else deployment_profile_raw
-                ),
+                profile_artifact=profile_file_bytes,
                 context=self.fixture.vsp.ctx,
                 trusted_witness_keys=self.trusted_witness_keys,
                 expected_operator_keys=self.fixture.operator_public,
                 binary_path=str(binary),
                 expected_binary_sha256=expected_digest or actual_digest,
-                cometbft_genesis_raw=(
-                    self.cometbft_genesis_raw
-                    if deployment_genesis_raw is None
-                    else deployment_genesis_raw
-                ),
+                cometbft_home=str(cometbft_home),
                 profile_schema=self.profile_schema,
                 arguments=["start", "--home", str(root / "node-home")],
                 cwd=str(root),
@@ -477,7 +484,9 @@ class CometBFTSupervisorTests(unittest.TestCase):
     def test_wrong_hnd_network_is_rejected_before_listener_and_process(self):
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "node-home").mkdir()
-            with self.assertRaisesRegex(CometBFTSupervisorError, "HND-GENESIS-BINDING"):
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-ARTIFACT-BINDING"
+            ):
                 self._launch(directory, application_network_mismatch=True)
             self.assertEqual(self.events, [])
             self.assertEqual(self.calls, [])
@@ -485,7 +494,9 @@ class CometBFTSupervisorTests(unittest.TestCase):
     def test_wrong_hnd_genesis_hash_is_rejected_before_listener_and_process(self):
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "node-home").mkdir()
-            with self.assertRaisesRegex(CometBFTSupervisorError, "HND-GENESIS-BINDING"):
+            with self.assertRaisesRegex(
+                CometBFTSupervisorError, "DEPLOYMENT-ARTIFACT-BINDING"
+            ):
                 self._launch(directory, application_genesis_mismatch=True)
             self.assertEqual(self.events, [])
             self.assertEqual(self.calls, [])
