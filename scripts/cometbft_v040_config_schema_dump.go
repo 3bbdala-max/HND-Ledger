@@ -147,8 +147,6 @@ func flattenTOML(value map[string]any, prefix string, leaves map[string]any, tab
 		switch child := value[key].(type) {
 		case map[string]any:
 			flattenTOML(child, path, leaves, tables)
-		case map[string]interface{}:
-			flattenTOML(child, path, leaves, tables)
 		default:
 			leaves[path] = child
 		}
