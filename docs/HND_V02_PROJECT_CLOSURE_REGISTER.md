@@ -79,3 +79,23 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 4. Keep VSP runtime enforcement, production signer integration, real key material, public network deployment, token issuance, release publication, and `main` changes blocked.
 
 **Boundary:** CI success is engineering evidence only. It does not constitute protocol ratification, independent security approval, production readiness, or authorization to launch.
+
+
+## 2C. Exact evidence for 2026-11-12 single-pending anti-rollback model remediation
+
+- Audit source: §4.1 of [WP4.14 remote-signer anti-rollback implementation boundary audit](WP4_14_REMOTE_SIGNER_ANTI_ROLLBACK_IMPLEMENTATION_BOUNDARY_AUDIT_2026-11-05.md) identified that a distinct operation could replace a current PREPARED record, leaving the first operation unresolved and no longer current.
+- Source fix: [`cf1f76833c900ae68b8d07615775f781bbda352b`](https://github.com/3bbdala-max/HND-Ledger/commit/cf1f76833c900ae68b8d07615775f781bbda352b), `hnd_v02/anti_rollback_reference.py`. The synthetic anchor now permits only an exact retry or matching PREPARED-to-COMMITTED transition while a prepare is pending; a distinct operation is rejected. A stale PREPARED operation is not returned as a current retry.
+- Regression: [`2ccdd536606542256785d92a7e8e4bd6a7348e0f`](https://github.com/3bbdala-max/HND-Ledger/commit/2ccdd536606542256785d92a7e8e4bd6a7348e0f), `tests/test_v02_anti_rollback_reference.py::test_new_operation_cannot_supersede_pending_prepare`. It asserts rejection, preservation of the first pending record, signing disabled while pending, and successful commit of the original operation.
+- The current workflow already includes `tests.test_v02_anti_rollback_reference` under `Run isolated v0.2 tests`.
+- Exact-commit run for source change: [43173902846](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43173902846), SHA `cf1f76833c900ae68b8d07615775f781bbda352b`: `hnd-v02-tests` **FAILURE** with zero reported steps; `cometbft-single-node-smoke` **SKIPPED**.
+- Exact-commit run for regression: [43173931354](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43173931354), SHA `2ccdd536606542256785d92a7e8e4bd6a7348e0f`: `hnd-v02-tests` **FAILURE** with zero reported steps; `cometbft-single-node-smoke` **SKIPPED**. Rerun attempt 2 had the same result. Both failed HND jobs were created and completed within seconds, had no runner assignment/step records, and exposed no job logs. This is recorded as a CI execution/infrastructure block, not a test assertion failure; no passing test result is claimed.
+- Documentation follow-up: [audit addendum commit `f3066af63c319e1aa4effafce6d4977302ecf136`](https://github.com/3bbdala-max/HND-Ledger/commit/f3066af63c319e1aa4effafce6d4977302ecf136).
+
+**Scope boundary:** this closes one state-machine gap in the offline synthetic reference model only. It does not provide a durable independent anchor, production signer integration, signature-release gating, or anti-double-sign certification.
+
+## 5A. Next concrete actions as of 2026-11-12
+
+1. Restore GitHub Actions job execution or obtain an actionable runner/quota diagnostic, then run the full workflow on the exact remediation commit and record the test step result. Do not count the current zero-step failures as code-test results.
+2. Once CI is executable, continue the remote-signer model review with the historical-COMMITTED-versus-current-state authorization boundary and add tests only where the intended semantics are already specified.
+3. Continue HREC01–HREC09 CometBFT/HND cross-store recovery verification and keep the independent witness/anchor deployment gate open until a separate trust domain and independent review exist.
+4. Keep VSP ratification, validator identity, real keys, production signing, public deployment, token issuance, release publication, and all changes to `main` blocked.
