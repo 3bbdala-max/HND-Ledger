@@ -188,6 +188,40 @@ jobs:
               f"inventory_sha256={hashlib.sha256(raw).hexdigest()}"
           )
           PY
+      - name: Load actual source inventory and prove unreviewed policy fails closed
+        run: |
+          python - "$RUNNER_TEMP/cometbft-v040-config-inventory.json" "$GITHUB_WORKSPACE/hnd_v02/cometbft_v040_profile_scope_policy.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from hnd_v02.cometbft_v040_profile import (
+              CometBFTProfileError,
+              load_cometbft_v040_profile_schema,
+              parse_cometbft_v040_profile,
+          )
+
+          inventory_raw = Path(sys.argv[1]).read_bytes()
+          scope_policy_raw = Path(sys.argv[2]).read_bytes()
+          schema = load_cometbft_v040_profile_schema(inventory_raw, scope_policy_raw)
+          inventory = json.loads(inventory_raw)
+          assert len(schema.fields) == len(inventory["fields"])
+          assert schema.inventory_sha256
+          assert schema.rendered_template_sha256 == inventory["rendered_template_sha256"]
+          assert schema.complete is False
+          try:
+              parse_cometbft_v040_profile(
+                  b'proxy_app = "tcp://127.0.0.1:26658"\\n',
+                  schema,
+              )
+          except CometBFTProfileError:
+              pass
+          else:
+              raise AssertionError("unreviewed CometBFT scope policy unexpectedly authorized the profile")
+          print(
+              "COMETBFT_V040_SCHEMA_LOADED_BUT_NOT_AUTHORIZED "
+              f"fields={len(schema.fields)} inventory_sha256={schema.inventory_sha256}"
+          )
+          PY
       - name: Prove remote-only CLI rejects missing signer without generating local consensus keys
         run: |
           home="$RUNNER_TEMP/hnd-remote-only-negative"
