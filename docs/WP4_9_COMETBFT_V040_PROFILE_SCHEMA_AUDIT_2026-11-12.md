@@ -63,16 +63,16 @@ The deployment context values for those three schema digests must themselves be 
 
 ## 5. Current validation boundary
 
-The CI workflow now generates and structurally checks the source-derived TOML inventory from the pinned CometBFT source. The strict schema-loader tests cover the TOML/Go representation differences, array-of-table defaults, incomplete scope manifests, inventory binding, wrong source commits, and duplicate JSON keys.
+The CI workflow now has an independent `cometbft-v040-config-inventory` job which does not depend on the HND test job. It checks out the exact CometBFT source commit, generates and structurally reconciles the TOML inventory, loads the actual output through the HND schema loader, proves that the unreviewed policy remains unauthorized, and uploads the inventory plus the policy template as a 30-day review artifact. The single-node integration smoke depends on both HND tests and this inventory job.
 
-However, the generator has **not yet been evidenced as executed successfully** on the current PR head. Current CI evidence from earlier ancestor commits consisted only of job-level failures with missing step summaries and missing log blobs; it did not show test commands starting.
+The strict schema-loader tests cover the TOML/Go representation differences, array-of-table defaults, incomplete scope manifests, inventory binding, wrong source commits, and duplicate JSON keys.
 
-The scope manifest remains intentionally unreviewed. No exhaustive source-derived inventory has yet been committed as a validated release artifact, and no owner-approved scope classification is claimed. Accordingly, `ProfileSchema.complete` must remain false for the committed template until the generator is run against the exact pinned source, its output is inspected, all fields are classified, the policy is independently reviewed, and the exact inventory/policy/template hashes are anchored in trusted deployment configuration.
+However, the independent generator/loader CI job has **not yet been evidenced as completed successfully on the latest PR head**. The scope manifest remains intentionally unreviewed. No owner-approved scope classification is claimed. Accordingly, `ProfileSchema.complete` must remain false for the committed template until the generated inventory is inspected, all fields are classified, the policy is independently reviewed, and the exact inventory/policy/template hashes are anchored in trusted deployment configuration.
 
 ## 6. Remaining gates
 
-1. Execute the inventory generator in CI using the exact pinned source; retain the generated inventory as a reviewable artifact.
-2. Inspect every exported source field omitted from the TOML template and each generated TOML field/type/default.
+1. Obtain a successful run of the independent inventory job on the current PR head and inspect its uploaded source-derived artifact.
+2. Review every exported source field omitted from the TOML template and every generated TOML field/type/default.
 3. Produce the exhaustive scope classification. Consensus-affecting fields must not be labelled from guesswork; this is a protocol-policy review.
 4. Bind the reviewed inventory/policy/template hashes into trusted deployment configuration and verify the same values at startup.
 5. Execute the expanded Python regression suite on the exact PR HEAD, then execute the pinned CometBFT single-node smoke and the live etcd quorum/recovery suite.
