@@ -67,18 +67,59 @@ def _roster_projection(records):
     return projected
 
 
+def _open_absolute_directory_without_symlinks(path: str) -> int:
+    """Open every path component as a real directory, rejecting symlink hops."""
+    if (
+        type(path) is not str
+        or not os.path.isabs(path)
+        or not hasattr(os, "O_DIRECTORY")
+        or not hasattr(os, "O_NOFOLLOW")
+    ):
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-FILE"
+        )
+    parts = path.split(os.sep)[1:]
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-FILE"
+        )
+    flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | os.O_NOFOLLOW
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    current_fd = None
+    try:
+        current_fd = os.open(os.sep, flags)
+        for part in parts:
+            next_fd = os.open(part, flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        result = current_fd
+        current_fd = None
+        return result
+    except OSError as exc:
+        raise CometBFTSupervisorError(
+            "HND-SUPERVISOR-E-COMETBFT-DEPLOYMENT-FILE"
+        ) from exc
+    finally:
+        if current_fd is not None:
+            os.close(current_fd)
+
+
 def _read_cometbft_home_file(home: str, filename: str, *, max_bytes: int) -> bytes:
     """Read a regular file below HOME/config without following path symlinks."""
     directory_flags = (
         os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
+        | os.O_DIRECTORY
+        | os.O_NOFOLLOW
         | getattr(os, "O_CLOEXEC", 0)
     )
-    file_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     home_fd = config_fd = file_fd = None
     try:
-        home_fd = os.open(home, directory_flags)
+        home_fd = _open_absolute_directory_without_symlinks(home)
         config_fd = os.open("config", directory_flags, dir_fd=home_fd)
         file_fd = os.open(filename, file_flags, dir_fd=config_fd)
         metadata = os.fstat(file_fd)
