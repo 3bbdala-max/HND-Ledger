@@ -127,3 +127,9 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Pre-change CI baseline: [run 43176370203](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43176370203), SHA `eb2e07d56195fc58e6f59e0015f51d1d5053a0eb`, had `hnd-v02-tests` FAILURE with `runner_id=0` and no steps; dependent `cometbft-single-node-smoke` was SKIPPED. This is not a code-test failure and gives no passing test evidence. Exact post-change CI evidence is recorded after the new branch push; if GitHub again assigns no runner, the test result remains unverified.
 - Scope boundary: this closes only the implicit CLI startup-mode ambiguity. It does not close HREC01–HREC09, prove CometBFT native-store reconciliation, or authorize production startup.
 
+### Exact post-change CI result — 2026-11-13
+
+- The explicit-startup-mode source/test commit is [`888afcfadadb9980c2bc80c4c8647412f01903f6`](https://github.com/3bbdala-max/HND-Ledger/commit/888afcfadadb9980c2bc80c4c8647412f01903f6).
+- Its exact push run is [`43389422297`](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43389422297). Job `hnd-v02-tests` concluded FAILURE with `runner_id=0`, no start/step records beyond job creation, and no failed step name. The dependent `cometbft-single-node-smoke` job was SKIPPED. The job-log download returned BlobNotFound because no runner log artifact exists.
+- Therefore none of the new regression tests or the full HND suite ran in that workflow. This is an execution/runner allocation block, not a passing test result and not an observed assertion failure. No source follow-up was made on the basis of this CI status alone.
+- The branch was verified at the source/test commit before this documentation-only evidence addendum. The CI gate remains open until a runner executes both jobs on an exact current commit.
