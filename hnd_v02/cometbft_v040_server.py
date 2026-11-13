@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from concurrent import futures
@@ -324,7 +325,7 @@ def start_grpc_server(
     return server, port
 
 
-def main(argv: list[str] | None = None) -> None:
+def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="HND CometBFT v0.40.0 ABCI gRPC server")
     parser.add_argument("--manifest", required=True, help="canonical HND Genesis manifest JSON")
     parser.add_argument("--genesis-hash", required=True, help="independently pinned Genesis manifest SHA-256")
@@ -332,13 +333,43 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--protocol-version", type=int, default=2)
     parser.add_argument("--max-amount", type=int, required=True)
     parser.add_argument("--state-path", required=True)
-    parser.add_argument(
+    startup_mode = parser.add_mutually_exclusive_group(required=True)
+    startup_mode.add_argument(
+        "--initialize-genesis",
+        action="store_true",
+        help=(
+            "explicit first-boot mode: allow CometBFT InitChain to create state only "
+            "when the configured state path is absent; this flag is not proof of "
+            "an authenticated Genesis ceremony or state freshness"
+        ),
+    )
+    startup_mode.add_argument(
         "--recovery",
         action="store_true",
-        help="require an existing durable HND state file; refuse fresh-state fallback",
+        help="established-chain mode: require an existing durable HND state file; refuse fresh-state fallback",
     )
     parser.add_argument("--listen", default="127.0.0.1:26658")
+    return parser
+
+
+def _validate_genesis_initialization_path(state_path: str | os.PathLike[str]) -> None:
+    """Do not let explicit first-boot mode silently reuse an existing path."""
+    if os.path.lexists(state_path):
+        raise ValueError(
+            "Genesis initialization requires an absent state path; "
+            "use --recovery for an existing application state"
+        )
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = _build_argument_parser()
     args = parser.parse_args(argv)
+
+    if args.initialize_genesis:
+        try:
+            _validate_genesis_initialization_path(args.state_path)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     try:
         manifest = strict_json_loads(
@@ -360,13 +391,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     if manifest.get("network_id") != config.network_id:
         parser.error("manifest network_id does not match --network-id")
-    application = HNDABCIApplication(
-        config=config,
-        manifest=manifest,
-        expected_genesis_hash=args.genesis_hash,
-        state_path=args.state_path,
-        require_existing_state=args.recovery,
-    )
+    try:
+        application = HNDABCIApplication(
+            config=config,
+            manifest=manifest,
+            expected_genesis_hash=args.genesis_hash,
+            state_path=args.state_path,
+            require_existing_state=args.recovery,
+        )
+    except ABCIApplicationError as exc:
+        parser.error(str(exc))
     server, port = start_grpc_server(application, bind_address=args.listen)
     print(f"HND ABCI gRPC listening on {args.listen} (port {port})")
     server.wait_for_termination()

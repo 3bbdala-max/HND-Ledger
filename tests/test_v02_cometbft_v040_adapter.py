@@ -1,17 +1,22 @@
 """Wire-level tests for the CometBFT v0.40.0 ABCI gRPC adapter."""
+import io
 import tempfile
 import unittest
 from google.protobuf.timestamp_pb2 import Timestamp
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from contextlib import redirect_stderr
 
 import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from hnd_v02.abci_app import HNDABCIApplication, MAX_BLOCK_TRANSACTIONS
+from hnd_v02.abci_app import HNDABCIApplication, ABCIApplicationError, MAX_BLOCK_TRANSACTIONS
 from hnd_v02.cometbft_v040_server import (
     HNDCometBFTv040Servicer,
     start_grpc_server,
+    main,
+    _build_argument_parser,
+    _validate_genesis_initialization_path,
     _validate_loopback_bind_address,
     types_pb2,
     types_pb2_grpc,
@@ -401,6 +406,85 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         query = self.servicer.Query(types_pb2.RequestQuery(path="/evidence"), self.context)
         self.assertEqual(query.code, 0)
         self.assertIn(b"evidence", query.value)
+
+
+    def test_server_cli_requires_an_explicit_startup_mode(self):
+        base = [
+            "--manifest", "manifest.json",
+            "--genesis-hash", "a" * 64,
+            "--network-id", "hnd-test",
+            "--max-amount", "100",
+            "--state-path", "state.json",
+        ]
+        with self.assertRaises(SystemExit):
+            _build_argument_parser().parse_args(base)
+        with self.assertRaises(SystemExit):
+            _build_argument_parser().parse_args(
+                base + ["--initialize-genesis", "--recovery"]
+            )
+        self.assertTrue(
+            _build_argument_parser().parse_args(
+                base + ["--initialize-genesis"]
+            ).initialize_genesis
+        )
+        self.assertTrue(
+            _build_argument_parser().parse_args(
+                base + ["--recovery"]
+            ).recovery
+        )
+
+    def test_genesis_initialization_rejects_an_existing_state_path(self):
+        state_path = Path(self.temp.name) / "already-initialized.json"
+        state_path.write_bytes(b"existing state")
+        with self.assertRaisesRegex(ValueError, "requires an absent state path"):
+            _validate_genesis_initialization_path(state_path)
+
+    def test_genesis_initialization_rejects_a_dangling_state_symlink(self):
+        target = Path(self.temp.name) / "missing-target.json"
+        link = Path(self.temp.name) / "dangling-state-link.json"
+        link.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "requires an absent state path"):
+            _validate_genesis_initialization_path(link)
+
+    def test_recovery_cli_rejects_missing_state_before_opening_listener(self):
+        manifest_path = Path(self.temp.name) / "cli-manifest.json"
+        manifest_path.write_bytes(canonical_json(self.manifest))
+        missing_state = Path(self.temp.name) / "missing-established-state.json"
+        argv = [
+            "--manifest", str(manifest_path),
+            "--genesis-hash", self.genesis_hash,
+            "--network-id", self.config.network_id,
+            "--max-amount", str(self.config.max_amount),
+            "--state-path", str(missing_state),
+            "--recovery",
+        ]
+        with patch("hnd_v02.cometbft_v040_server.start_grpc_server") as start_server:
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    main(argv)
+            self.assertEqual(raised.exception.code, 2)
+            start_server.assert_not_called()
+        self.assertFalse(missing_state.exists())
+
+    def test_genesis_cli_rejects_existing_state_before_opening_listener(self):
+        manifest_path = Path(self.temp.name) / "unused-manifest.json"
+        existing_state = Path(self.temp.name) / "existing-state.json"
+        existing_state.write_bytes(b"existing state")
+        argv = [
+            "--manifest", str(manifest_path),
+            "--genesis-hash", self.genesis_hash,
+            "--network-id", self.config.network_id,
+            "--max-amount", str(self.config.max_amount),
+            "--state-path", str(existing_state),
+            "--initialize-genesis",
+        ]
+        with patch("hnd_v02.cometbft_v040_server.start_grpc_server") as start_server:
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    main(argv)
+            self.assertEqual(raised.exception.code, 2)
+            start_server.assert_not_called()
+        self.assertEqual(existing_state.read_bytes(), b"existing state")
 
 
 if __name__ == "__main__":
