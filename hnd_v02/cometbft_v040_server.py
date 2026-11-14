@@ -39,6 +39,7 @@ from .strict_json import StrictJSONError, strict_json_loads
 
 APP_VERSION = "HND-v0.2"
 CODESPACE = "hnd"
+MAX_QUERY_REQUEST_BYTES = 4096
 
 
 class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
@@ -107,11 +108,16 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
             )
         account_id = None
         try:
+            if len(request.data) > MAX_QUERY_REQUEST_BYTES:
+                raise ABCIApplicationError(
+                    f"query request exceeds {MAX_QUERY_REQUEST_BYTES} bytes"
+                )
             if request.path == "/height":
-                value = {"height": self.application.last_committed_height}
+                response_height = self.application.last_committed_height
+                value = {"height": response_height}
             elif request.path == "/account":
                 account_id = request.data.decode("utf-8")
-                value = self.application.account_view(account_id)
+                value, response_height = self.application.account_view_snapshot(account_id)
                 value = {"account_id": account_id, **value}
             elif request.path == "/evidence":
                 if request.data:
@@ -119,24 +125,41 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
                         request.data,
                         label="evidence page request",
                     )
+                    keys = set(page_request) if type(page_request) is dict else set()
                     if (
                         type(page_request) is not dict
-                        or set(page_request) != {"offset", "limit"}
+                        or not {"offset", "limit"}.issubset(keys)
+                        or not keys.issubset({"offset", "limit", "height"})
                         or canonical_json(page_request) != request.data
                     ):
                         raise ABCIApplicationError("evidence page request schema or canonical encoding")
                     offset = page_request["offset"]
                     limit = page_request["limit"]
+                    expected_height = page_request.get("height")
                 else:
-                    offset, limit = 0, 100
-                evidence, total = self.application.evidence_page(offset=offset, limit=limit)
+                    offset, limit, expected_height = 0, 100, None
+                if offset > 0 and expected_height is None:
+                    raise ABCIApplicationError(
+                        "nonzero evidence offset requires a committed-height cursor"
+                    )
+                evidence, total, response_height = self.application.evidence_page_snapshot(
+                    offset=offset,
+                    limit=limit,
+                    expected_height=expected_height,
+                )
                 next_offset = offset + len(evidence) if offset + len(evidence) < total else None
+                next_cursor = (
+                    {"height": response_height, "offset": next_offset}
+                    if next_offset is not None else None
+                )
                 value = {
                     "evidence": evidence,
+                    "height": response_height,
                     "offset": offset,
                     "limit": limit,
                     "total_count": total,
                     "next_offset": next_offset,
+                    "next_cursor": next_cursor,
                 }
             else:
                 return types_pb2.ResponseQuery(
@@ -147,7 +170,7 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
             return types_pb2.ResponseQuery(
                 code=0,
                 value=canonical_json(value),
-                height=self.application.last_committed_height,
+                height=response_height,
             )
         except (UnicodeDecodeError, ABCIApplicationError, ValueError, TypeError) as exc:
             detail = str(exc)
