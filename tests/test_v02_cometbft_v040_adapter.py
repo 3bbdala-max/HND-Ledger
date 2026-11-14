@@ -220,7 +220,7 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         cursor_request = canonical_json({
             "height": value["next_cursor"]["height"],
             "offset": value["next_cursor"]["offset"],
-            "limit": 1,
+            "limit": 2,
         })
         next_response = self.servicer.Query(
             types_pb2.RequestQuery(path="/evidence", data=cursor_request),
@@ -229,7 +229,10 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertEqual(next_response.code, 0)
         next_value = json.loads(next_response.value)
         self.assertEqual(next_response.height, 0)
-        self.assertEqual(next_value["evidence"][0]["evidence_id"], f"{1:064x}")
+        self.assertEqual(
+            [item["evidence_id"] for item in next_value["evidence"]],
+            [f"{1:064x}", f"{2:064x}"],
+        )
         self.assertIsNone(next_value["next_cursor"])
 
     def test_evidence_query_rejects_stale_committed_height_cursor(self):
