@@ -1,7 +1,10 @@
 """Wire-level tests for the CometBFT v0.40.0 ABCI gRPC adapter."""
 import io
+import json
 import tempfile
 import unittest
+from threading import Event
+from unittest.mock import patch
 from google.protobuf.timestamp_pb2 import Timestamp
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -10,6 +13,7 @@ from contextlib import redirect_stderr
 import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+import hnd_v02.abci_app as abci_app_module
 from hnd_v02.abci_app import HNDABCIApplication, ABCIApplicationError, MAX_BLOCK_TRANSACTIONS
 from hnd_v02.cometbft_v040_server import (
     HNDCometBFTv040Servicer,
@@ -18,6 +22,7 @@ from hnd_v02.cometbft_v040_server import (
     _build_argument_parser,
     _validate_genesis_initialization_path,
     _validate_loopback_bind_address,
+    MAX_QUERY_REQUEST_BYTES,
     types_pb2,
     types_pb2_grpc,
 )
@@ -195,20 +200,150 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             {"evidence_id": f"{index:064x}", "type": 1}
             for index in range(3)
         ]
-        request = canonical_json({"offset": 1, "limit": 1})
+        request = canonical_json({"offset": 0, "limit": 1})
         response = self.servicer.Query(
             types_pb2.RequestQuery(path="/evidence", data=request),
             self.context,
         )
         self.assertEqual(response.code, 0)
-        import json
         value = json.loads(response.value)
+        self.assertEqual(response.height, 0)
+        self.assertEqual(value["height"], response.height)
         self.assertEqual(len(value["evidence"]), 1)
-        self.assertEqual(value["evidence"][0]["evidence_id"], f"{1:064x}")
-        self.assertEqual(value["offset"], 1)
+        self.assertEqual(value["evidence"][0]["evidence_id"], f"{0:064x}")
+        self.assertEqual(value["offset"], 0)
         self.assertEqual(value["limit"], 1)
         self.assertEqual(value["total_count"], 3)
-        self.assertEqual(value["next_offset"], 2)
+        self.assertEqual(value["next_offset"], 1)
+        self.assertEqual(value["next_cursor"], {"height": 0, "offset": 1})
+
+        cursor_request = canonical_json({
+            "height": value["next_cursor"]["height"],
+            "offset": value["next_cursor"]["offset"],
+            "limit": 1,
+        })
+        next_response = self.servicer.Query(
+            types_pb2.RequestQuery(path="/evidence", data=cursor_request),
+            self.context,
+        )
+        self.assertEqual(next_response.code, 0)
+        next_value = json.loads(next_response.value)
+        self.assertEqual(next_response.height, 0)
+        self.assertEqual(next_value["evidence"][0]["evidence_id"], f"{1:064x}")
+        self.assertIsNone(next_value["next_cursor"])
+
+    def test_evidence_query_rejects_stale_committed_height_cursor(self):
+        self.app._evidence_journal = [
+            {"evidence_id": f"{index:064x}", "type": 1}
+            for index in range(2)
+        ]
+        first = self.servicer.Query(
+            types_pb2.RequestQuery(
+                path="/evidence",
+                data=canonical_json({"offset": 0, "limit": 1}),
+            ),
+            self.context,
+        )
+        cursor = json.loads(first.value)["next_cursor"]
+        self.app.finalize_block(height=1, transactions=[], misbehavior=[])
+        self.app.commit()
+
+        stale = self.servicer.Query(
+            types_pb2.RequestQuery(
+                path="/evidence",
+                data=canonical_json({
+                    "height": cursor["height"],
+                    "offset": cursor["offset"],
+                    "limit": 1,
+                }),
+            ),
+            self.context,
+        )
+        self.assertNotEqual(stale.code, 0)
+        self.assertIn("evidence cursor height is stale", stale.log)
+        self.assertEqual(stale.height, 1)
+
+    def test_evidence_query_rejects_nonzero_offset_without_height_cursor(self):
+        response = self.servicer.Query(
+            types_pb2.RequestQuery(
+                path="/evidence",
+                data=canonical_json({"offset": 1, "limit": 1}),
+            ),
+            self.context,
+        )
+        self.assertNotEqual(response.code, 0)
+        self.assertIn("requires a committed-height cursor", response.log)
+
+    def test_evidence_query_snapshot_height_is_atomic_with_commit(self):
+        self.app._evidence_journal = [
+            {"evidence_id": f"{index:064x}", "type": 1}
+            for index in range(2)
+        ]
+        self.app.finalize_block(height=1, transactions=[], misbehavior=[])
+        copy_entered = Event()
+        release_copy = Event()
+        commit_started = Event()
+        original_copy = abci_app_module._json_copy
+
+        def pause_snapshot_copy(value):
+            if not copy_entered.is_set():
+                copy_entered.set()
+                if not release_copy.wait(2):
+                    raise TimeoutError("test did not release evidence snapshot copy")
+            return original_copy(value)
+
+        with patch("hnd_v02.abci_app._json_copy", side_effect=pause_snapshot_copy):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                query_future = pool.submit(
+                    self.servicer.Query,
+                    types_pb2.RequestQuery(
+                        path="/evidence",
+                        data=canonical_json({"offset": 0, "limit": 1}),
+                    ),
+                    self.context,
+                )
+                self.assertTrue(copy_entered.wait(1))
+                def commit_pending():
+                    commit_started.set()
+                    return self.app.commit()
+                commit_future = pool.submit(commit_pending)
+                self.assertTrue(commit_started.wait(1))
+                self.assertFalse(commit_future.done())
+                release_copy.set()
+                response = query_future.result(2)
+                commit_future.result(2)
+
+        self.assertEqual(response.code, 0)
+        value = json.loads(response.value)
+        self.assertEqual(response.height, 0)
+        self.assertEqual(value["height"], 0)
+        self.assertEqual(self.app.last_committed_height, 1)
+
+    def test_account_query_height_uses_the_same_committed_snapshot(self):
+        expected_view = {"balance": 123, "nonce": 4}
+        with patch.object(
+            self.app,
+            "account_view_snapshot",
+            return_value=(expected_view, 9),
+        ):
+            response = self.servicer.Query(
+                types_pb2.RequestQuery(path="/account", data=self.alice_id.encode()),
+                self.context,
+            )
+        self.assertEqual(response.code, 0)
+        self.assertEqual(response.height, 9)
+        self.assertEqual(json.loads(response.value)["balance"], 123)
+
+    def test_query_rejects_oversized_request_data(self):
+        response = self.servicer.Query(
+            types_pb2.RequestQuery(
+                path="/account",
+                data=b"x" * (MAX_QUERY_REQUEST_BYTES + 1),
+            ),
+            self.context,
+        )
+        self.assertNotEqual(response.code, 0)
+        self.assertIn("query request exceeds", response.log)
 
     def test_evidence_query_rejects_noncanonical_or_invalid_page_requests(self):
         for raw in (
