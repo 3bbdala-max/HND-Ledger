@@ -241,16 +241,34 @@ class HNDABCIApplication:
         with self._lock:
             return _json_copy(self._evidence_journal)
 
-    def evidence_page(self, *, offset: int, limit: int) -> tuple[list[dict[str, Any]], int]:
-        """Return a bounded committed-evidence page and the total record count."""
+    def evidence_page_snapshot(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        expected_height: int | None = None,
+    ) -> tuple[list[dict[str, Any]], int, int]:
+        """Return a page, count, and committed height from one locked snapshot."""
         if type(offset) is not int or offset < 0:
             raise ABCIApplicationError("evidence offset must be a non-negative integer")
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ABCIApplicationError("evidence limit must be an integer from 1 to 100")
+        if expected_height is not None and (
+            type(expected_height) is not int or expected_height < 0
+        ):
+            raise ABCIApplicationError("evidence cursor height must be a non-negative integer")
         with self._lock:
+            height = self._last_committed_height
+            if expected_height is not None and expected_height != height:
+                raise ABCIApplicationError("evidence cursor height is stale")
             total = len(self._evidence_journal)
             page = self._evidence_journal[offset:offset + limit]
-            return _json_copy(page), total
+            return _json_copy(page), total, height
+
+    def evidence_page(self, *, offset: int, limit: int) -> tuple[list[dict[str, Any]], int]:
+        """Return a bounded committed-evidence page and the total record count."""
+        page, total, _ = self.evidence_page_snapshot(offset=offset, limit=limit)
+        return page, total
 
     def application_genesis_bytes(self) -> bytes:
         """Canonical HND application-state payload for CometBFT InitChain."""
@@ -483,10 +501,15 @@ class HNDABCIApplication:
             self._pending = None
             return bytes(pending["app_hash"])
 
+    def account_view_snapshot(self, account_id: str) -> tuple[dict[str, int], int]:
+        """Return an account view and its committed height from one locked snapshot."""
+        with self._lock:
+            return self._committed_ledger.account_view(account_id), self._last_committed_height
+
     def account_view(self, account_id: str) -> dict[str, int]:
         """Read only the last committed HND state, never a candidate or mempool view."""
-        with self._lock:
-            return self._committed_ledger.account_view(account_id)
+        view, _ = self.account_view_snapshot(account_id)
+        return view
 
     def _store_payload(self, ledger: HNDLedger, height: int, evidence_journal: list[dict[str, Any]]) -> dict[str, Any]:
         snapshot = ledger.snapshot()
