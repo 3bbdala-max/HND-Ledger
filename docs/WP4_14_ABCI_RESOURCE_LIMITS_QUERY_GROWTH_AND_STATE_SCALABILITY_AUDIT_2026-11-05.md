@@ -82,3 +82,17 @@ This report is based on static source inspection. It does not claim that oversiz
 **Production launch:** NOT APPROVED.
 
 No code, tests, workflow settings, runtime limits, or state files were modified. This report is not a performance benchmark or denial-of-service certification.
+
+
+## 8. Follow-up implementation status — 2026-11-14
+
+This addendum corrects the earlier static RSL-03 observation against the current branch source and records the remaining query-consistency gap that has now been addressed.
+
+- The current branch already had bounded evidence pagination before this addendum: /evidence accepted canonical offset/limit requests and the application capped limit at 100. The original statement that the complete journal was always returned is therefore superseded for the current branch.
+- The prior pagination response did not bind the page data and ABCI response height to one atomic committed-state snapshot. The adapter fetched the page under the application lock, then read last_committed_height separately. A concurrent Commit could therefore make the returned page and reported query height refer to different committed states. Offset-only continuation also had no way to detect that a new block had changed the sorted evidence journal between pages.
+- Source remediation on phase-0.2-planning: HNDABCIApplication.evidence_page_snapshot() now returns page, total count, and committed height under one lock and rejects a supplied stale height. account_view_snapshot() likewise returns the account view and height atomically. The adapter reports the captured height in both the response envelope and evidence payload, returns a next_cursor containing height and offset, and rejects nonzero offsets without that height cursor.
+- Query request data is capped at 4,096 bytes before application parsing. This is an API/transport input bound only; it does not set a consensus transaction-size or block-size parameter.
+- Regression coverage includes cursor continuation, stale cursor rejection after Commit, rejection of offset-only continuation, query/Commit concurrency, atomic account-query height propagation, and oversized query data rejection.
+- Exact source/test commits: [5fb1eb9ce44ce9a080206d64b470ac6dcaa0d42e](https://github.com/3bbdala-max/HND-Ledger/commit/5fb1eb9ce44ce9a080206d64b470ac6dcaa0d42e), [734c96e35bf15dccd793724cfe0e7d67e474c575](https://github.com/3bbdala-max/HND-Ledger/commit/734c96e35bf15dccd793724cfe0e7d67e474c575), and [8d544b4989c32f6dc606741e78d2fe2c7f4cfb32](https://github.com/3bbdala-max/HND-Ledger/commit/8d544b4989c32f6dc606741e78d2fe2c7f4cfb32). These commits are implementation evidence, not test-pass evidence.
+- The branch's latest pre-change CI run [43389809500](https://github.com/3bbdala-max/HND-Ledger/actions/runs/43389809500) had hnd-v02-tests FAILURE and dependent CometBFT smoke SKIPPED, with no step records; job-log retrieval returned BlobNotFound. This is not evidence that any test command ran. Exact CI for the new source/test HEAD must be checked separately.
+- Still open: protocol-approved per-transaction and aggregate block byte limits; exact validator-wide CometBFT/gRPC receive limits; evidence archival/checkpoint policy; long-history commit/restart benchmarks; multi-replica query/recovery consistency. No consensus-critical numeric limit or pruning rule was invented.
