@@ -23,6 +23,10 @@ from .transaction import ProtocolConfig, canonical_json
 
 APP_STORE_VERSION = 5
 MAX_BLOCK_TRANSACTIONS = 1000
+
+# google.protobuf.Timestamp's normative seconds range (years 0001 through 9999).
+MIN_PROTO_TIMESTAMP_SECONDS = -62135596800
+MAX_PROTO_TIMESTAMP_SECONDS = 253402300799
 _STORE_KEYS = {
     "schema_version",
     "network_id",
@@ -414,13 +418,24 @@ class HNDABCIApplication:
             if type(infraction_height) is not int or infraction_height <= 0 or infraction_height >= block_height:
                 raise ABCIApplicationError("invalid misbehavior infraction height")
             stamp = item["time"]
-            if type(stamp) is not str:
+            if type(stamp) is not str or len(stamp) > 27:
                 raise ABCIApplicationError("invalid misbehavior timestamp")
             try:
                 parts = stamp.split(":")
-                if len(parts) != 3 or parts[0] != "unix" or not parts[1].lstrip("-").isdigit() or len(parts[2]) != 9 or not parts[2].isdigit():
-                    raise ValueError("timestamp must be unix seconds and nanoseconds")
-                if int(parts[2]) >= 1_000_000_000 or stamp != f"unix:{int(parts[1])}:{int(parts[2]):09d}":
+                if (
+                    len(parts) != 3
+                    or parts[0] != "unix"
+                    or not parts[1].lstrip("-").isdigit()
+                    or len(parts[1]) > 12
+                    or len(parts[2]) != 9
+                    or not parts[2].isdigit()
+                ):
+                    raise ValueError("timestamp must be bounded unix seconds and nanoseconds")
+                seconds = int(parts[1])
+                nanos = int(parts[2])
+                if not MIN_PROTO_TIMESTAMP_SECONDS <= seconds <= MAX_PROTO_TIMESTAMP_SECONDS:
+                    raise ValueError("timestamp seconds outside google.protobuf.Timestamp range")
+                if nanos >= 1_000_000_000 or stamp != f"unix:{seconds}:{nanos:09d}":
                     raise ValueError("timestamp is not canonical")
             except ValueError as exc:
                 raise ABCIApplicationError("invalid misbehavior timestamp") from exc
