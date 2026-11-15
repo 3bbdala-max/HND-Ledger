@@ -14,7 +14,13 @@ import grpc
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import hnd_v02.abci_app as abci_app_module
-from hnd_v02.abci_app import HNDABCIApplication, ABCIApplicationError, MAX_BLOCK_TRANSACTIONS
+from hnd_v02.abci_app import (
+    HNDABCIApplication,
+    ABCIApplicationError,
+    MAX_BLOCK_TRANSACTIONS,
+    MIN_PROTO_TIMESTAMP_SECONDS,
+    MAX_PROTO_TIMESTAMP_SECONDS,
+)
 from hnd_v02.cometbft_v040_server import (
     HNDCometBFTv040Servicer,
     start_grpc_server,
@@ -545,6 +551,56 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertEqual(query.code, 0)
         self.assertIn(b"evidence", query.value)
 
+    def test_finalize_block_rejects_out_of_range_protobuf_timestamps(self):
+        for seconds in (
+            MIN_PROTO_TIMESTAMP_SECONDS - 1,
+            MAX_PROTO_TIMESTAMP_SECONDS + 1,
+            9_223_372_036_854_775_807,
+        ):
+            with self.subTest(seconds=seconds):
+                item = types_pb2.Misbehavior(
+                    type=types_pb2.DUPLICATE_VOTE,
+                    validator=types_pb2.Validator(address=bytes.fromhex("ab" * 20), power=10),
+                    height=1,
+                    time=Timestamp(seconds=seconds, nanos=0),
+                    total_voting_power=40,
+                )
+                with self.assertRaisesRegex(RuntimeError, "invalid misbehavior timestamp"):
+                    self.servicer.FinalizeBlock(
+                        types_pb2.RequestFinalizeBlock(height=1, misbehavior=[item]),
+                        self.context,
+                    )
+                self.assertEqual(self.app.last_committed_height, 0)
+                self.assertIsNone(self.app._pending)
+
+    def test_evidence_timestamp_accepts_protobuf_range_endpoints(self):
+        for seconds, nanos in (
+            (MIN_PROTO_TIMESTAMP_SECONDS, 0),
+            (MAX_PROTO_TIMESTAMP_SECONDS, 999_999_999),
+        ):
+            with self.subTest(seconds=seconds, nanos=nanos):
+                item = {
+                    "type": types_pb2.DUPLICATE_VOTE,
+                    "validator_address": "ab" * 20,
+                    "validator_power": 10,
+                    "height": 1,
+                    "time": f"unix:{seconds}:{nanos:09d}",
+                    "total_voting_power": 40,
+                }
+                normalized = self.app._merge_evidence([], [item], block_height=2)
+                self.assertEqual(normalized[0]["time"], item["time"])
+
+    def test_evidence_timestamp_rejects_oversized_seconds_before_integer_parse(self):
+        item = {
+            "type": types_pb2.DUPLICATE_VOTE,
+            "validator_address": "ab" * 20,
+            "validator_power": 10,
+            "height": 1,
+            "time": f"unix:{'9' * 10_000}:000000000",
+            "total_voting_power": 40,
+        }
+        with self.assertRaisesRegex(ABCIApplicationError, "invalid misbehavior timestamp"):
+            self.app._merge_evidence([], [item], block_height=2)
 
     def test_server_cli_requires_an_explicit_startup_mode(self):
         base = [
