@@ -352,7 +352,31 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             self.context,
         )
         self.assertNotEqual(response.code, 0)
-        self.assertIn("query request exceeds", response.log)
+        self.assertEqual(response.log, "account query failed")
+
+    def test_account_query_errors_are_generic_bounded_and_non_reflective(self):
+        secret_identifier = b"customer-private-account-id-7f3a"
+        requests = (
+            secret_identifier,
+            b"\\xffprivate-account-payload",
+            b"x" * (MAX_QUERY_REQUEST_BYTES + 1),
+        )
+        for raw in requests:
+            with self.subTest(request_size=len(raw)):
+                response = self.servicer.Query(
+                    types_pb2.RequestQuery(path="/account", data=raw),
+                    self.context,
+                )
+                self.assertNotEqual(response.code, 0)
+                self.assertEqual(response.log, "account query failed")
+                self.assertLessEqual(len(response.log), 64)
+                self.assertNotIn(raw.hex(), response.log)
+                try:
+                    decoded = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    decoded = None
+                if decoded is not None:
+                    self.assertNotIn(decoded, response.log)
 
     def test_evidence_query_rejects_noncanonical_or_invalid_page_requests(self):
         for raw in (

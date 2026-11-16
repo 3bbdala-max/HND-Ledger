@@ -173,9 +173,9 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
                 height=response_height,
             )
         except (UnicodeDecodeError, ABCIApplicationError, ValueError, TypeError) as exc:
-            detail = str(exc)
-            if request.path == "/account":
-                detail += f"; requested_account_id={account_id!r}; data_hex={request.data.hex()}"
+            # Account identifiers are caller-supplied. Never reflect the raw
+            # identifier or request bytes into the ABCI response log.
+            detail = "account query failed" if request.path == "/account" else str(exc)
             return types_pb2.ResponseQuery(
                 code=1, log=detail, codespace=CODESPACE,
                 height=self.application.last_committed_height,
