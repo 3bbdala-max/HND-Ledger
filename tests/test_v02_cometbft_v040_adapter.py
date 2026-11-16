@@ -358,7 +358,7 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         secret_identifier = b"customer-private-account-id-7f3a"
         requests = (
             secret_identifier,
-            b"\\xffprivate-account-payload",
+            b"\xffprivate-account-payload",
             b"x" * (MAX_QUERY_REQUEST_BYTES + 1),
         )
         for raw in requests:
