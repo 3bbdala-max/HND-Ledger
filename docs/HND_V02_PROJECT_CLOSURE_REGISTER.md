@@ -1,6 +1,6 @@
 # HND v0.2 — Project Closure Register
 
-**Last updated:** 2026-11-14  
+**Last updated:** 2026-11-17  
 **Working branch:** `phase-0.2-planning`  
 **Current engineering status:** Prototype remediation in progress; **NOT APPROVED** for production signing, public-network launch, token issuance, or release.
 
@@ -179,3 +179,15 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Disposition: the code-level data-reflection defect is remediated in the branch, but MEDIUM-01 remains **verification-pending** until the focused adapter tests and full required workflow execute successfully on an exact commit. No workflow or security gate was weakened.
 - Scope boundary: this change does not authenticate local ABCI callers, authorize mutating methods, change loopback binding, or resolve the P1 local IPC/OS trust-boundary decision. It does not change consensus, Genesis, Config-v1, VSP, signer, or recovery behavior.
 - Next concrete action: restore GitHub Actions runner allocation and obtain exact-commit test evidence; then continue only with repository changes whose expected security behavior is already specified. P0/P1 Config-v1, VSP, independent signer anti-rollback, cross-store recovery, and consensus resource-bound decisions remain open.
+
+## 11. 2026-11-17 standalone ABCI entrypoint fail-closed mitigation
+
+- Source inspection reconfirmed the WP4.32 launch-boundary finding: `hnd_v02/cometbft_v040_server.py:main` still exposed a direct CLI path that constructed the HND application and opened the unauthenticated loopback ABCI gRPC listener without a mandatory, integrated HND/CometBFT supervisor boundary.
+- Bounded mitigation: the standalone CLI now terminates through argparse before calling `start_grpc_server`. The library primitive remains available to the existing disposable single-/multi-node test harnesses; this change does not claim that imported library calls are prevented by OS policy or that the sole production launch path is enforced.
+- Regression coverage: `tests/test_v02_cometbft_v040_adapter.py::test_standalone_cli_is_disabled_before_opening_listener` supplies a valid synthetic test Genesis and absent temporary state path, then asserts the CLI exits with an error, never calls `start_grpc_server`, and creates no state file.
+- Exact source/test commit: [`6fcd03397fcc5a24959d86037d41421c0d57cb2b`](https://github.com/3bbdala-max/HND-Ledger/commit/6fcd03397fcc5a24959d86037d41421c0d57cb2b). The commit changes only `hnd_v02/cometbft_v040_server.py` and `tests/test_v02_cometbft_v040_adapter.py`; the verified compare against prior HEAD `370f88aaf3cec9b37ec9606831c47547b64d7dbb` reports one fast-forward commit and exactly those two files.
+- Exact push workflow: [run `44039166692`](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44039166692), exact SHA `6fcd03397fcc5a24959d86037d41421c0d57cb2b`. `hnd-v02-tests` concluded FAILURE (job `133889294116`); `cometbft-single-node-smoke` concluded SKIPPED (job `133889312227`). Both jobs returned empty step lists, and both job-log downloads returned `BlobNotFound`. No test command or failed test step is evidenced; **no test pass is claimed**. This matches the recurring zero-step Actions execution/provisioning block and is not a diagnosed source assertion failure.
+- Disposition: the accidental standalone CLI path is blocked in source and regression coverage is committed, but CI verification is pending. The P1 local ABCI caller-authentication decision remains open; loopback/insecure transport is not authenticated by this change.
+- Remaining blockers: integrated sole-launch-path enforcement; independently reviewed local IPC/transport authorization; frozen Config-v1/VSP contracts; production signer-release anti-rollback and fencing; HND/CometBFT cross-store recovery policy; consensus transaction/block byte bounds; independent anchor infrastructure and security review.
+- Next concrete action: restore a GitHub Actions runner that actually executes steps, then validate this exact commit's focused adapter test and full workflow. Continue with a separately reviewed orchestration boundary only after its protocol, trust, and local transport decisions are formally approved. Do not weaken the current workflow or treat zero-step failures as code-test results.
+
