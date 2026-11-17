@@ -705,5 +705,28 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertEqual(existing_state.read_bytes(), b"existing state")
 
 
+    def test_standalone_cli_is_disabled_before_opening_listener(self):
+        manifest_path = Path(self.temp.name) / "standalone-cli-manifest.json"
+        manifest_path.write_bytes(canonical_json(self.manifest))
+        state_path = Path(self.temp.name) / "standalone-cli-state.json"
+        argv = [
+            "--manifest", str(manifest_path),
+            "--genesis-hash", self.genesis_hash,
+            "--network-id", self.config.network_id,
+            "--max-amount", str(self.config.max_amount),
+            "--state-path", str(state_path),
+            "--initialize-genesis",
+        ]
+        stderr = io.StringIO()
+        with patch("hnd_v02.cometbft_v040_server.start_grpc_server") as start_server:
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as raised:
+                    main(argv)
+            self.assertEqual(raised.exception.code, 2)
+            start_server.assert_not_called()
+        self.assertIn("standalone ABCI startup is disabled", stderr.getvalue())
+        self.assertFalse(state_path.exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

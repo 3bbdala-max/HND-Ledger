@@ -424,9 +424,14 @@ def main(argv: list[str] | None = None) -> None:
         )
     except ABCIApplicationError as exc:
         parser.error(str(exc))
-    server, port = start_grpc_server(application, bind_address=args.listen)
-    print(f"HND ABCI gRPC listening on {args.listen} (port {port})")
-    server.wait_for_termination()
+    # This standalone entrypoint cannot enforce the required single,
+    # reviewed HND/CometBFT launch boundary. Keep start_grpc_server as a
+    # library primitive for disposable test harnesses, but fail closed here
+    # until an enforced supervisor owns both listener and process startup.
+    parser.error(
+        "standalone ABCI startup is disabled; "
+        "a reviewed, enforced HND/CometBFT launcher is still required"
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
