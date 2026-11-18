@@ -224,3 +224,17 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Crash boundary: if a block is committed but checkpoint publication is not acknowledged, startup remains quarantined until the exact outcome is read and reconciled. No guessed checkpoint, local rollback, or silent reset is permitted.
 - **Verification status:** design/documentation only. No application source, tests, workflow, runtime configuration, store, signer, or service was changed or deployed. No test pass or production readiness is claimed.
 - Next implementation gate: freeze canonical record encoding and pinned CometBFT v0.40.0 block/commit evidence semantics; then specify publication ordering and the independently administered service threat boundary before writing the adapter or startup integration.
+
+
+## 15. 2026-11-18 pinned CometBFT commit-order and checkpoint placement
+
+- Source pin: `0880b4d378f347ab16e54ec677ff50d803f37d62`, matching `COMET_COMMIT` in `scripts/generate_cometbft_v040_python.sh`.
+- Upstream files reviewed: `consensus/state.go` (`finalizeCommit`) and `state/execution.go` (`BlockExecutor.applyBlock`, `BlockExecutor.Commit`).
+- Observed ordering: consensus stores the decided block and fsyncs WAL EndHeight, then calls ApplyVerifiedBlock. ApplyBlock calls ABCI FinalizeBlock, saves the FinalizeBlock response, calculates state, calls ABCI Commit, then sets state.AppHash from the FinalizeBlock response and saves CometBFT state. Consensus advances its in-memory state only after ApplyVerifiedBlock returns successfully.
+- HND ordering: FinalizeBlock creates in-memory pending state; ABCI Commit calls HND `application.commit()`, which durably writes the HND state file (file fsync, atomic replace, directory fsync) before returning.
+- **Critical placement rule:** do not publish the independent cross-store checkpoint inside the HND ABCI Commit handler. HND state is durable at that moment, but CometBFT's subsequent native state-store Save has not yet completed. The publisher must wait for successful completion of the full pinned ApplyBlock operation and independently inspect/verify both native CometBFT stores and HND state.
+- A block in the native block store or a WAL EndHeight record alone does not prove successful application/state commit; the pinned source documents restart application of an already-stored block during ABCI handshake after an interruption. Startup remains quarantined until the actual replay/reconciliation result is verified.
+- Data-source split: HND ABCI Info exposes HND height/app hash only. ABCI Commit returns retain_height; CometBFT persists app hash from FinalizeBlock response. A trusted publisher therefore needs a native-state inspection interface and a separate HND-state observation bound to the same successful ApplyBlock operation.
+- Design update: these findings are recorded in section 9 of `HREC_INDEPENDENT_CHECKPOINT_INTERFACE_DESIGN_2026-11-18.md`, commit `a174bf7b81e7562950dc086cf70f24efc585adbb`.
+- **Verification status:** exact-source static review and documentation only. No runtime hook, native DB inspector, source code, tests, workflow, service, or checkpoint publication was implemented. HREC01–HREC09 remain unexecuted on the pinned binary; no crash-recovery pass is claimed.
+- Next gate: identify a supported integration point after successful ApplyBlock/state save (or a narrowly scoped CometBFT fork/build hook), and prove native block-store/state-store inspection is read-only and version-pinned before implementation.
