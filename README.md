@@ -1,6 +1,17 @@
-# HND Ledger — recovered v0.1 baseline
+# HND Ledger — v0.2 engineering reference (v0.1 preserved)
 
-This branch restores the HND v0.1 local educational prototype and its evidence.
+This repository preserves the HND v0.1 educational prototype and develops an isolated v0.2 engineering reference. The v0.2 work is not production software and is not approved for public deployment, real-value signing, token issuance, exchange listing, or payment use.
+
+## Current status — 2026-11-18
+
+- Working branch: `phase-0.2-planning`.
+- Current disposition: prototype remediation and independent verification in progress; production signing and public service remain disabled.
+- The authoritative work/evidence index is [`docs/HND_V02_PROJECT_CLOSURE_REGISTER.md`](docs/HND_V02_PROJECT_CLOSURE_REGISTER.md).
+- The HND/CometBFT recovery direction is recorded in [`DEC-HREC-01`](docs/DECISION_HREC_RECOVERY_POLICY_2026-11-18.md): quarantine on mismatches; deterministic replay only as an explicit, independently checkpointed recovery operation.
+- Recent GitHub Actions runs recorded in the closure register failed before runner steps were created. Those are infrastructure blocks, not test assertion failures; no current-HEAD test pass is claimed.
+- Historical CI passes apply only to their exact recorded commit SHAs and test scopes. They do not certify the current branch or production readiness.
+- Open release gates include production signer anti-rollback/fencing, HND/CometBFT cross-store recovery implementation and tests, authenticated local ABCI caller boundary, sole-launch-path enforcement, Config-v1/VSP freeze, and approved transaction/block byte limits.
+
 
 ## v0.1 baseline
 
