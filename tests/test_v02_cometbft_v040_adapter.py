@@ -166,6 +166,41 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertEqual(accepted.status, types_pb2.ResponseProcessProposal.ACCEPT)
         self.assertEqual(rejected.status, types_pb2.ResponseProcessProposal.REJECT)
 
+    def test_prepare_proposal_rejects_over_limit_before_application_copy(self):
+        request = types_pb2.RequestPrepareProposal(
+            max_tx_bytes=1024,
+            txs=[b"x"] * (MAX_BLOCK_TRANSACTIONS + 1),
+        )
+        with patch.object(self.app, "prepare_proposal") as prepare:
+            with self.assertRaisesRegex(
+                RuntimeError, "transaction count exceeds application limit"
+            ):
+                self.servicer.PrepareProposal(request, self.context)
+        prepare.assert_not_called()
+
+    def test_process_proposal_rejects_over_limit_before_application_copy(self):
+        request = types_pb2.RequestProcessProposal(
+            txs=[b"x"] * (MAX_BLOCK_TRANSACTIONS + 1),
+        )
+        with patch.object(self.app, "process_proposal") as process:
+            response = self.servicer.ProcessProposal(request, self.context)
+        self.assertEqual(response.status, types_pb2.ResponseProcessProposal.REJECT)
+        process.assert_not_called()
+
+    def test_finalize_block_rejects_over_limit_before_application_copy(self):
+        request = types_pb2.RequestFinalizeBlock(
+            height=1,
+            txs=[b"x"] * (MAX_BLOCK_TRANSACTIONS + 1),
+        )
+        with patch.object(self.app, "finalize_block") as finalize:
+            with self.assertRaisesRegex(
+                RuntimeError, "transaction count exceeds application limit"
+            ):
+                self.servicer.FinalizeBlock(request, self.context)
+        finalize.assert_not_called()
+        self.assertEqual(self.app.last_committed_height, 0)
+        self.assertIsNone(self.app._pending)
+
     def test_finalize_and_commit_update_info_and_query(self):
         response = self.servicer.FinalizeBlock(
             types_pb2.RequestFinalizeBlock(height=1, txs=[self.tx_bytes(amount=125)]),
