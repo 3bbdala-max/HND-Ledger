@@ -1,6 +1,6 @@
 # HND v0.2 — Project Closure Register
 
-**Last updated:** 2026-11-17  
+**Last updated:** 2026-11-18  
 **Working branch:** `phase-0.2-planning`  
 **Current engineering status:** Prototype remediation in progress; **NOT APPROVED** for production signing, public-network launch, token issuance, or release.
 
