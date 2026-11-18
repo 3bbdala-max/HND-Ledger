@@ -32,7 +32,7 @@ except ImportError as exc:  # pragma: no cover - exercised by setup guidance
         "grpcio/grpcio-tools first."
     ) from exc
 
-from .abci_app import ABCIApplicationError, HNDABCIApplication
+from .abci_app import ABCIApplicationError, HNDABCIApplication, MAX_BLOCK_TRANSACTIONS
 from .genesis import genesis_manifest_hash
 from .transaction import ProtocolConfig, canonical_json
 from .strict_json import StrictJSONError, strict_json_loads
@@ -182,6 +182,11 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
             )
 
     def PrepareProposal(self, request, context):
+        if len(request.txs) > MAX_BLOCK_TRANSACTIONS:
+            self._abort(
+                context,
+                ABCIApplicationError("transaction count exceeds application limit"),
+            )
         max_bytes = request.max_tx_bytes
         if max_bytes < 0:
             max_bytes = sum(len(tx) for tx in request.txs)
@@ -195,6 +200,10 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
         return types_pb2.ResponsePrepareProposal(txs=txs)
 
     def ProcessProposal(self, request, context):
+        if len(request.txs) > MAX_BLOCK_TRANSACTIONS:
+            return types_pb2.ResponseProcessProposal(
+                status=types_pb2.ResponseProcessProposal.REJECT
+            )
         result = self.application.process_proposal(transactions=list(request.txs))
         status = (
             types_pb2.ResponseProcessProposal.ACCEPT
@@ -241,6 +250,12 @@ class HNDCometBFTv040Servicer(types_pb2_grpc.ABCIServicer):
         return normalized
 
     def FinalizeBlock(self, request, context):
+        if len(request.txs) > MAX_BLOCK_TRANSACTIONS:
+            self._abort(
+                context,
+                ABCIApplicationError("transaction count exceeds application limit"),
+                grpc.StatusCode.FAILED_PRECONDITION,
+            )
         try:
             result = self.application.finalize_block(
                 height=request.height,
