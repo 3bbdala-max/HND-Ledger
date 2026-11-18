@@ -148,3 +148,48 @@ Before implementation can be accepted:
 - Execute the complete test matrix on the exact pinned CometBFT build and exact commit; independently review results and the service threat boundary.
 
 No source code, test, workflow, runtime configuration, signer, or persistent store is changed by this design document. Production signing and public service remain disabled.
+
+
+## 9. Pinned CometBFT v0.40.0 commit-order finding
+
+This section is grounded in the exact source commit pinned by `scripts/generate_cometbft_v040_python.sh`:
+
+`0880b4d378f347ab16e54ec677ff50d803f37d62`
+
+Reviewed upstream source:
+- `consensus/state.go`, `finalizeCommit`
+- `state/execution.go`, `BlockExecutor.applyBlock` and `BlockExecutor.Commit`
+
+The observed order is material to checkpoint placement:
+
+1. Consensus validates the decided block.
+2. `consensus.State.finalizeCommit` writes the block and commit to the native block store if it is not already stored.
+3. It writes and fsyncs the consensus WAL `EndHeight` record.
+4. It calls `ApplyVerifiedBlock`.
+5. `BlockExecutor.applyBlock` calls ABCI `FinalizeBlock`, then persists the FinalizeBlock response in the CometBFT state store, calculates the next CometBFT state, and calls `BlockExecutor.Commit`.
+6. `BlockExecutor.Commit` flushes the mempool connection and calls ABCI `Commit`.
+7. Only after ABCI Commit succeeds does `applyBlock` set `state.AppHash` from the earlier FinalizeBlock response and call CometBFT `store.Save(state)`.
+8. `ApplyVerifiedBlock` returns to consensus only after this sequence succeeds; consensus then updates its in-memory state and schedules the next round.
+
+The HND adapter has a matching two-stage local lifecycle:
+- `HNDABCIApplication.finalize_block` computes the candidate app hash and holds the candidate only in `_pending`; it does not persist the HND store.
+- The adapter's ABCI `Commit` calls `application.commit()`.
+- `application.commit()` calls `_write_store`, which writes and fsyncs a temporary file, atomically replaces the state file, and fsyncs the containing directory before publishing the new in-memory committed fields.
+
+### 9.1 Consequences for checkpoint publication
+
+**Do not publish the cross-store checkpoint from inside the HND ABCI `Commit` handler.** At that point the HND application store has been durably advanced, but CometBFT's own state database has not yet completed the subsequent `store.Save(state)` in `BlockExecutor.applyBlock`. A checkpoint written there could attest to a cross-store state whose native CometBFT state save has not yet succeeded.
+
+The checkpoint publisher must run only after the pinned CometBFT block-application operation has returned successfully and the publisher has independently read/verified the resulting native block-store and state-store metadata, plus the HND committed height/app hash. A callback or sidecar that merely observes the ABCI Commit response is not sufficient. The concrete integration point must be selected and proven against this exact CometBFT build; no supported post-ApplyBlock hook has been established by this repository review.
+
+The publisher must also handle the reverse crash boundary: CometBFT saves the block and writes `EndHeight` before applying it. The pinned source explicitly documents that a restart may apply the already-stored block during ABCI handshake if the process crashes before successful `ApplyBlock`. Therefore:
+- a block present in the native block store is not by itself proof that application commit and CometBFT state save completed;
+- an `EndHeight` WAL record is not a checkpoint;
+- checkpoint publication is forbidden until the full application operation and native state save are verified;
+- after an interrupted application operation, startup remains quarantined while the pinned handshake/replay result and both stores are reconciled.
+
+### 9.2 Exact data-source split
+
+The HND ABCI adapter can report its own durable `last_committed_height` and `last_block_app_hash`. It does not inspect CometBFT's native block store or state database. CometBFT's ABCI `Commit` response contains `retain_height`, not a new app hash; the app hash being saved by CometBFT comes from `FinalizeBlock`'s response. Accordingly, a checkpoint publisher needs a trusted native-state inspection interface and a separate HND-state observation, both tied to the same successful ApplyBlock operation. It must not infer native state from the ABCI Commit response or infer block identity from HND height alone.
+
+This is a source-ordering finding, not a proof that all crash-recovery cases pass. HREC01–HREC09 still require an executable integration harness on the exact pinned binary.
