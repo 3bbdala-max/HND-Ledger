@@ -212,3 +212,15 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - This resolves the previously unselected normative policy direction; it does not implement the independent checkpoint, startup quarantine, replay gate, or witnessed restore procedure.
 - **Verification status:** documentation decision only. No source, test, workflow, store, signer, or runtime configuration changed. No CI run or test pass is claimed. Production signing and public service remain disabled.
 - Next implementation gate: define the authenticated checkpoint interface and recovery-state transition contract, then add disposable HREC01–HREC09/FRESH-01–14 tests against the exact pinned CometBFT v0.40.0 build. Do not enable replay on the production startup path before the independent checkpoint and quarantine gates exist.
+
+
+
+## 14. 2026-11-18 independent cross-store recovery checkpoint interface design
+
+- Design record: [HREC-CP-01 — Independent Cross-Store Recovery Checkpoint Interface](HREC_INDEPENDENT_CHECKPOINT_INTERFACE_DESIGN_2026-11-18.md), committed as `40e708350cf2475beb2815d7f2ad26342b36447c`.
+- Reuse assessment: the existing `RemoteMonotonicAnchor` is limited to `trust-manifest` and `vsp-profile` namespaces and records only `sequence` plus `digest`. Its client, reference server, and SQLite backend do not bind HND committed height/app hash, CometBFT block identity/app hash, chain/Genesis identity, or native binary/profile identity. It is therefore **not** a cross-store recovery checkpoint and must not be represented as one.
+- Design direction: define a separate typed, authenticated checkpoint record and dedicated read/compare-and-publish API. The record binds chain/Genesis and protocol/build identity, HND height/app hash, CometBFT height/block ID/app hash, predecessor checkpoint digest, service-controlled sequence, and idempotent publication operation identity.
+- Required safety: independently administered linearizable and durable service; authenticated reads/writes; strict predecessor and sequence progression; idempotency; append-only audit; backup/restore that cannot lower the acknowledged checkpoint; quarantine on unavailable or ambiguous outcomes. Checkpoint reconciliation remains separate from signer anti-double-sign authorization.
+- Crash boundary: if a block is committed but checkpoint publication is not acknowledged, startup remains quarantined until the exact outcome is read and reconciled. No guessed checkpoint, local rollback, or silent reset is permitted.
+- **Verification status:** design/documentation only. No application source, tests, workflow, runtime configuration, store, signer, or service was changed or deployed. No test pass or production readiness is claimed.
+- Next implementation gate: freeze canonical record encoding and pinned CometBFT v0.40.0 block/commit evidence semantics; then specify publication ordering and the independently administered service threat boundary before writing the adapter or startup integration.
