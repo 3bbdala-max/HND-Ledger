@@ -202,3 +202,13 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - CI status: the exact resulting commit for this register update must be checked separately. Prior exact-HEAD run 44039296499 on f61ba4e73e1f6fc6733c4347a72e22d05cc53da9 concluded hnd-v02-tests=FAILURE and cometbft-single-node-smoke=SKIPPED; both jobs had null step lists and log downloads returned BlobNotFound. This is not evidence of a test command or assertion failure.
 - Remaining blockers: Config-v1/VSP owner approval and independent freeze; explicit HND/CometBFT resource ownership and transaction/block byte bounds; authenticated local ABCI caller and sole-launch-path enforcement; cross-store CometBFT/HND recovery reconciliation; independent production signer anti-rollback and anti-double-sign anchor; actual Actions runner execution and exact-SHA test evidence.
 - Next concrete action: obtain a real Actions runner allocation for the resulting HEAD and run the focused ABCI adapter suite plus the full required workflow. Then continue only with resource or recovery changes whose expected behavior is already normatively specified.
+
+
+## 13. 2026-11-18 HND/CometBFT recovery policy decision
+
+- Decision record: [DEC-HREC-01 — quarantine-first, independently checkpointed recovery](DECISION_HREC_RECOVERY_POLICY_2026-11-18.md), committed as `b4e198f38bafb8a58a581136e5426f94148565a6`.
+- Policy direction: all HND/CometBFT height or hash mismatches enter quarantine. Deterministic CometBFT replay is allowed only as an explicit recovery operation when an independently administered, authenticated, rollback-resistant checkpoint establishes the trusted chain position and replay can be verified end-to-end. It is not an ordinary startup fallback.
+- HND-ahead, same-height/different-hash, missing established-chain state, stale/missing CometBFT native state, and unavailable/ambiguous checkpoint remain quarantined. No automatic truncation, reset, regeneration, or fallback to an older backup is permitted.
+- This resolves the previously unselected normative policy direction; it does not implement the independent checkpoint, startup quarantine, replay gate, or witnessed restore procedure.
+- **Verification status:** documentation decision only. No source, test, workflow, store, signer, or runtime configuration changed. No CI run or test pass is claimed. Production signing and public service remain disabled.
+- Next implementation gate: define the authenticated checkpoint interface and recovery-state transition contract, then add disposable HREC01–HREC09/FRESH-01–14 tests against the exact pinned CometBFT v0.40.0 build. Do not enable replay on the production startup path before the independent checkpoint and quarantine gates exist.
