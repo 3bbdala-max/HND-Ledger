@@ -119,3 +119,12 @@ These cases exercise SQLite's local database transaction boundary and independen
 **Execution status:** The three new checked-in tests are **NOT RUN**. No GitHub Actions run was triggered. The earlier separate 5/5 equivalent local harness result applies only to the five prior state-transition scenarios and must not be extended to these additions or treated as execution of the repository test file.
 
 **Next gate:** Run the exact repository test file in a controlled local environment, then add a deterministic process-level crash schedule around the key-operation/result-commit boundary. Keep the PR draft and production signing blocked.
+
+
+## 12. Child-process exit and reopen case (source added; not executed)
+
+Added one subprocess test to the SQLite model suite. A child Python process writes an operation's `KEY_OPERATION_PENDING` marker durably, then exits immediately via `os._exit` without closing the SQLite connection. The parent reopens the database and verifies that the pending state remains present and blocks ownership transfer.
+
+This is process-level evidence for persistence of the already-committed pending marker across abrupt process exit. It does **not** simulate a cryptographic key operation occurring before the crash, prove whether a signature escaped the key boundary, or validate independent reconciliation evidence. It must not be described as a crash-after-key test.
+
+**Execution status:** This subprocess test, like the three independent-connection additions, is **NOT RUN** in this work session. No manual Actions rerun was requested or performed. Any automatically triggered workflow result must be inspected against its exact head SHA and actual job steps before being treated as test evidence.
