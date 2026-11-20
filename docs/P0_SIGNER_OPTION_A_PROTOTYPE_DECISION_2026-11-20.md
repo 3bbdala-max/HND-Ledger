@@ -140,3 +140,12 @@ Added two further MODEL-only tests:
 These tests check state-machine behavior only. They do not authenticate the party supplying reconciliation evidence. The model's `reconcile_committed` method still accepts caller-supplied non-empty bytes as fixture evidence; a production implementation must replace this with independently verifiable evidence from the protected key boundary or a trusted durable key-service journal. Never treat caller-provided bytes as proof that a signature was or was not emitted.
 
 **Execution status:** Both tests are added to the branch but **NOT RUN**. No manual workflow rerun was initiated.
+
+
+## 14. Verifier-gated reconciliation interface (source added; not executed)
+
+The SQLite model's reconciliation method now requires an injected verifier callable. The verifier receives the request ID, owner, epoch, payload digest, and exact evidence bytes. Reconciliation remains blocked unless the verifier returns the literal boolean `True`; the stored operation identity is read under the SQLite write transaction before verification and update. Two MODEL-only tests cover verifier rejection and binding the evidence check to the complete operation identity. Existing reconciliation tests now use explicit fixture verifiers.
+
+This is an interface-level improvement, **not an implemented trust root**. The repository still contains no production verifier, protected-key-service protocol, authenticated journal, certificate/signature validation, anti-replay proof, or independent authority configuration. A test lambda returning `True` proves only that the state machine obeys its injected decision. It does not prove the decision is trustworthy. Calling arbitrary verifier code while holding a SQLite write transaction is also a prototype simplification and must not be carried into a production architecture without a bounded, authenticated protocol and concurrency review.
+
+**Execution status:** The updated reconciliation tests and the complete 13-test SQLite file are **NOT RUN**. No Actions rerun was initiated. The branch remains a draft and no production signing or merge is authorized.
