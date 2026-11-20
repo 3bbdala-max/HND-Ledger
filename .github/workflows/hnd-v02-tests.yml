@@ -43,6 +43,8 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Run P0 signer-fencing stale-owner model regression
+        run: python -m unittest -v tests.test_p0_signer_fencing_model
       - name: Install hash-verified isolated JCS spike dependency
         run: python -m pip install --require-hashes -r requirements-vsp-jcs-spike.txt
       - name: Install integrity-locked independent JavaScript JCS comparator
