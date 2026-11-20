@@ -104,3 +104,18 @@ The SQLite model still has no real cryptographic key operation, no independent v
 ## 10. Release gate
 
 This record authorizes no production signing, no use of real keys or funds, no public network launch, no token issuance, and no merge to the main branch. The draft PR remains open for independent review. The next permitted engineering step is a disposable-key prototype and deterministic tests on the work branch, after review of this decision record.
+
+
+## 11. Independent-connection contention cases (source added; not executed)
+
+The SQLite test file now includes three additional MODEL-only cases using separate SQLite connections to the same database file:
+
+- Admission-first: one connection durably admits an operation; another starts transfer; transfer commit remains blocked until the first connection commits the synthetic result.
+- Transfer-first: one connection begins transfer; a second connection's new old-owner admission is rejected; after transfer commits, stale admission remains rejected.
+- Writer-lock contention: a held `BEGIN IMMEDIATE` on one connection prevents a second connection from acquiring a writer transaction until the first rolls back.
+
+These cases exercise SQLite's local database transaction boundary and independent-connection visibility. They do **not** constitute a barrier-controlled end-to-end race between an actual key operation and ownership transfer, process-kill fault injection, multi-process key custody, or multi-host linearizability. In particular, the lock-contention case uses a short SQLite busy timeout and checks the database's writer-lock behavior directly; it is not evidence of a distributed signer fence.
+
+**Execution status:** The three new checked-in tests are **NOT RUN**. No GitHub Actions run was triggered. The earlier separate 5/5 equivalent local harness result applies only to the five prior state-transition scenarios and must not be extended to these additions or treated as execution of the repository test file.
+
+**Next gate:** Run the exact repository test file in a controlled local environment, then add a deterministic process-level crash schedule around the key-operation/result-commit boundary. Keep the PR draft and production signing blocked.
