@@ -74,6 +74,7 @@ Each report must record:
 | FENCE-04 | Retained positive preflight response | A obtains any permitted preflight/readiness response; B's transfer commits; A then requests a signature | The old response cannot authorize release; the key boundary rejects A |
 | FENCE-05 | Delayed/replayed authorization | Delay an authorization response until after epoch advancement, then replay it | Rejected as stale/replayed; no signature release |
 | FENCE-06 | Identity-scope substitution | Reuse an authorization across a different network, Genesis, validator key, signer instance, or request digest | Reject before key operation; audit the mismatch |
+| FENCE-07 | Same owner ID, newer epoch | When approved recovery/re-enrollment advances the epoch without changing the owner ID, submit a request carrying the previous epoch | Reject the stale epoch even though the owner ID matches; release no signature |
 
 ### Group B — signature/transfer race and anti-double-sign
 

@@ -61,6 +61,24 @@ class P0SignerFencingModelTests(unittest.TestCase):
         self.assertEqual(self.boundary.current, new_ownership)
         self.assertEqual(self.boundary.released, [])
 
+
+    def test_old_epoch_is_rejected_when_same_owner_is_reenrolled(self):
+        previous = self.boundary.current
+
+        renewed = self.boundary.transfer(previous.owner)
+
+        self.assertEqual(renewed.owner, previous.owner)
+        self.assertEqual(renewed.epoch, previous.epoch + 1)
+        with self.assertRaises(StaleOwnerRejected):
+            self.boundary.release(
+                caller=previous.owner,
+                epoch=previous.epoch,
+                request_id="fence-07-stale-epoch-same-owner",
+            )
+
+        self.assertEqual(self.boundary.current, renewed)
+        self.assertEqual(self.boundary.released, [])
+
     def test_current_owner_can_release_in_model(self):
         current = self.boundary.current
 
