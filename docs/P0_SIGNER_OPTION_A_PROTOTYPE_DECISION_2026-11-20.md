@@ -162,3 +162,19 @@ This reduces lock-hold risk in the prototype; it does not solve distributed race
 ## 16. CI observation for the preceding commit
 
 GitHub Actions created run `44801387264` for preceding commit `7aa2cf1f80291f9a001255a68def3b5dbb3aaefc`. The `hnd-v02-tests` job completed with `failure`; `cometbft-single-node-smoke` completed with `skipped`. Both jobs reported **zero steps**, so this is not evidence of a test assertion failure or of test execution. The run is not for the current source commit `2679d360b614b2ead08f2ed3ab6ba67399629a49`. No manual rerun was initiated.
+
+
+## 17. Separate external-key-journal crash-recovery model (source added; not executed)
+
+Added `IndependentKeyJournalModel`, backed by a second SQLite database separate from the ownership/operation database. Its `execute_once` operation binds a request ID to owner, epoch, and payload digest; a retry with the same identity returns the one persisted synthetic result, while reuse with a different identity is rejected.
+
+Added a subprocess test that:
+1. Durably admits a request and marks `KEY_OPERATION_PENDING` in the main database.
+2. Writes a synthetic result to the separate key-journal database.
+3. Exits abruptly with `os._exit` before the main database records the result.
+4. Reopens both databases, confirms the main request is still pending, retrieves the journal result, and verifies the evidence against request ID, owner, epoch, and digest.
+5. Retries the journal request and confirms it returns the exact same result with one journal row, then reconciles the main database and completes the ownership transfer.
+
+This is a more faithful crash-window **model** than the earlier pending-marker-only test. It demonstrates a possible recovery protocol when an independent journal durably records an idempotent operation before the caller crashes. It still uses two local SQLite files on one machine, synthetic result bytes, and a test verifier that reads the model journal. It does not establish cryptographic signing, remote durability, tamper resistance, authenticated service identity, multi-host consistency, key isolation, or a production-grade exactly-once guarantee. The journal itself is not independently protected against an attacker who can alter its database.
+
+**Execution status:** The new subprocess crash-recovery test and the full SQLite model test file are **NOT RUN**. No manual Actions rerun was initiated.
