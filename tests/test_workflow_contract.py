@@ -37,5 +37,24 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("      - main", pull_block)
 
 
+    def test_workflow_token_permissions_are_explicitly_read_only(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        lines = workflow.splitlines()
+        permissions_start = lines.index("permissions:")
+        jobs_start = lines.index("jobs:")
+        permissions_block = [
+            line for line in lines[permissions_start:jobs_start] if line.strip()
+        ]
+        self.assertEqual(
+            permissions_block,
+            ["permissions:", "  contents: read"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -169,20 +169,33 @@ This is the first practical acceptance test only. Do not modify production code 
 
 The harness must provide explicit barriers rather than relying on timing or sleeps.
 
+
+### Linearization decision and caller-outcome oracle (decision-dependent; no option selected)
+
+The following are abstract safety oracles, not a choice of Option A or Option B. Gate 0 must record the selected semantics before an executable signer implementation is written.
+
+| Interleaving | Option A expectation | Option B expectation | Caller-visible result |
+|---|---|---|---|
+| Sign request is admitted/serialized first | Transfer cannot commit until the admitted request is durably COMMITTED or safely ABORTED | The shared key-boundary transaction orders the signing operation before transfer | The caller receives the exact result only after durable signature and H/R/S commit |
+| Transfer commits/serializes first | No old-epoch request can be admitted after the transfer commit | The shared transaction orders transfer before the signing request | STALE_OWNER/FENCED; no signature bytes |
+| Crash after key operation may have occurred but before durable commit | Keep transfer pending and reconcile the same admitted request; do not declare safe abort without proof | Reconcile the same request from the key-boundary journal; do not let transfer bypass an UNKNOWN operation | UNKNOWN/RECONCILIATION_REQUIRED; no signature bytes until resolved |
+
+For both schedules below, use deterministic barriers at the documented admission/serialization point and the durable-commit point. Assert the audit order, caller response, signature visibility, and H/R/S journal state. A timing sleep is not a valid synchronization proof. The tests must not infer that a locally generated but uncommitted signature was released.
+
 **Schedule S1 — transfer before release**
 1. A owns epoch e.
 2. A submits request R and pauses immediately before the key-release linearization point.
-3. B commits ownership epoch e+1.
+3. B wins the selected transfer/serialization rule and commits ownership epoch e+1 before A is admitted at the release boundary.
 4. Resume A.
-5. Assert A is rejected and the key boundary records zero released signatures for R.
+5. Assert A is rejected with STALE_OWNER/FENCED and the key boundary records zero released signature bytes for R.
 
 **Schedule S2 — release before transfer**
 1. A owns epoch e.
 2. A enters the protected release transaction and obtains the protocol's serialization position.
-3. Pause B's transfer until A's transaction reaches its defined durable completion point.
-4. Complete A's request and commit its H/R/S result.
-5. Commit B's transfer to epoch e+1.
-6. Assert the audit log proves this order and there is no overlap or second owner at epoch e.
+3. Under Option A, B's transfer remains pending; under Option B, the shared transaction orders A before B.
+4. Complete A's request and durably commit its signature and H/R/S result.
+5. Only then commit B's transfer to epoch e+1.
+6. Assert the audit log proves this order, the caller received only the committed result, and there is no overlap or second owner at epoch e.
 
 **Schedule S3 — stale authorization retained**
 1. A obtains a preflight response while epoch e is current.
@@ -194,7 +207,7 @@ The harness must provide explicit barriers rather than relying on timing or slee
 1. A begins request R.
 2. Inject a crash after the key operation may have occurred but before durable acknowledgement.
 3. Restart the service and call Reconcile(R) using the same request ID.
-4. Assert either the exact committed signature is returned or signing remains UNKNOWN_BLOCKED; no new conflicting signature is generated.
+4. Assert either the exact committed signature is returned after durable H/R/S reconciliation or signing remains UNKNOWN_BLOCKED and the caller receives UNKNOWN/RECONCILIATION_REQUIRED; no signature bytes are exposed while unknown and no new conflicting signature is generated.
 
 ## 7. Acceptance gates
 

@@ -67,6 +67,44 @@ A compliant signer must execute a single serialized release protocol for every p
 
 If the architecture cannot provide that proof, it is not an acceptable fencing design.
 
+
+## 5.1 Transfer-versus-signature linearization decision (OPEN; no default)
+
+A signing request may overlap an ownership transfer. The security invariant is clear, but the ordering policy is not yet ratified. Two candidate semantics remain under consideration. This contract deliberately selects neither.
+
+### Option A — drain admitted operations before transfer commit
+
+- **Admission point:** the authority durably records the exact request ID, full signer identity scope, current owner and epoch, canonical sign-bytes digest, and H/R/S slot as an admitted operation. A received request or cached preflight/readiness response is not admission.
+- **Transfer rule:** a transfer may be requested while operations are in flight, but epoch e+1 cannot become committed/current until every operation admitted under epoch e has reached a durable terminal state: COMMITTED or safely ABORTED. An operation with an uncertain key-operation outcome is not safely aborted.
+- **Release point:** signature bytes become externally observable only after the signature result and corresponding anti-double-sign H/R/S state are durably committed under the admitted request identity.
+- **If signing wins:** the admitted operation completes and is durably committed; only then may the transfer commit epoch e+1.
+- **If transfer is requested before admission:** the transfer may commit first; a subsequent request from the old owner is rejected before key use.
+- **Crash after key operation but before durable commit:** mark the request UNKNOWN, block conflicting signing and keep transfer pending until the same request is reconciled. If the exact result cannot be recovered or safe abortion cannot be proved, remain fail-closed; do not invent a new request ID or release a second signature.
+
+**Consequences:** this gives an explicit drain boundary and a straightforward audit order, but transfer availability can be blocked indefinitely by an unavailable signer or unreconciled operation. It requires a durable in-flight operation ledger and a defensible safe-abort procedure.
+
+### Option B — one linearizable authority/key-service transaction
+
+- **Serialization point:** signing and ownership transfer participate in the same linearizable transaction/serialization authority at the protected key-release boundary. The order of that transaction, not a caller-side check, decides which operation wins.
+- **Admission point:** a signing request is admitted only when the key-boundary transaction accepts the current owner/epoch and reserves the exact request identity and H/R/S state in its durable journal.
+- **Release point:** signature bytes become externally observable only after that transaction (or its equivalent durable idempotent journal) commits the signature result and H/R/S state.
+- **If signing wins:** its durable result is committed before the transfer can commit the next epoch.
+- **If transfer wins:** the old owner's request receives a stable stale-owner/fenced rejection and no signature bytes are released.
+- **Crash after key operation but before durable commit:** the key boundary must reconcile the same request ID from a durable idempotent journal. Until it proves the exact committed result or a safe non-release outcome, return UNKNOWN and block conflicting operations.
+
+**Consequences:** this can provide one authoritative ordering point, but it is technically demanding. A database transaction that merely surrounds a separate HSM/key operation is not automatically atomic. The protected key service must prove how signature generation, durable H/R/S state, transfer ordering, and retry reconciliation remain one linearizable operation.
+
+### Caller-visible outcomes common to both options
+
+| Outcome | Required caller behavior |
+|---|---|
+| Durable signature and H/R/S commit completed | Return the committed result; only this state counts as RELEASED |
+| Transfer wins before the request is admitted/serialized | Return a stable STALE_OWNER/FENCED result; release no signature bytes |
+| Key operation or durable commit outcome is ambiguous | Return UNKNOWN/RECONCILIATION_REQUIRED; release no signature bytes and require reconciliation of the same request ID |
+| Authority or key boundary cannot prove current state | Fail closed; do not treat timeout, disconnect, or cached authorization as permission to sign |
+
+The protocol/security owner must independently choose Option A or Option B and ratify the admission point, release point, safe-abort criteria, crash-recovery behavior, transfer semantics, caller error surface, and audit record. An independent security reviewer must verify that the selected mechanism is enforceable at the actual key boundary. Until that decision and formal freeze evidence exist, implementation is blocked. Do not substitute a local mutex, host lock, remote preflight check, cached epoch, or lease-only check.
+
 ## 6. Crash and retry semantics
 
 The implementation must define durable behavior at each fault boundary:

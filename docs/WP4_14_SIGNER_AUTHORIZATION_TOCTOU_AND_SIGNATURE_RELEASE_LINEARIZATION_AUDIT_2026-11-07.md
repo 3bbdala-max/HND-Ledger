@@ -131,3 +131,14 @@ Tests must run against the actual signer/key boundary and a durable independentl
 **OPEN — NOT APPROVED.** The shared FilePV cross-process dual-sign condition is now reproduced in a disposable two-process test; signer authorization TOCTOU, durable fencing, multi-host ownership, and production signature-release linearization remain unimplemented and unapproved.
 
 This audit identifies a concrete boundary between a successful readiness check and a later signature operation. It does not assert that a production exploit has been demonstrated. The reference model remains offline and synthetic; no production signer integration is present or authorized. Do not enable production signing, validator failover, or public network launch on the strength of this model.
+
+
+## 8. Addendum — 2026-11-19 workflow coverage reconciliation
+
+A fresh inspection of `.github/workflows/hnd-v02-tests.yml` at branch HEAD `9c35bea20724f17b855d6bb5f4ecc00c3f1f4156` corrects the historical CI-coverage statement in §2.4: the current workflow **does list** both `tests.test_v02_anti_rollback_reference` and `tests.test_v02_recovery_controls` in its isolated reference-test command. This closes the workflow-listing gap only; it does not demonstrate execution or passing tests.
+
+Exact latest-HEAD execution evidence: [run 44517582867](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44517582867), SHA `9c35bea20724f17b855d6bb5f4ecc00c3f1f4156`. Job `hnd-v02-tests` (`135537501314`) concluded FAILURE with `runner_id=0` and `steps=[]`; `cometbft-single-node-smoke` (`135537523147`) was SKIPPED with `steps=[]`. No step ran, so there is no failed step name and no test result. CI execution remains an infrastructure dependency.
+
+The production findings in this audit remain open and higher priority than adding another synthetic readiness predicate: the two-process shared FilePV conflicting-signature reproduction and the AUTH-TOCTOU signature-release linearization gap require enforcement at the actual key boundary. Candidate enforcement patterns in §4 remain alternatives, not a selected protocol. Do not implement a remote lease, cached epoch, caller-side boolean, host-local lock, or synthetic in-memory anchor as if it closed this production gap. Selection requires independent security review and an explicit custody/authority decision.
+
+No source, workflow, test, signer, key, or runtime configuration changed in this reconciliation.

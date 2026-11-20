@@ -28,6 +28,9 @@ on:
       - fix/station2-sqlite-backend-monotonic-enforcement
       - main
 
+permissions:
+  contents: read
+
 jobs:
   hnd-v02-tests:
     runs-on: ubuntu-latest
