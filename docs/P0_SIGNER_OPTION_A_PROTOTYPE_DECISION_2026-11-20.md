@@ -149,3 +149,16 @@ The SQLite model's reconciliation method now requires an injected verifier calla
 This is an interface-level improvement, **not an implemented trust root**. The repository still contains no production verifier, protected-key-service protocol, authenticated journal, certificate/signature validation, anti-replay proof, or independent authority configuration. A test lambda returning `True` proves only that the state machine obeys its injected decision. It does not prove the decision is trustworthy. Calling arbitrary verifier code while holding a SQLite write transaction is also a prototype simplification and must not be carried into a production architecture without a bounded, authenticated protocol and concurrency review.
 
 **Execution status:** The updated reconciliation tests and the complete 13-test SQLite file are **NOT RUN**. No Actions rerun was initiated. The branch remains a draft and no production signing or merge is authorized.
+
+
+## 15. Verification outside the SQLite write lock (source added; not executed)
+
+Moved the injected verifier call outside the SQLite `BEGIN IMMEDIATE` write transaction to avoid holding the database writer lock across potentially slow or remote verification. The model now reads the operation identity/state, asks the verifier to check the evidence against request ID, owner, epoch, digest, and result bytes, then opens a write transaction and rechecks the identity and state before committing. A changed identity or incompatible state fails closed.
+
+This reduces lock-hold risk in the prototype; it does not solve distributed races or establish a trusted verifier. Production still needs an authenticated, replay-resistant evidence protocol and a protected key boundary. The verifier implementation remains absent.
+
+**Execution status:** The full 13-test SQLite file, including the verifier-gated cases and this lock-boundary refactor, is **NOT RUN**.
+
+## 16. CI observation for the preceding commit
+
+GitHub Actions created run `44801387264` for preceding commit `7aa2cf1f80291f9a001255a68def3b5dbb3aaefc`. The `hnd-v02-tests` job completed with `failure`; `cometbft-single-node-smoke` completed with `skipped`. Both jobs reported **zero steps**, so this is not evidence of a test assertion failure or of test execution. The run is not for the current source commit `2679d360b614b2ead08f2ed3ab6ba67399629a49`. No manual rerun was initiated.
