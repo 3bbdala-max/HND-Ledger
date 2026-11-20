@@ -140,6 +140,31 @@ Inject a process kill, power-loss simulation, or controlled exception at each bo
 | CBFT-06 | Four-validator remote-only regression | Existing four-validator harness passes with disposable keys and guarded signers |
 | CBFT-07 | Negative bypass suite | Deliberately misconfigured/unavailable guard causes refusal to sign, not fallback |
 
+
+## 5.1 First implementation-ready acceptance test — reject a transferred epoch
+
+**Test ID:** FENCE-00  
+**Priority:** P0  
+**Status:** SPECIFIED ONLY — NOT IMPLEMENTED OR EXECUTED
+
+**Given:** Validator signer A previously owned epoch e, and the ownership transfer to signer B at epoch e+1 is durably committed.
+
+**When:** A submits a signing request using its old ownership/epoch e.
+
+**Then:**
+1. The signer service rejects the request at the protected signing/release boundary.
+2. No signature is produced or released.
+3. No new H/R/S signing record is committed for the rejected request.
+4. The rejection is recorded with the request ID and stale epoch, without exposing secret key material.
+
+**Pass condition:** The test verifies all four outcomes using disposable test keys and confirms that the current owner remains B at epoch e+1.
+
+**Fail condition:** Any signature is produced/released by A, any signing state is committed for the rejected request, or the old epoch is accepted.
+
+**Minimal test setup:** Create A and B with disposable keys; commit transfer A/e → B/e+1; submit one signing request from A/e; assert rejection, zero released signatures, and unchanged current ownership.
+
+This is the first practical acceptance test only. Do not modify production code or keys as part of this specification step.
+
 ## 6. Required deterministic race schedules
 
 The harness must provide explicit barriers rather than relying on timing or sleeps.
