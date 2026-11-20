@@ -6,6 +6,8 @@ multi-host fencing mechanism, or CometBFT integration.
 """
 from contextlib import contextmanager
 import sqlite3
+import subprocess
+import sys
 import unittest
 
 
@@ -346,6 +348,38 @@ class SQLiteOptionATests(unittest.TestCase):
             second.execute("ROLLBACK")
         finally:
             second.close()
+
+
+    def test_child_process_exit_after_pending_intent_keeps_transfer_blocked(self):
+        # A real child process exits without cleanup after the durable pending
+        # marker is written. This does not simulate a real key operation.
+        child_code = r"""
+import os
+import runpy
+import sys
+ns = runpy.run_path(sys.argv[1])
+Model = ns["SQLiteOptionAModel"]
+model = Model(sys.argv[2])
+model.admit(owner="A", epoch=1, request_id="crash-pending", digest="d")
+model.begin_key_operation("crash-pending")
+os._exit(23)
+"""
+        script = __import__("pathlib").Path(__file__).resolve()
+        result = subprocess.run(
+            [sys.executable, "-c", child_code, str(script), self.path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 23, result.stderr)
+        self.model.close()
+        self.model = SQLiteOptionAModel(self.path)
+        self.assertEqual(
+            self.model.operation("crash-pending")[4], "KEY_OPERATION_PENDING"
+        )
+        self.model.begin_transfer("B")
+        with self.assertRaises(TransferBlocked):
+            self.model.commit_transfer()
 
 
 if __name__ == "__main__":
