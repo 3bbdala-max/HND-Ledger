@@ -164,28 +164,41 @@ class SQLiteOptionAModel:
             if cur.rowcount != 1:
                 raise UnknownBlocked("operation is not pending")
 
-    def reconcile_committed(self, request_id, exact_signature):
-        if not exact_signature:
-            raise UnknownBlocked("no exact result evidence")
+    def reconcile_committed(self, request_id, evidence, verifier):
+        """Reconcile only when an injected verifier accepts bound evidence.
+
+        The verifier is a trust-boundary dependency, not implemented here.
+        Tests use a fixture verifier; production must use independently
+        authenticated evidence from a protected key service or equivalent.
+        """
+        if not evidence or not callable(verifier):
+            raise UnknownBlocked("verified evidence and verifier are required")
         with self._write_tx():
             row = self.db.execute(
-                "SELECT status, signature FROM operations WHERE request_id=?",
+                """SELECT owner, epoch, digest, status, signature
+                   FROM operations WHERE request_id=?""",
                 (request_id,),
             ).fetchone()
             if row is None:
                 raise KeyError(request_id)
-            if row[0] == "COMMITTED":
-                if bytes(row[1]) != bytes(exact_signature):
+            owner, epoch, digest, status, stored = row
+            accepted = verifier(
+                request_id, owner, epoch, digest, bytes(evidence)
+            )
+            if accepted is not True:
+                raise UnknownBlocked("evidence verifier rejected result")
+            if status == "COMMITTED":
+                if bytes(stored) != bytes(evidence):
                     raise Fenced("reconciliation conflicts with committed result")
-                return bytes(row[1])
-            if row[0] != "UNKNOWN_BLOCKED":
+                return bytes(stored)
+            if status != "UNKNOWN_BLOCKED":
                 raise UnknownBlocked("operation is not awaiting reconciliation")
             self.db.execute(
                 """UPDATE operations SET status='COMMITTED', signature=?
                    WHERE request_id=?""",
-                (sqlite3.Binary(bytes(exact_signature)), request_id),
+                (sqlite3.Binary(bytes(evidence)), request_id),
             )
-        return bytes(exact_signature)
+        return bytes(evidence)
 
     def begin_transfer(self, new_owner):
         with self._write_tx():
@@ -281,7 +294,7 @@ class SQLiteOptionATests(unittest.TestCase):
         with self.assertRaises(TransferBlocked):
             self.model.commit_transfer()
         exact = b"TEST-FIXTURE:independently-recovered-result"
-        self.model.reconcile_committed("uncertain", exact)
+        self.model.reconcile_committed("uncertain", exact, lambda rid, owner, epoch, digest, result: (rid, owner, epoch, digest, result) == ("uncertain", "A", 1, "d", exact))
         self.assertEqual(self.model.commit_transfer(), ("B", 2))
 
     def test_same_request_retry_survives_drain_but_new_admission_is_rejected(self):
@@ -394,16 +407,47 @@ os._exit(23)
             self.model.operation("unknown-retry")[4], "UNKNOWN_BLOCKED"
         )
 
+
+    def test_reconciliation_requires_verifier_acceptance(self):
+        self.model.admit(owner="A", epoch=1, request_id="verify-reject", digest="d")
+        self.model.begin_key_operation("verify-reject")
+        self.model.mark_unknown("verify-reject")
+        evidence = b"FIXTURE-RESULT"
+        with self.assertRaises(UnknownBlocked):
+            self.model.reconcile_committed(
+                "verify-reject", evidence,
+                lambda rid, owner, epoch, digest, result: False
+            )
+        self.assertEqual(self.model.operation("verify-reject")[4], "UNKNOWN_BLOCKED")
+
+    def test_reconciliation_verifier_receives_bound_operation_identity(self):
+        self.model.admit(owner="A", epoch=1, request_id="verify-bound", digest="d")
+        self.model.begin_key_operation("verify-bound")
+        self.model.mark_unknown("verify-bound")
+        seen = []
+        evidence = b"FIXTURE-RESULT"
+        def verifier(rid, owner, epoch, digest, result):
+            seen.append((rid, owner, epoch, digest, result))
+            return (rid, owner, epoch, digest, result) == (
+                "verify-bound", "A", 1, "d", evidence
+            )
+        self.assertEqual(
+            self.model.reconcile_committed("verify-bound", evidence, verifier),
+            evidence
+        )
+        self.assertEqual(seen, [("verify-bound", "A", 1, "d", evidence)])
+
     def test_reconciliation_rejects_conflicting_result_after_commit(self):
         self.model.admit(owner="A", epoch=1, request_id="reconcile-conflict", digest="d")
         self.model.begin_key_operation("reconcile-conflict")
         exact = self.model.commit_synthetic_signature("reconcile-conflict")
         self.assertEqual(
-            self.model.reconcile_committed("reconcile-conflict", exact), exact
+            self.model.reconcile_committed("reconcile-conflict", exact, lambda rid, owner, epoch, digest, result: True), exact
         )
         with self.assertRaises(Fenced):
             self.model.reconcile_committed(
-                "reconcile-conflict", b"DIFFERENT-FIXTURE-RESULT"
+                "reconcile-conflict", b"DIFFERENT-FIXTURE-RESULT",
+                lambda rid, owner, epoch, digest, result: True
             )
 
 
