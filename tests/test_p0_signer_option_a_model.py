@@ -46,15 +46,17 @@ class OptionAModel:
         self.released = []
 
     def admit(self, *, owner, epoch, request_id, digest):
-        if self.transfer_target is not None:
-            raise Fenced("transfer is draining; new admissions are closed")
-        if (owner, epoch) != (self.ownership.owner, self.ownership.epoch):
-            raise Fenced("stale owner or epoch")
+        # Exact retries of already-admitted work remain addressable while a
+        # transfer drains; they do not create a new admission.
         existing = self.operations.get(request_id)
         if existing is not None:
             if (existing.owner, existing.epoch, existing.digest) != (owner, epoch, digest):
                 raise Fenced("request ID reused with different payload")
             return existing
+        if self.transfer_target is not None:
+            raise Fenced("transfer is draining; new admissions are closed")
+        if (owner, epoch) != (self.ownership.owner, self.ownership.epoch):
+            raise Fenced("stale owner or epoch")
         op = Operation(request_id, owner, epoch, digest)
         self.operations[request_id] = op
         return op
@@ -137,6 +139,14 @@ class OptionATransferModelTests(unittest.TestCase):
         self.assertTrue(signature.startswith(b"MODEL-ONLY:"))
         self.assertEqual(self.model.commit_transfer(), Ownership("B", 2))
         self.assertEqual(len(self.model.released), 1)
+
+    def test_exact_retry_remains_addressable_during_transfer_drain(self):
+        admitted = self.model.admit(owner="A", epoch=1, request_id="retry", digest="d")
+        self.model.begin_transfer("B")
+        retried = self.model.admit(owner="A", epoch=1, request_id="retry", digest="d")
+        self.assertIs(admitted, retried)
+        with self.assertRaises(Fenced):
+            self.model.admit(owner="A", epoch=1, request_id="new", digest="new-d")
 
     def test_transfer_wins_before_old_owner_admission(self):
         self.model.begin_transfer("B")
