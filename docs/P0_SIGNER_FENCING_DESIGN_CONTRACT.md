@@ -2,7 +2,7 @@
 
 **Status:** DESIGN CONTRACT — NOT IMPLEMENTED, NOT REVIEWED, NOT PRODUCTION-APPROVED  
 **Baseline branch:** `phase-0.2-planning`  
-**Baseline commit:** `1c94234ac36a4d6e43ac32d42bb948fbf3ac4a7f`  
+**Baseline commit:** `113aa400cf0b3255a9123250a98b0eb543d1b9ac`  
 **Work branch:** `work/p0-signer-fencing-design`  
 **Tracking issue:** [#52](https://github.com/3bbdala-max/HND-Ledger/issues/52)
 

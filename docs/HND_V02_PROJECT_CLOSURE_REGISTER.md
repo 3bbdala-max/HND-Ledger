@@ -1,6 +1,6 @@
 # HND v0.2 — Project Closure Register
 
-**Last updated:** 2026-11-18  
+**Last updated:** 2026-11-20  
 **Working branch:** `phase-0.2-planning`  
 **Current engineering status:** Prototype remediation in progress; **NOT APPROVED** for production signing, public-network launch, token issuance, or release.
 
@@ -275,7 +275,7 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 
 ## 19. 2026-11-20 P0 signer-fencing linearization decision gate
 
-- Current phase-0.2-planning baseline before this reconciliation: 113aa400cf0b3255a9123250a98b0eb543d1b9ac. Draft PR [#53](https://github.com/3bbdala-max/HND-Ledger/pull/53) was on work/p0-signer-fencing-design at 9615fac09cbfcf0522787ec4359fdf2657aa83f8; it had diverged from the current base (merge base 1c94234ac36a4d6e43ac32d42bb948fbf3ac4a7f, seven commits ahead and sixteen behind). The feature branch is being reconciled with the current base by a non-rewriting merge commit; no change is made to main.
+- Current phase-0.2-planning baseline before this reconciliation: 113aa400cf0b3255a9123250a98b0eb543d1b9ac. Draft PR [#53](https://github.com/3bbdala-max/HND-Ledger/pull/53) was on work/p0-signer-fencing-design at 9615fac09cbfcf0522787ec4359fdf2657aa83f8; it had diverged from the current base (merge base 1c94234ac36a4d6e43ac32d42bb948fbf3ac4a7f, seven commits ahead and sixteen behind). The feature branch was reconciled with the current base by non-rewriting merge commit [abded0f0966c2a9011d2a2cd7861dfd682ef7aac](https://github.com/3bbdala-max/HND-Ledger/commit/abded0f0966c2a9011d2a2cd7861dfd682ef7aac); PR #53 now has zero commits behind phase-0.2-planning at 113aa400cf0b3255a9123250a98b0eb543d1b9ac. No change is made to main.
 - The draft contains a threat model, release-interface contract, test plan, and tests/test_p0_signer_fencing_model.py. The test is explicitly MODEL-only: it checks a sequential fake-boundary stale-owner rejection. It does not exercise concurrent admission/transfer, a production key service, multi-host fencing, CometBFT release integration, or crash recovery. The workflow step runs that model test only when a runner is allocated.
 - Added an explicit unresolved decision section to P0_SIGNER_FENCING_DESIGN_CONTRACT.md and corresponding decision-dependent test oracles to P0_SIGNER_FENCING_TEST_PLAN.md. Option A drains durably admitted operations before transfer commit; Option B orders signing and transfer in one linearizable key-boundary transaction. Admission/release points, crash-UNKNOWN handling, caller-visible outcomes, consequences, and independent decision requirements are now explicit. Neither option is selected. Production signer implementation remains blocked until an independent protocol/security decision and formal freeze evidence exist.
 - Latest exact PR-head run before reconciliation: [44679154608](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44679154608), SHA 9615fac09cbfcf0522787ec4359fdf2657aa83f8. Job hnd-v02-tests (136098119459) concluded FAILURE with runner_id=0 and zero steps; dependent cometbft-single-node-smoke (136098132865) was SKIPPED with zero steps. No test step ran and no failed step name exists.
