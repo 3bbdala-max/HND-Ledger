@@ -178,3 +178,22 @@ Added a subprocess test that:
 This is a more faithful crash-window **model** than the earlier pending-marker-only test. It demonstrates a possible recovery protocol when an independent journal durably records an idempotent operation before the caller crashes. It still uses two local SQLite files on one machine, synthetic result bytes, and a test verifier that reads the model journal. It does not establish cryptographic signing, remote durability, tamper resistance, authenticated service identity, multi-host consistency, key isolation, or a production-grade exactly-once guarantee. The journal itself is not independently protected against an attacker who can alter its database.
 
 **Execution status:** The new subprocess crash-recovery test and the full SQLite model test file are **NOT RUN**. No manual Actions rerun was initiated.
+
+
+
+## 18. Protected key-service protocol contract (design added; not implemented)
+
+Added `docs/P0_PROTECTED_KEY_SERVICE_PROTOCOL_CONTRACT.md`. It specifies a design-only request envelope, durable key-service journal states, `SignOnce` and `GetOutcome` behavior, transfer fencing, attestation-bound reconciliation, anti-replay and anti-rollback requirements, and a crash/partition failure matrix.
+
+The contract requires the protected key boundary to serialize epoch authorization and signature release with ownership transfer. It explicitly rejects caller-supplied bytes, timeouts, ordinary database rows, and cached leases as proof. UNKNOWN remains blocked unless the exact original outcome is recovered and authenticated.
+
+This is a written contract only. No service implementation, authenticated transport, key custody, cryptographic attestation, journal protection, anti-rollback mechanism, multi-host consistency, or real key-boundary test has been added. The contract does not establish exactly-once execution or production readiness.
+
+**Execution status:** Documentation-only change. No test was run by this documentation change. The existing SQLite model suite remains unexecuted in the repository environment.
+
+
+## 19. CI observation for protocol-contract commit
+
+GitHub Actions run `44802206935` was associated with the protocol-contract commit `02599868441135a7a5debb5176ed556b9d065707`. The `hnd-v02-tests` job completed with `failure`; `cometbft-single-node-smoke` completed with `skipped`. The job response contained no step records, so this observation does not identify a test assertion failure and does not prove that repository tests executed. No manual rerun was initiated.
+
+The failure is associated with this exact commit and must not be represented as a failure of the newly written protocol document's content. The CI initialization/configuration failure remains unresolved pending actionable job logs or step-level evidence.
