@@ -266,6 +266,72 @@ class SQLiteOptionAModel:
         return row[:5] + (bytes(row[5]) if row[5] is not None else None,)
 
 
+class IndependentKeyJournalModel:
+    """Separate SQLite journal standing in for an external key service.
+
+    Results are synthetic markers. This class models durable idempotency and
+    recovery only; it is not a cryptographic signer or trusted key custody.
+    """
+    def __init__(self, path):
+        self.db = sqlite3.connect(str(path), timeout=5, isolation_level=None)
+        self.db.execute("PRAGMA journal_mode = WAL")
+        self.db.execute("""
+            CREATE TABLE IF NOT EXISTS key_operations (
+                request_id TEXT PRIMARY KEY,
+                owner TEXT NOT NULL,
+                epoch INTEGER NOT NULL,
+                digest TEXT NOT NULL,
+                result BLOB NOT NULL
+            )
+        """)
+
+    def close(self):
+        self.db.close()
+
+    def execute_once(self, request_id, owner, epoch, digest):
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.db.execute(
+                """SELECT owner, epoch, digest, result
+                   FROM key_operations WHERE request_id=?""",
+                (request_id,),
+            ).fetchone()
+            if row is not None:
+                if row[:3] != (owner, epoch, digest):
+                    raise Fenced("key journal request identity conflict")
+                self.db.execute("COMMIT")
+                return bytes(row[3])
+            result = (
+                f"KEY-JOURNAL-MODEL-ONLY:{owner}:{epoch}:{request_id}:{digest}"
+                .encode()
+            )
+            self.db.execute(
+                """INSERT INTO key_operations
+                   (request_id, owner, epoch, digest, result)
+                   VALUES(?, ?, ?, ?, ?)""",
+                (request_id, owner, epoch, digest, sqlite3.Binary(result)),
+            )
+            self.db.execute("COMMIT")
+            return result
+        except Exception:
+            if self.db.in_transaction:
+                self.db.execute("ROLLBACK")
+            raise
+
+    def get(self, request_id):
+        return self.db.execute(
+            """SELECT owner, epoch, digest, result
+               FROM key_operations WHERE request_id=?""",
+            (request_id,),
+        ).fetchone()
+
+    def count(self, request_id):
+        return self.db.execute(
+            "SELECT COUNT(*) FROM key_operations WHERE request_id=?",
+            (request_id,),
+        ).fetchone()[0]
+
+
 class SQLiteOptionATests(unittest.TestCase):
     def setUp(self):
         self.tmp = __import__("tempfile").TemporaryDirectory()
@@ -405,6 +471,60 @@ os._exit(23)
         with self.assertRaises(TransferBlocked):
             self.model.commit_transfer()
 
+
+    def test_external_journal_recovers_after_crash_before_main_commit(self):
+        journal_path = self.path + ".external-key-journal.sqlite3"
+        child_code = r"""
+import os
+import runpy
+import sys
+ns = runpy.run_path(sys.argv[1])
+Model = ns["SQLiteOptionAModel"]
+Journal = ns["IndependentKeyJournalModel"]
+model = Model(sys.argv[2])
+journal = Journal(sys.argv[3])
+model.admit(owner="A", epoch=1, request_id="external-crash", digest="payload")
+model.begin_key_operation("external-crash")
+journal.execute_once("external-crash", "A", 1, "payload")
+os._exit(24)
+"""
+        script = __import__("pathlib").Path(__file__).resolve()
+        child = subprocess.run(
+            [sys.executable, "-c", child_code, str(script), self.path, journal_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(child.returncode, 24, child.stderr)
+        self.model.close()
+        self.model = SQLiteOptionAModel(self.path)
+        journal = IndependentKeyJournalModel(journal_path)
+        try:
+            self.assertEqual(
+                self.model.operation("external-crash")[4],
+                "KEY_OPERATION_PENDING",
+            )
+            recorded = journal.get("external-crash")
+            self.assertEqual(recorded[:3], ("A", 1, "payload"))
+            evidence = bytes(recorded[3])
+
+            def verify(rid, owner, epoch, digest, result):
+                entry = journal.get(rid)
+                return (
+                    entry is not None
+                    and entry[:3] == (owner, epoch, digest)
+                    and bytes(entry[3]) == result
+                )
+
+            recovered = journal.execute_once(
+                "external-crash", "A", 1, "payload"
+            )
+            self.assertEqual(recovered, evidence)
+            self.assertEqual(journal.count("external-crash"), 1)
+            self.model.mark_unknown("external-crash")
+            self.model.begin_transfer("B")
+            self.model.reconcile_committed("external-crash", evidence, verify)
+            self.assertEqual(self.model.commit_transfer(), ("B", 2))
+        finally:
+            journal.close()
 
     def test_unknown_blocked_cannot_be_restarted_as_a_fresh_key_operation(self):
         self.model.admit(owner="A", epoch=1, request_id="unknown-retry", digest="d")
