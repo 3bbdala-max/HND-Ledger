@@ -128,3 +128,15 @@ Added one subprocess test to the SQLite model suite. A child Python process writ
 This is process-level evidence for persistence of the already-committed pending marker across abrupt process exit. It does **not** simulate a cryptographic key operation occurring before the crash, prove whether a signature escaped the key boundary, or validate independent reconciliation evidence. It must not be described as a crash-after-key test.
 
 **Execution status:** This subprocess test, like the three independent-connection additions, is **NOT RUN** in this work session. No manual Actions rerun was requested or performed. Any automatically triggered workflow result must be inspected against its exact head SHA and actual job steps before being treated as test evidence.
+
+
+## 13. Unknown-state retry and reconciliation-conflict cases (source added; not executed)
+
+Added two further MODEL-only tests:
+
+- An `UNKNOWN_BLOCKED` request cannot be restarted as a fresh key operation and cannot be committed through the synthetic-signature path. It remains blocked pending reconciliation.
+- Reconciliation of an already committed request is idempotent only for the exact previously stored result; conflicting result bytes are rejected.
+
+These tests check state-machine behavior only. They do not authenticate the party supplying reconciliation evidence. The model's `reconcile_committed` method still accepts caller-supplied non-empty bytes as fixture evidence; a production implementation must replace this with independently verifiable evidence from the protected key boundary or a trusted durable key-service journal. Never treat caller-provided bytes as proof that a signature was or was not emitted.
+
+**Execution status:** Both tests are added to the branch but **NOT RUN**. No manual workflow rerun was initiated.
