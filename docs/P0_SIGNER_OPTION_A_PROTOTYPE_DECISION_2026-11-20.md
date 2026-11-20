@@ -93,6 +93,14 @@ It covers deterministic sign-wins/drain ordering, transfer-before-admission, UNK
 
 **Execution status:** NOT RUN in this work session. The file is source only; no test result is claimed. It uses in-memory state and synthetic byte markers, so even a passing run would establish MODEL behavior only. It does not demonstrate durable storage, cryptography, process-crash recovery, distributed coordination, a protected key boundary, or CometBFT integration.
 
-## 9. Release gate
+## 9. SQLite persistence-model artifact and local check
+
+Added `tests/test_p0_signer_option_a_sqlite_model.py`, a SQLite-backed, single-process MODEL-only prototype. It persists ownership epoch, transfer target, admitted operation identity, operation status, and synthetic result bytes. Its five test cases cover transfer drain across reopen, UNKNOWN_BLOCKED persistence/reconciliation across reopen, idempotent retry during drain, committed-result retry after reopen, and request-ID payload-reuse rejection.
+
+A separate local Python/SQLite harness exercising the same five state-transition scenarios completed **5/5 passing** in this work session. This was not execution of the checked-in repository test file: the repository could not be cloned into the local runtime because outbound GitHub access was unavailable. The checked-in test file itself remains **NOT RUN**, and no GitHub Actions run was triggered. The local harness is supporting model evidence only, not repository CI evidence.
+
+The SQLite model still has no real cryptographic key operation, no independent verification of reconciliation evidence, no durable external key-service journal, no multi-process/multi-host authority, no process-kill fault injection at the actual key boundary, no H/R/S consensus integration, and no CometBFT integration. SQLite transaction serialization in one local database does not prove distributed linearizability or production fencing.
+
+## 10. Release gate
 
 This record authorizes no production signing, no use of real keys or funds, no public network launch, no token issuance, and no merge to the main branch. The draft PR remains open for independent review. The next permitted engineering step is a disposable-key prototype and deterministic tests on the work branch, after review of this decision record.
