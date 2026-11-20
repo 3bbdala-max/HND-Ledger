@@ -306,5 +306,47 @@ class SQLiteOptionATests(unittest.TestCase):
             self.model.admit(owner="A", epoch=1, request_id="r", digest="changed")
 
 
+    def test_independent_connections_admission_wins_then_transfer_drains(self):
+        # Two SQLite connections share one file; no in-memory state is shared.
+        second = SQLiteOptionAModel(self.path)
+        try:
+            self.model.admit(owner="A", epoch=1, request_id="cross-1", digest="d1")
+            second.begin_transfer("B")
+            with self.assertRaises(TransferBlocked):
+                second.commit_transfer()
+            self.model.begin_key_operation("cross-1")
+            self.model.commit_synthetic_signature("cross-1")
+            self.assertEqual(second.commit_transfer(), ("B", 2))
+            self.assertEqual(self.model.ownership(), ("B", 2))
+        finally:
+            second.close()
+
+    def test_independent_connections_transfer_wins_before_new_admission(self):
+        second = SQLiteOptionAModel(self.path)
+        try:
+            self.model.begin_transfer("B")
+            with self.assertRaises(Fenced):
+                second.admit(owner="A", epoch=1, request_id="cross-late", digest="d")
+            self.assertEqual(second.commit_transfer(), ("B", 2))
+            with self.assertRaises(Fenced):
+                self.model.admit(owner="A", epoch=1, request_id="cross-stale", digest="d")
+        finally:
+            second.close()
+
+    def test_sqlite_immediate_write_lock_serializes_independent_connections(self):
+        # Exercise the database lock itself, not a Python mutex. The second
+        # connection must fail to acquire a writer lock while the first holds it.
+        second = sqlite3.connect(self.path, timeout=0.05, isolation_level=None)
+        try:
+            self.model.db.execute("BEGIN IMMEDIATE")
+            with self.assertRaises(sqlite3.OperationalError):
+                second.execute("BEGIN IMMEDIATE")
+            self.model.db.execute("ROLLBACK")
+            second.execute("BEGIN IMMEDIATE")
+            second.execute("ROLLBACK")
+        finally:
+            second.close()
+
+
 if __name__ == "__main__":
     unittest.main()
