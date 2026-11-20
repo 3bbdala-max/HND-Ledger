@@ -197,3 +197,20 @@ This is a written contract only. No service implementation, authenticated transp
 GitHub Actions run `44802206935` was associated with the protocol-contract commit `02599868441135a7a5debb5176ed556b9d065707`. The `hnd-v02-tests` job completed with `failure`; `cometbft-single-node-smoke` completed with `skipped`. The job response contained no step records, so this observation does not identify a test assertion failure and does not prove that repository tests executed. No manual rerun was initiated.
 
 The failure is associated with this exact commit and must not be represented as a failure of the newly written protocol document's content. The CI initialization/configuration failure remains unresolved pending actionable job logs or step-level evidence.
+
+
+## 20. Protected key-service protocol contract model tests (source added; not executed)
+
+Added `tests/test_p0_key_service_protocol_contract_model.py` with ten deterministic MODEL-only cases covering:
+- identical request retry returns the stored synthetic result without another modeled key operation;
+- request-ID reuse with changed identity is rejected;
+- stale epoch and replayed nonce are rejected before modeled key use;
+- UNKNOWN cannot initiate another modeled key operation;
+- missing, rejected, or identity-mismatched evidence cannot reconcile;
+- valid fixture evidence recovers the original result without another modeled key operation;
+- ownership transfer remains blocked while an old-epoch request is unresolved;
+- an old owner is rejected after the model advances the epoch.
+
+The fixture is an in-memory Python state machine. Its signature and attestation values are synthetic, and its verifier is injected by each test. It is not a cryptographic signer, authenticated service, durable journal, HSM, process-crash test, multi-host race test, or proof of production fencing. These tests establish only the behavior of this small model if they are executed and pass.
+
+**Execution status:** Source added in commit `233b6e2345fd96a70b9d6cab6d84906d3c6f6710`; tests have not been run in this work session. GitHub Actions lookup for this exact SHA returned no workflow runs at the time of inspection. No manual rerun was initiated.
