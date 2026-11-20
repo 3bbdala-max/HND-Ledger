@@ -382,5 +382,30 @@ os._exit(23)
             self.model.commit_transfer()
 
 
+    def test_unknown_blocked_cannot_be_restarted_as_a_fresh_key_operation(self):
+        self.model.admit(owner="A", epoch=1, request_id="unknown-retry", digest="d")
+        self.model.begin_key_operation("unknown-retry")
+        self.model.mark_unknown("unknown-retry")
+        with self.assertRaises(UnknownBlocked):
+            self.model.begin_key_operation("unknown-retry")
+        with self.assertRaises(UnknownBlocked):
+            self.model.commit_synthetic_signature("unknown-retry")
+        self.assertEqual(
+            self.model.operation("unknown-retry")[4], "UNKNOWN_BLOCKED"
+        )
+
+    def test_reconciliation_rejects_conflicting_result_after_commit(self):
+        self.model.admit(owner="A", epoch=1, request_id="reconcile-conflict", digest="d")
+        self.model.begin_key_operation("reconcile-conflict")
+        exact = self.model.commit_synthetic_signature("reconcile-conflict")
+        self.assertEqual(
+            self.model.reconcile_committed("reconcile-conflict", exact), exact
+        )
+        with self.assertRaises(Fenced):
+            self.model.reconcile_committed(
+                "reconcile-conflict", b"DIFFERENT-FIXTURE-RESULT"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
