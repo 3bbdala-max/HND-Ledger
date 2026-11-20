@@ -173,26 +173,37 @@ class SQLiteOptionAModel:
         """
         if not evidence or not callable(verifier):
             raise UnknownBlocked("verified evidence and verifier are required")
+        observed = self.db.execute(
+            """SELECT owner, epoch, digest, status, signature
+               FROM operations WHERE request_id=?""",
+            (request_id,),
+        ).fetchone()
+        if observed is None:
+            raise KeyError(request_id)
+        owner, epoch, digest, status, stored = observed
+        if status not in ("UNKNOWN_BLOCKED", "COMMITTED"):
+            raise UnknownBlocked("operation is not awaiting reconciliation")
+        accepted = verifier(
+            request_id, owner, epoch, digest, bytes(evidence)
+        )
+        if accepted is not True:
+            raise UnknownBlocked("evidence verifier rejected result")
         with self._write_tx():
-            row = self.db.execute(
+            current = self.db.execute(
                 """SELECT owner, epoch, digest, status, signature
                    FROM operations WHERE request_id=?""",
                 (request_id,),
             ).fetchone()
-            if row is None:
+            if current is None:
                 raise KeyError(request_id)
-            owner, epoch, digest, status, stored = row
-            accepted = verifier(
-                request_id, owner, epoch, digest, bytes(evidence)
-            )
-            if accepted is not True:
-                raise UnknownBlocked("evidence verifier rejected result")
-            if status == "COMMITTED":
-                if bytes(stored) != bytes(evidence):
+            if current[:3] != observed[:3]:
+                raise Fenced("operation identity changed during verification")
+            if current[3] == "COMMITTED":
+                if bytes(current[4]) != bytes(evidence):
                     raise Fenced("reconciliation conflicts with committed result")
-                return bytes(stored)
-            if status != "UNKNOWN_BLOCKED":
-                raise UnknownBlocked("operation is not awaiting reconciliation")
+                return bytes(current[4])
+            if current[3] != "UNKNOWN_BLOCKED":
+                raise UnknownBlocked("operation state changed during verification")
             self.db.execute(
                 """UPDATE operations SET status='COMMITTED', signature=?
                    WHERE request_id=?""",
