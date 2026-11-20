@@ -84,6 +84,15 @@ This recommendation does not resolve production governance. Before production im
 
 Option B is not selected for this prototype. It may be reconsidered only if a protected key service can demonstrate one genuinely linearizable signing/transfer boundary; wrapping a separate HSM call in an ordinary database transaction is not sufficient.
 
-## 8. Release gate
+## 8. Model artifact and evidence status
+
+A separate MODEL-only reference test file has been added:
+`tests/test_p0_signer_option_a_model.py`.
+
+It covers deterministic sign-wins/drain ordering, transfer-before-admission, UNKNOWN_BLOCKED after a simulated key operation, reconciliation using an externally supplied exact-result fixture, and request-ID idempotency/payload mutation rejection.
+
+**Execution status:** NOT RUN in this work session. The file is source only; no test result is claimed. It uses in-memory state and synthetic byte markers, so even a passing run would establish MODEL behavior only. It does not demonstrate durable storage, cryptography, process-crash recovery, distributed coordination, a protected key boundary, or CometBFT integration.
+
+## 9. Release gate
 
 This record authorizes no production signing, no use of real keys or funds, no public network launch, no token issuance, and no merge to the main branch. The draft PR remains open for independent review. The next permitted engineering step is a disposable-key prototype and deterministic tests on the work branch, after review of this decision record.
