@@ -301,3 +301,14 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
   workflow-contract tests on the resulting commit, and have a repository administrator
   enable required protection for `main`. No production key, validator identity,
   trust root, or consensus rule was introduced.
+
+
+## 20. 2026-11-21 exact commit and CI reconciliation
+
+- Test-contract commit: [`edc77ff38cf472413f80c160852f1c4dc2436269`](https://github.com/3bbdala-max/HND-Ledger/commit/edc77ff38cf472413f80c160852f1c4dc2436269). It adds static regression checks for all-four-validator external remote signing, all-four-validator authenticated Noise signing, and full-SHA pinning of GitHub Actions references.
+- Governance-audit commit: [`3da0c5d0af332a0c0a282ec8790016ec045655b3`](https://github.com/3bbdala-max/HND-Ledger/commit/3da0c5d0af332a0c0a282ec8790016ec045655b3). It records the live unprotected status of `main` and `phase-0.2-planning` in the WP4.14 release-governance audit. Issue [#55](https://github.com/3bbdala-max/HND-Ledger/issues/55) tracks the administrator-side protection change.
+- Exact test-bearing commit run: [44879803540](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44879803540), SHA `edc77ff38cf472413f80c160852f1c4dc2436269`. Job `hnd-v02-tests` ID `136772370045` = `failure`, `runner_id=0`, zero steps. Dependent `cometbft-single-node-smoke` job ID `136772379863` = `skipped`, zero steps.
+- Exact governance-commit run: [44879839878](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44879839878), SHA `3da0c5d0af332a0c0a282ec8790016ec045655b3`. Job `hnd-v02-tests` ID `136772484661` = `failure`, `runner_id=0`, zero steps. Dependent `cometbft-single-node-smoke` job ID `136772493713` = `skipped`, zero steps.
+- Both runs failed before runner allocation. No checkout, setup, test, build, or smoke step executed; there is no failed step name. No test pass is claimed. The static regression additions are therefore **not yet executed**.
+- Current open blockers: issue #52 / draft PR #53 (production signer release fencing and independent anti-double-sign authority); issue #55 (branch protection); draft PR #54 (documentation-only supply-chain reconciliation); Actions runner/account usage block; independent protocol/VSP review and formal freeze. No production signing, public network, token issuance, release, or `main` change is authorized.
+- Next priority: restore GitHub Actions usage/runner allocation and then execute the exact-head CI; in parallel, the repository administrator must apply the protection policy tracked in #55. Continue to keep signer-release implementation blocked until the normative authority/linearization decision and independent review exist.
