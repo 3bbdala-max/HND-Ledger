@@ -271,3 +271,33 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Latest completed exact-HEAD run before this documentation-only commit: [44517582867](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44517582867), SHA `9c35bea20724f17b855d6bb5f4ecc00c3f1f4156`; `hnd-v02-tests` job `135537501314` = FAILURE, runner ID 0, zero steps; `cometbft-single-node-smoke` job `135537523147` = SKIPPED, zero steps. No test step ran and no failed step name exists. The new documentation commit has not yet appeared in the Actions run listing at register-update time; do not attribute prior CI to the new SHA.
 - Production P0 remains open: actual FilePV multi-process dual-sign reproduction and signer authorization TOCTOU require a linearized gate at the cryptographic key-release boundary. Remote lease, cached readiness, caller-side boolean, host-local lock, or synthetic in-memory anchor is not an acceptable substitute. Enforcement/custody choice remains subject to independent security review and explicit authority decision.
 - No source, workflow, test, key, signer process, or runtime configuration changed. No protocol choice was made. Next priority: obtain a real Actions runner allocation and then run the configured reference suites; keep production signer work blocked until key custody and the actual signature-release enforcement design are independently approved.
+
+
+## 19. 2026-11-21 branch governance and four-validator CI contract
+
+- Fresh branch reads at baseline HEAD `113aa400cf0b3255a9123250a98b0eb543d1b9ac` returned `protected=false`,
+  `protection.enabled=false`, and required-check enforcement `off` for both
+  `main` and `phase-0.2-planning`. The repository is private and `main` is the
+  default branch. This supersedes the earlier uncertainty in the 2026-11-05 governance
+  audit. No branch settings were changed; administrator action is tracked in issue #55.
+- Exact latest baseline run: [44517832631](https://github.com/3bbdala-max/HND-Ledger/actions/runs/44517832631)
+  on `113aa400cf0b3255a9123250a98b0eb543d1b9ac`. Job `hnd-v02-tests` (ID `135538353978`) concluded
+  `failure` with `runner_id=0` and zero steps. Dependent job
+  `cometbft-single-node-smoke` (ID `135538374896`) was `skipped`, also with
+  zero steps. No test command executed and there is no failed step name. The current
+  run API does not expose the account billing cause; the previously documented Actions
+  usage block remains the leading external dependency, not a code-failure diagnosis.
+- The current workflow already invokes the four-validator external remote-signer smoke
+  with `--all-remote-signers` and the four-validator authenticated Noise smoke with
+  `--all-remote-signers`. Added static regression checks in
+  `tests/test_workflow_contract.py` to preserve both all-validator paths and require
+  every GitHub Action reference in the HND workflow to be a full 40-character commit SHA.
+  These checks are configured coverage only until an Actions runner executes them.
+- The signer race and release-authorization P0 remain open under issue #52 and draft PR #53.
+  The supply-chain reconciliation remains documentation-only under draft PR #54.
+  The protocol specification and validator profile remain unapproved pending independent
+  review and formal freeze.
+- Next priority: restore permitted GitHub Actions runner allocation, execute the new
+  workflow-contract tests on the resulting commit, and have a repository administrator
+  enable required protection for `main`. No production key, validator identity,
+  trust root, or consensus rule was introduced.

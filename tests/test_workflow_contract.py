@@ -56,5 +56,58 @@ class WorkflowContractTests(unittest.TestCase):
         )
 
 
+    def test_external_and_noise_smokes_cover_all_four_remote_signers(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        commands = [
+            line.strip()
+            for line in workflow.splitlines()
+            if line.strip().startswith(
+                "run: python scripts/cometbft_v040_four_validator_network_smoke.py"
+            )
+        ]
+        external = [
+            line for line in commands
+            if "--remote-signer-binary" in line
+            and "--remote-only-binary" in line
+        ]
+        noise = [
+            line for line in commands
+            if "--noise-remote-signer-binary" in line
+            and "--remote-only-binary" in line
+        ]
+        self.assertTrue(
+            any("--all-remote-signers" in line for line in external),
+            "external remote-signer smoke must exercise all four validators",
+        )
+        self.assertTrue(
+            any("--all-remote-signers" in line for line in noise),
+            "authenticated Noise smoke must exercise all four validators",
+        )
+
+    def test_workflow_actions_are_pinned_to_full_commit_shas(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        references = []
+        for line in workflow.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("uses:"):
+                reference = stripped.split("@", 1)[1].split()[0]
+                self.assertRegex(
+                    reference,
+                    r"^[0-9a-f]{40}$",
+                    msg=f"GitHub Action must use a full commit SHA: {stripped}",
+                )
+                references.append(reference)
+        self.assertGreater(len(references), 0)
+
 if __name__ == "__main__":
     unittest.main()
