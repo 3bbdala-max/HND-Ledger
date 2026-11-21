@@ -5,7 +5,7 @@ HND-Ledger is an experimental educational project for studying a signed transact
 ## Current status
 
 - **Archived baseline:** version 0.1, described in the project's master archive.
-- **Current repository:** version 0.2 design documentation is being established; executable implementation and reproducible CI tests are not yet present.
+- **Current repository:** version 0.2 design documentation and an incomplete Python ledger prototype are present. The prototype does not yet conform to the canonical CBOR, domain-separation, and account-ID rules in the v0.2 specification; CI evidence is currently failing and must be diagnosed.
 - **Current design baseline:** account/balance model, Ed25519 signatures, SHA-256, deterministic CBOR, integer smallest units, and a 1,000,000 HND maximum-supply design target.
 - **Next implementation target:** a deterministic local ledger. Distributed consensus and networking remain separate, gated work.
 - **Production status:** not production-ready; no public network, exchange, or investment use is authorized or implied.
@@ -17,7 +17,7 @@ The version 0.1 archive reports 1,212 core tests, 3,000 sequential transfer oper
 - [Architecture and implementation gates](docs/ARCHITECTURE.md)
 - [Version 0.2 protocol baseline](docs/PROTOCOL.md)
 - [Cryptographic and canonical encoding profile](docs/CRYPTO_FORMAT.md)
-- [Reproducible test plan](docs/TEST_PLAN.md)
+- [Reproducible test plan](docs/TEST_PLAN.md)\n- [v0.2 deterministic golden vectors](docs/V0_2_GOLDEN_VECTORS.md)\n- [Implementation gap audit (2026-11-21)](docs/IMPLEMENTATION_GAP_AUDIT_2026-11-21.md)
 
 ## Development principles
 
