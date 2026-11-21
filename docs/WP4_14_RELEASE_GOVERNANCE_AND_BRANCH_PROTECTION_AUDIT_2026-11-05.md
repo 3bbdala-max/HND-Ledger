@@ -68,3 +68,33 @@ These are open verification items, not all necessarily code defects. Repository 
 **Release governance status: NOT VERIFIED / NOT APPROVED.**
 
 No release or tag was created. No branch-protection or ruleset setting was changed. No workflow, source, or test file was modified. This report is a metadata/configuration audit only and is not a security certification or production launch approval.
+
+
+## 7. Fresh branch metadata reconciliation — 2026-11-21
+
+A fresh GitHub repository metadata read on 2026-11-21 returned the following for both
+`main` and `phase-0.2-planning`:
+
+| Branch | `protected` | `protection.enabled` | Required status checks |
+|---|---:|---:|---|
+| `main` | `false` | `false` | enforcement `off`; no contexts/checks |
+| `phase-0.2-planning` | `false` | `false` | enforcement `off`; no contexts/checks |
+
+The repository metadata identifies the repository as private and `main` as its default
+branch. This fresh branch-object response supersedes the earlier uncertainty in §2 about
+whether protection was enabled: the current API representation explicitly reports both
+branches as unprotected. No branch setting was changed by this review.
+
+### Required administrator action
+
+- Protect `main` against direct pushes, force pushes, and deletion.
+- Require pull requests and at least one independent review before merging.
+- Require the relevant successful HND CI checks on the exact PR head; do not accept a
+  job that never obtained a runner as a successful check.
+- Dismiss stale approvals after new commits and require review conversations to be resolved.
+- Decide explicitly whether `phase-0.2-planning` should be PR-only. Until that policy is
+  chosen, preserve the current engineering workflow but prevent force-push and deletion.
+
+The available repository connector exposes branch-protection reads but no branch-protection
+write operation. These settings therefore remain an administrator-side dependency and are
+tracked separately as issue #55. This audit does not claim that protection has been enabled.
