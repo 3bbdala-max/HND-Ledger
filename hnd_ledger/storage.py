@@ -1,4 +1,4 @@
-"""Crash-safe local SQLite storage with full deterministic chain replay.
+"""Durable local SQLite storage with full deterministic chain replay.
 
 This is a single-host reference store. SQLite transactions and FULL synchronous
 WAL mode provide atomic local commits; this module is not distributed consensus.
