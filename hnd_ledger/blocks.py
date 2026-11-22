@@ -189,13 +189,6 @@ def canonical_block_header(
     ])
 
 
-def block_hash(header: bytes) -> bytes:
-    """Return SHA-256(HND-BLOCK-V2\0 || canonical block-header bytes)."""
-    if not isinstance(header, bytes) or not header:
-        raise EncodingError("block header must be non-empty bytes")
-    return hashlib.sha256(BLOCK_DOMAIN + header).digest()
-
-
 def create_genesis_block(
     chain_id: bytes,
     allocations: Mapping[str, int],
