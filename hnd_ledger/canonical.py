@@ -126,12 +126,11 @@ def signed_transaction(
     signature: bytes,
 ) -> bytes:
     """Canonical eight-element complete signed transaction array."""
-    payload = transaction_payload(chain_id, sender, recipient, amount, nonce)
+    transaction_payload(
     public_key = _fixed_bytes("public_key", public_key, PUBLIC_KEY_SIZE)
     signature = _fixed_bytes("signature", signature, SIGNATURE_SIZE)
     # The six payload members are already encoded. Rebuild the array with the
     # public key and signature appended, preserving the exact positional schema.
-    prefix = payload[:-1] if False else None
     return encode_array([
         encode_uint(PROTOCOL_VERSION),
         encode_bytes(chain_id),
