@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
-
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
+
+from .canonical import account_id
 
 
 def generate_keypair() -> tuple[Ed25519PrivateKey, bytes]:
@@ -22,30 +23,30 @@ def generate_keypair() -> tuple[Ed25519PrivateKey, bytes]:
 
 
 def address_from_public_key(public_key: bytes) -> str:
-    """Derive a lowercase hex account address from a raw Ed25519 public key."""
-    if not isinstance(public_key, bytes) or len(public_key) != 32:
-        raise ValueError("public_key must be exactly 32 raw bytes")
-    return hashlib.sha256(public_key).hexdigest()
+    """Derive the v0.2 lowercase hex account ID from a raw Ed25519 public key."""
+    return account_id(public_key).hex()
 
 
-def sign_transaction(private_key: Ed25519PrivateKey, payload: bytes) -> str:
-    """Sign canonical transaction payload bytes; return a hex signature."""
+def sign_transaction(private_key: Ed25519PrivateKey, message: bytes) -> str:
+    """Sign the exact domain-separated v0.2 message; return a hex signature."""
     if not isinstance(private_key, Ed25519PrivateKey):
         raise TypeError("private_key must be an Ed25519PrivateKey")
-    return private_key.sign(payload).hex()
+    if not isinstance(message, bytes):
+        raise TypeError("message must be bytes")
+    return private_key.sign(message).hex()
 
 
-def verify_signature(public_key: bytes, payload: bytes, signature: str) -> bool:
-    """Return False for malformed keys/signatures or invalid signatures."""
-    try:
-        Ed25519PublicKey.from_public_bytes(public_key).verify(
-            bytes.fromhex(signature), payload
-        )
-        return True
-    except (ValueError, TypeError):
+def verify_signature(public_key: bytes, message: bytes, signature: str) -> bool:
+    """Return False for malformed keys/signatures or an invalid Ed25519 signature."""
+    if not isinstance(public_key, bytes) or len(public_key) != 32:
         return False
-    except Exception as exc:
-        # cryptography's InvalidSignature is intentionally converted to False.
-        if exc.__class__.__name__ == "InvalidSignature":
+    if not isinstance(message, bytes) or not isinstance(signature, str):
+        return False
+    try:
+        raw_signature = bytes.fromhex(signature)
+        if len(raw_signature) != 64:
             return False
-        raise
+        Ed25519PublicKey.from_public_bytes(public_key).verify(raw_signature, message)
+        return True
+    except (ValueError, TypeError, InvalidSignature):
+        return False

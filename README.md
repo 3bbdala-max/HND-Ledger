@@ -4,20 +4,43 @@ HND-Ledger is an experimental educational project for studying a signed transact
 
 ## Current status
 
-- **Archived baseline:** version 0.1, described in the project's master archive.
-- **Current repository:** version 0.2 design documentation is being established; executable implementation and reproducible CI tests are not yet present.
-- **Current design baseline:** account/balance model, Ed25519 signatures, SHA-256, deterministic CBOR, integer smallest units, and a 1,000,000 HND maximum-supply design target.
-- **Next implementation target:** a deterministic local ledger. Distributed consensus and networking remain separate, gated work.
+- **Archived baseline:** version 0.1 is preserved in the project archive.
+- **Version 0.2 working branch:** `work/v02-canonical-transaction-core`.
+- **Implemented on this branch:** restricted deterministic CBOR encoding and strict transaction decoding; domain-separated transaction identifiers and Ed25519 signatures; deterministic genesis, state roots, transaction Merkle roots, canonical block headers, local block execution with independent replay verification, and a SQLite single-host chain store with atomic block append and full replay validation.
+- **Test evidence:** golden byte/hash vectors and unit tests are committed. A passing CI result for the current branch has not yet been independently confirmed.
+- **Not yet implemented:** independently tested crash/disaster recovery and backup/restore procedures, authenticated snapshots, distributed consensus, peer networking, mempool policy, or production key management.
 - **Production status:** not production-ready; no public network, exchange, or investment use is authorized or implied.
 
-The version 0.1 archive reports 1,212 core tests, 3,000 sequential transfer operations, and a displayed total supply of 1,000,000 units. These are archive-reported results and have not been independently reproduced from the current GitHub repository.
+The version 0.1 archive reports 1,212 core tests, 3,000 sequential transfer operations, and a displayed total supply of 1,000,000 units. These are archive-reported results and have not been independently reproduced from the current repository.
 
-## Project documents
+## Protocol baseline
 
+Version 0.2 uses an account/balance model, Ed25519 signatures, SHA-256 with domain separation, deterministic CBOR arrays, a 32-byte chain ID, integer smallest units, and a 1,000,000 HND maximum-supply design target. The local chain ID is test-only.
+
+See:
+- [Strict transaction decoder profile](docs/V02_STRICT_DECODER.md)
+- [Deterministic genesis and block-header profile](docs/V02_GENESIS_AND_BLOCKS.md)
+- [Block execution and independent replay verification](docs/V02_BLOCK_EXECUTION.md)
+- [Durable SQLite chain storage and replay verification](docs/V02_DURABLE_STORAGE.md)
+- [Source provenance and ownership evidence](docs/PROVENANCE_AND_OWNERSHIP.md)
+- [Independent technical review and ownership-evidence protocol](docs/INDEPENDENT_REVIEW_PROTOCOL.md)
 - [Architecture and implementation gates](docs/ARCHITECTURE.md)
 - [Version 0.2 protocol baseline](docs/PROTOCOL.md)
 - [Cryptographic and canonical encoding profile](docs/CRYPTO_FORMAT.md)
-- [Reproducible test plan](docs/TEST_PLAN.md)
+- [Golden transaction vectors](docs/V02_GOLDEN_VECTORS.md)
+- [Implementation gap audit](docs/IMPLEMENTATION_GAP_AUDIT_2026-11-21.md)
+
+## Reproducing the current test profile
+
+```bash
+python -m pip install -r requirements.txt
+python -m pytest -q
+python -m hnd_ledger.vector_check
+python scripts/create_provenance_manifest.py --output evidence/SHA256-MANIFEST.json
+python scripts/create_provenance_manifest.py --verify evidence/SHA256-MANIFEST.json
+```
+
+The vector checker must print `"passed": true`; the manifest verifier must print `MANIFEST_OK`. Record the exact commit SHA and environment with any independent test report.
 
 ## Development principles
 
