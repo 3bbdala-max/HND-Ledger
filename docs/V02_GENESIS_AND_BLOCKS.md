@@ -75,3 +75,18 @@ A reviewer can reproduce the structures from the source and tests using Python a
 ## Explicit limitations
 
 This profile does not yet define transaction execution inside blocks, block acceptance rules, fork choice, validator selection, consensus, networking, durable storage, snapshots, or crash recovery. A block header and its hash alone do not prove that its transactions are valid or that its state root follows from execution. Those require the next state-transition and chain-verification layer.
+
+
+## Fixed golden vector
+
+For the test chain ID `484e442d4c4f43414c2d56320000000000000000000000000000000000000000` and allocations `00…01 = 10`, `00…02 = 20` (in smallest units), the implementation must produce:
+
+- Genesis ID: `5abf41e236488b231d109d1c0b5bddf4ae0bac2b4748e9e196cdd952d284876d`
+- State root: `c319d4a7c593c436537410399a7a2f2b755e92ffdad4bfccb478eba5d401f92a`
+- Genesis block hash: `de5c6f795a091c20b0a0f0e0ae2d73e4a0c66d3a00962deffd3dd3d7556bb3e9`
+
+For transaction IDs `11` repeated 32 bytes followed by `22` repeated 32 bytes, the ordered transaction Merkle root is:
+
+`c1f4d8d5a11caf4898b7f48c7ccbec0e52c774ea7576cd2ef3b36d4521b40774`
+
+These are test vectors for the current local v0.2 profile, not production network parameters.
