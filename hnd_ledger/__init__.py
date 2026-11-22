@@ -9,6 +9,7 @@ from .canonical import (
     transaction_payload,
 )
 from .crypto import address_from_public_key, generate_keypair, sign_transaction
+from .decoder import decode_signed_transaction, decode_transaction_payload
 from .ledger import Ledger, LedgerError, Transaction
 
 __all__ = [
@@ -18,6 +19,8 @@ __all__ = [
     "LedgerError",
     "Transaction",
     "account_id",
+    "decode_signed_transaction",
+    "decode_transaction_payload",
     "address_from_public_key",
     "generate_keypair",
     "sign_transaction",
