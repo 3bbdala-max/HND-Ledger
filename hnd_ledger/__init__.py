@@ -23,6 +23,7 @@ from .chain import ChainError, build_block, verify_block
 from .crypto import address_from_public_key, generate_keypair, sign_transaction
 from .decoder import decode_signed_transaction, decode_transaction_payload
 from .ledger import Ledger, LedgerError, Transaction
+from .storage import SQLiteChainStore, StorageError
 
 __all__ = [
     "EncodingError",
@@ -31,6 +32,8 @@ __all__ = [
     "verify_block",
     "LOCAL_CHAIN_ID",
     "Ledger",
+    "SQLiteChainStore",
+    "StorageError",
     "LedgerError",
     "Transaction",
     "account_id",
