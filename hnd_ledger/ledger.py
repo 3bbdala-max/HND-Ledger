@@ -76,11 +76,23 @@ class Transaction:
 class Ledger:
     """In-memory v0.2 ledger. Networking, blocks, and consensus are not included."""
 
-    def __init__(\n        self,\n        chain_id: bytes,\n        genesis_balances: Mapping[str, int],\n        nonces: Mapping[str, int] | None = None,\n    ):
+    def __init__(
+        self,
+        chain_id: bytes,
+        genesis_balances: Mapping[str, int],
+        nonces: Mapping[str, int] | None = None,
+    ):
         if not isinstance(chain_id, bytes) or len(chain_id) != 32:
             raise LedgerError("chain_id must be exactly 32 bytes")
         if not isinstance(genesis_balances, Mapping):
             raise LedgerError("genesis_balances must be a mapping")
+        if nonces is None:
+            nonces = {}
+        if not isinstance(nonces, Mapping):
+            raise LedgerError("nonces must be a mapping")
+        if set(nonces) - set(genesis_balances):
+            raise LedgerError("nonce map contains an account absent from balances")
+
         self.chain_id = chain_id
         self._balances: dict[str, int] = {}
         self._nonces: dict[str, int] = {}
@@ -93,8 +105,16 @@ class Ledger:
             total_supply += balance
             if total_supply > MAX_SUPPLY_UNITS:
                 raise LedgerError("genesis allocation exceeds maximum supply")
+            nonce = nonces.get(address, 0)
+            if (
+                isinstance(nonce, bool)
+                or not isinstance(nonce, int)
+                or nonce < 0
+                or nonce >= UINT64_MAX
+            ):
+                raise LedgerError("initial nonce must permit a checked uint64 increment")
             self._balances[address] = balance
-            self._nonces[address] = 0
+            self._nonces[address] = nonce
 
     @staticmethod
     def _validate_address(address: str) -> None:
