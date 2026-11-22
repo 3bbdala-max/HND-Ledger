@@ -20,7 +20,7 @@ If validation or insertion fails, the SQLite transaction is rolled back. WAL mod
 
 A new process can instantiate the store with the same database path, chain ID, and genesis allocations. `get_state()`, `get_tip()`, and `verify()` reconstruct and validate the chain by replay; they do not trust a cached balance snapshot.
 
-The stored transaction framing is deliberately simple: each canonical signed transaction is preceded by a four-byte big-endian length. Per-transaction, per-block, and transaction-count limits are enforced before decoding.
+The stored transaction framing is deliberately simple: each canonical signed transaction is preceded by a four-byte big-endian length. Per-transaction, per-block, and transaction-count limits are enforced before decoding. Heights are bounded to SQLite's signed 64-bit integer range even though the header encoding itself supports uint64.
 
 ## Reproduction
 
@@ -29,7 +29,7 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-The storage regression tests cover multi-block append, process-style close/reopen, deterministic replay, nonce continuity, invalid-block rollback, genesis mismatch, and persisted-hash tampering.
+The storage regression tests cover multi-block append, process-style close/reopen, deterministic replay, nonce continuity, invalid-block rollback, genesis mismatch, and persisted-hash tampering. They do not yet simulate abrupt process termination or power loss.
 
 ## Limitations and next gates
 
