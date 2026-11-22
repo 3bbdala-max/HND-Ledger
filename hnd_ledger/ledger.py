@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from .canonical import (
-    ACCOUNT_ID_SIZE,
-    LOCAL_CHAIN_ID,
     UINT64_MAX,
     EncodingError,
     account_id,
