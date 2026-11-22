@@ -226,10 +226,52 @@ def create_genesis_block(
     }
 
 
-def verify_block_hash(header: bytes, expected_hash: bytes) -> bool:
-    """Verify a supplied block hash against exact header bytes."""
-    return (
-        isinstance(expected_hash, bytes)
-        and len(expected_hash) == 32
-        and block_hash(header) == expected_hash
+def decode_block_header(encoded: bytes) -> dict[str, object]:
+    """Decode and strictly validate the canonical eight-field v0.2 header."""
+    fields = _decode_array(encoded, 8)
+    version, chain_id, height, timestamp, previous_hash, tx_root, root, count = fields
+    if version != PROTOCOL_VERSION:
+        raise EncodingError("unsupported block protocol version")
+    if not isinstance(chain_id, bytes) or len(chain_id) != 32:
+        raise EncodingError("block chain_id must be exactly 32 bytes")
+    for name, value in (
+        ("previous_hash", previous_hash),
+        ("transactions_root", tx_root),
+        ("state_root", root),
+    ):
+        if not isinstance(value, bytes) or len(value) != 32:
+            raise EncodingError(f"{name} must be exactly 32 bytes")
+    height = _uint("height", height)
+    timestamp = _uint("timestamp", timestamp)
+    count = _uint("transaction_count", count)
+    canonical = canonical_block_header(
+        chain_id, height, timestamp, previous_hash, tx_root, root, count
     )
+    if canonical != encoded:
+        raise EncodingError("block header is not canonical")
+    return {
+        "version": version,
+        "chain_id": chain_id,
+        "height": height,
+        "timestamp": timestamp,
+        "previous_hash": previous_hash,
+        "transactions_root": tx_root,
+        "state_root": root,
+        "transaction_count": count,
+    }
+
+
+def block_hash(header: bytes) -> bytes:
+    """Hash only a strictly decoded canonical block header."""
+    decode_block_header(header)
+    return hashlib.sha256(BLOCK_DOMAIN + header).digest()
+
+
+def verify_block_hash(header: bytes, expected_hash: bytes) -> bool:
+    """Verify a supplied block hash; malformed headers return False."""
+    if not isinstance(expected_hash, bytes) or len(expected_hash) != 32:
+        return False
+    try:
+        return block_hash(header) == expected_hash
+    except EncodingError:
+        return False
