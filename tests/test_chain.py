@@ -122,3 +122,13 @@ def test_ledger_rejects_nonce_for_missing_account(parent):
     _, balances, _ = parent
     with pytest.raises(ValueError, match="absent"):
         Ledger(LOCAL_CHAIN_ID, balances, {"ff" * 32: 1})
+
+def test_block_rejects_parent_state_not_committed_by_header(parent):
+    genesis, balances, nonces = parent
+    altered = dict(balances)
+    altered[SENDER] -= 1
+    with pytest.raises(ChainError, match="does not match"):
+        build_block(
+            genesis["header"], genesis["block_hash"],
+            altered, nonces, [], timestamp=1
+        )
