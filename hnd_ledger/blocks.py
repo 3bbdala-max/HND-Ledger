@@ -29,6 +29,7 @@ STATE_LEAF_DOMAIN = b"HND-STATE-LEAF-V2\x00"
 MERKLE_LEAF_DOMAIN = b"HND-MERKLE-LEAF-V2\x00"
 MERKLE_NODE_DOMAIN = b"HND-MERKLE-NODE-V2\x00"
 MERKLE_EMPTY_DOMAIN = b"HND-MERKLE-EMPTY-V2\x00"
+STATE_EMPTY_DOMAIN = b"HND-STATE-EMPTY-V2\x00"
 BLOCK_DOMAIN = b"HND-BLOCK-V2\x00"
 
 
@@ -139,7 +140,7 @@ def state_root(
         ])
         leaves.append(hashlib.sha256(STATE_LEAF_DOMAIN + record).digest())
     if not leaves:
-        return hashlib.sha256(MERKLE_EMPTY_DOMAIN).digest()
+        return hashlib.sha256(STATE_EMPTY_DOMAIN).digest()
     return _merkle_prehashed(leaves)
 
 
