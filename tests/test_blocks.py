@@ -94,3 +94,15 @@ def test_block_hash_rejects_noncanonical_header():
 def test_block_header_rejects_wrong_hash_width():
     with pytest.raises(EncodingError, match="32 bytes"):
         canonical_block_header(LOCAL_CHAIN_ID, 0, 0, b"bad", bytes(32), bytes(32), 0)
+
+
+def test_genesis_and_block_hash_golden_vector():
+    result = create_genesis_block(LOCAL_CHAIN_ID, {B: 20, A: 10})
+    assert result["genesis_id"].hex() == "5abf41e236488b231d109d1c0b5bddf4ae0bac2b4748e9e196cdd952d284876d"
+    assert result["state_root"].hex() == "c319d4a7c593c436537410399a7a2f2b755e92ffdad4bfccb478eba5d401f92a"
+    assert result["block_hash"].hex() == "de5c6f795a091c20b0a0f0e0ae2d73e4a0c66d3a00962deffd3dd3d7556bb3e9"
+
+
+def test_transaction_merkle_root_golden_vector():
+    txids = [bytes.fromhex("11" * 32), bytes.fromhex("22" * 32)]
+    assert merkle_root(txids).hex() == "c1f4d8d5a11caf4898b7f48c7ccbec0e52c774ea7576cd2ef3b36d4521b40774"
