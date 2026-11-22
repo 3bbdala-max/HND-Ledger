@@ -57,7 +57,7 @@ def test_ed25519_sign_and_verify_exact_message():
     message = signing_message(LOCAL_CHAIN_ID, sender, RECIPIENT, 1000, 7)
     signature = private_key.sign(message)
     private_key.public_key().verify(signature, message)
-    with pytest.raises(Exception):
+    with pytest.raises(InvalidSignature):
         private_key.public_key().verify(signature, message + b"!")
 
 
