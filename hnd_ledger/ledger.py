@@ -15,7 +15,7 @@ from .canonical import (
     signing_message,
     transaction_id,
 )
-from .crypto import address_from_public_key, verify_signature
+from .crypto import verify_signature
 
 MAX_SUPPLY_UNITS = 100_000_000_000_000
 ADDRESS_RE = re.compile(r"^[0-9a-f]{64}$")
