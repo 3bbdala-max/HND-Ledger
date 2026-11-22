@@ -6,9 +6,9 @@ HND-Ledger is an experimental educational project for studying a signed transact
 
 - **Archived baseline:** version 0.1 is preserved in the project archive.
 - **Version 0.2 working branch:** `work/v02-canonical-transaction-core`.
-- **Implemented on this branch:** restricted deterministic CBOR encoding and strict transaction decoding for v0.2; domain-separated account identifiers, transaction signing messages, and complete signed-transaction IDs; Ed25519 signature verification; an in-memory account ledger enforcing chain ID, amount, nonce, self-transfer, replay, and supply-cap rules.
+- **Implemented on this branch:** restricted deterministic CBOR encoding and strict transaction decoding; domain-separated transaction identifiers and Ed25519 signatures; deterministic genesis, state roots, transaction Merkle roots, canonical block headers, and local block execution with independent replay verification.
 - **Test evidence:** golden byte/hash vectors and unit tests are committed. A passing CI result for the current branch has not yet been independently confirmed.
-- **Not yet implemented:** transaction execution within blocks, full-chain validation, durable storage, backup/restore, distributed consensus, peer networking, or production key management.
+- **Not yet implemented:** multi-block chain validation, durable storage, backup/restore, distributed consensus, peer networking, mempool policy, or production key management.
 - **Production status:** not production-ready; no public network, exchange, or investment use is authorized or implied.
 
 The version 0.1 archive reports 1,212 core tests, 3,000 sequential transfer operations, and a displayed total supply of 1,000,000 units. These are archive-reported results and have not been independently reproduced from the current repository.
@@ -20,6 +20,7 @@ Version 0.2 uses an account/balance model, Ed25519 signatures, SHA-256 with doma
 See:
 - [Strict transaction decoder profile](docs/V02_STRICT_DECODER.md)
 - [Deterministic genesis and block-header profile](docs/V02_GENESIS_AND_BLOCKS.md)
+- [Block execution and independent replay verification](docs/V02_BLOCK_EXECUTION.md)
 - [Architecture and implementation gates](docs/ARCHITECTURE.md)
 - [Version 0.2 protocol baseline](docs/PROTOCOL.md)
 - [Cryptographic and canonical encoding profile](docs/CRYPTO_FORMAT.md)
