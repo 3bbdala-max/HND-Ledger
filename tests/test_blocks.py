@@ -50,6 +50,10 @@ def test_state_root_commits_to_balance_and_nonce():
     assert baseline != state_root({A: 10, B: 20}, {A: 1, B: 0})
 
 
+def test_empty_state_root_is_domain_separated_from_empty_transaction_root():
+    assert state_root({}) != merkle_root([])
+
+
 def test_state_root_rejects_nonce_for_unknown_account():
     with pytest.raises(EncodingError, match="absent"):
         state_root({A: 10}, {B: 1})
