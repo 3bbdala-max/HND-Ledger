@@ -102,8 +102,21 @@ def test_block_header_rejects_wrong_hash_width():
 
 def test_genesis_and_block_hash_golden_vector():
     result = create_genesis_block(LOCAL_CHAIN_ID, {B: 20, A: 10})
+    assert result["genesis_payload"].hex() == (
+        "83025820484e442d4c4f43414c2d56320000000000000000000000000000000000000000"
+        "8282582000000000000000000000000000000000000000000000000000000000000000010a"
+        "825820000000000000000000000000000000000000000000000000000000000000000214"
+    )
     assert result["genesis_id"].hex() == "5abf41e236488b231d109d1c0b5bddf4ae0bac2b4748e9e196cdd952d284876d"
     assert result["state_root"].hex() == "c319d4a7c593c436537410399a7a2f2b755e92ffdad4bfccb478eba5d401f92a"
+    assert result["header"].hex() == (
+        "88025820484e442d4c4f43414c2d563200000000000000000000000000000000"
+        "0000000000005820000000000000000000000000000000000000000000000000"
+        "00000000000000005820e915dc5e01273ce33c203835702fdf82ee0937b2baef"
+        "7c8bd4e89dc012603eb95820c319d4a7c593c436537410399a7a2f2b755e92ff"
+        "dad4bfccb478eba5d401f92a00"
+    )
+    assert len(result["header"]) == 141
     assert result["block_hash"].hex() == "de5c6f795a091c20b0a0f0e0ae2d73e4a0c66d3a00962deffd3dd3d7556bb3e9"
 
 
