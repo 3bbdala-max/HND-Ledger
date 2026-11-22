@@ -86,3 +86,34 @@ def test_replay_detects_tampered_persisted_block_hash(chain_setup):
     assert not store.verify()
     with pytest.raises(StorageError):
         store.get_state()
+
+
+def test_process_termination_rolls_back_uncommitted_block(chain_setup):
+    import subprocess
+    import sys
+
+    path, key, pub, sender, recipient, balances = chain_setup
+    store = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
+    store.append_block([make_tx(key, pub, sender, recipient, 10, 0)], 1)
+
+    child = """
+import os
+import sqlite3
+import sys
+
+connection = sqlite3.connect(sys.argv[1], isolation_level=None)
+connection.execute("PRAGMA journal_mode = WAL")
+connection.execute("PRAGMA synchronous = FULL")
+connection.execute("BEGIN IMMEDIATE")
+connection.execute(
+    "INSERT INTO blocks(height, header, block_hash, transactions) VALUES(?, ?, ?, ?)",
+    (2, b"partial-header", bytes(32), b"partial-transactions"),
+)
+os._exit(23)
+"""
+    result = subprocess.run([sys.executable, "-c", child, str(path)], check=False)
+    assert result.returncode == 23
+
+    recovered = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
+    assert recovered.verify()
+    assert recovered.get_tip()["height"] == 1
