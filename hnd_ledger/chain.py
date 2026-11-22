@@ -49,6 +49,13 @@ def build_block(
 
     chain_id = parent["chain_id"]
     try:
+        supplied_parent_state_root = state_root(balances, nonces)
+    except EncodingError as exc:
+        raise ChainError("invalid supplied parent state") from exc
+    if supplied_parent_state_root != parent["state_root"]:
+        raise ChainError("supplied parent state does not match parent header state_root")
+
+    try:
         ledger = Ledger(chain_id, balances, nonces)
         txids: list[bytes] = []
         for transaction in transactions:
