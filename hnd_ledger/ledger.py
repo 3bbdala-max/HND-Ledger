@@ -76,7 +76,7 @@ class Transaction:
 class Ledger:
     """In-memory v0.2 ledger. Networking, blocks, and consensus are not included."""
 
-    def __init__(self, chain_id: bytes, genesis_balances: Mapping[str, int]):
+    def __init__(\n        self,\n        chain_id: bytes,\n        genesis_balances: Mapping[str, int],\n        nonces: Mapping[str, int] | None = None,\n    ):
         if not isinstance(chain_id, bytes) or len(chain_id) != 32:
             raise LedgerError("chain_id must be exactly 32 bytes")
         if not isinstance(genesis_balances, Mapping):
@@ -116,6 +116,10 @@ class Ledger:
     def nonce_of(self, address: str) -> int:
         self._validate_address(address)
         return self._nonces.get(address, 0)
+
+    def export_state(self) -> tuple[dict[str, int], dict[str, int]]:
+        """Return defensive copies of balances and account nonces."""
+        return dict(self._balances), dict(self._nonces)
 
     def submit_transaction(self, tx: Transaction) -> str:
         """Validate completely, then apply exactly one atomic state transition."""
