@@ -32,7 +32,7 @@ Records are sorted by raw account-ID bytes. Each leaf is:
 
 `SHA-256("HND-STATE-LEAF-V2\\0" || canonical_account_record)`
 
-The leaves are reduced using the Merkle node rule below. An empty state uses the defined empty-tree hash. An account omitted from the nonce map has nonce zero. A nonce for an account absent from the balance map is invalid.
+The leaves are reduced using the Merkle node rule below. An empty state uses the defined empty-tree hash. An account omitted from the nonce map has nonce zero. A nonce for an account absent from the balance map is invalid. An empty account state uses `SHA-256("HND-STATE-EMPTY-V2\\0")`, deliberately distinct from the empty transaction Merkle root.
 
 ## Transaction Merkle root
 
@@ -74,7 +74,7 @@ A reviewer can reproduce the structures from the source and tests using Python a
 
 ## Explicit limitations
 
-This profile does not yet define transaction execution inside blocks, block acceptance rules, fork choice, validator selection, consensus, networking, durable storage, snapshots, or crash recovery. A block header and its hash alone do not prove that its transactions are valid or that its state root follows from execution. Those require the next state-transition and chain-verification layer.
+This profile does not define fork choice, validator selection, consensus, or networking. Local deterministic execution and a single-host SQLite persistence layer are implemented separately. A block header and its hash alone do not prove that its transactions are valid or that its state root follows from execution; those require replay verification.
 
 
 ## Fixed golden vector
