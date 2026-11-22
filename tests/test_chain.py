@@ -78,10 +78,13 @@ def test_block_rejects_wrong_parent_hash(parent):
 
 def test_block_rejects_backwards_timestamp(parent):
     genesis, balances, nonces = parent
+    later_parent = build_block(
+        genesis["header"], genesis["block_hash"], balances, nonces, [], timestamp=5
+    )
     with pytest.raises(ChainError, match="backwards"):
         build_block(
-            genesis["header"], genesis["block_hash"], balances, nonces,
-            [], timestamp=0
+            later_parent["header"], later_parent["block_hash"],
+            balances, nonces, [], timestamp=4
         )
 
 
