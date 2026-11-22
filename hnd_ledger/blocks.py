@@ -9,6 +9,8 @@ import hashlib
 import re
 from collections.abc import Mapping, Sequence
 
+from .decoder import _decode_array
+
 from .canonical import (
     PROTOCOL_VERSION,
     UINT64_MAX,
