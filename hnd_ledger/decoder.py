@@ -1,8 +1,8 @@
 """Strict decoder for the HND v0.2 restricted deterministic-CBOR profile.
 
-Only unsigned integers, byte strings, and one fixed-length top-level array are
-accepted. Indefinite lengths, non-shortest encodings, nested values, unsupported
-major types, and trailing bytes are rejected.
+Only a fixed-length top-level array of unsigned integers and definite-length
+byte strings is accepted. Nested containers, indefinite lengths, non-shortest
+encodings, unsupported major types, and trailing bytes are rejected.
 """
 from __future__ import annotations
 
@@ -36,15 +36,13 @@ def _argument(data: bytes, offset: int, additional: int) -> tuple[int, int]:
     return value, end
 
 
-def _item(data: bytes, offset: int) -> tuple[object, int]:
+def _read_scalar(data: bytes, offset: int) -> tuple[int | bytes, int]:
     if offset >= len(data):
         raise EncodingError("truncated CBOR item")
     initial = data[offset]
     major, additional = initial >> 5, initial & 31
     value, cursor = _argument(data, offset + 1, additional)
     if major == 0:
-        if value > UINT64_MAX:
-            raise EncodingError("unsigned integer exceeds uint64")
         return value, cursor
     if major == 2:
         end = cursor + value
@@ -52,32 +50,35 @@ def _item(data: bytes, offset: int) -> tuple[object, int]:
             raise EncodingError("truncated CBOR byte string")
         return data[cursor:end], end
     if major == 4:
-        items = []
-        for _ in range(value):
-            item, cursor = _item(data, cursor)
-            items.append(item)
-        return items, cursor
+        raise EncodingError("nested CBOR arrays are not permitted")
     raise EncodingError("unsupported CBOR major type")
 
 
-def _decode_array(encoded: bytes, expected_length: int) -> list[object]:
+def _decode_array(encoded: bytes, expected_length: int) -> list[int | bytes]:
     if not isinstance(encoded, bytes):
         raise EncodingError("encoded CBOR value must be bytes")
-    value, end = _item(encoded, 0)
-    if end != len(encoded):
+    if not encoded:
+        raise EncodingError("truncated CBOR array")
+    initial = encoded[0]
+    if initial >> 5 != 4:
+        raise EncodingError("top-level CBOR value must be an array")
+    count, cursor = _argument(encoded, 1, initial & 31)
+    if count != expected_length:
+        raise EncodingError("unexpected CBOR array length")
+    fields: list[int | bytes] = []
+    for _ in range(expected_length):
+        item, cursor = _read_scalar(encoded, cursor)
+        fields.append(item)
+    if cursor != len(encoded):
         raise EncodingError("trailing bytes after CBOR value")
-    if not isinstance(value, list) or len(value) != expected_length:
-        raise EncodingError("unexpected CBOR array shape")
-    if any(isinstance(item, list) for item in value):
-        raise EncodingError("nested arrays are not permitted in transaction fields")
-    return value
+    return fields
 
 
 def decode_transaction_payload(encoded: bytes) -> dict[str, object]:
     """Decode and validate the exact six-field unsigned transaction payload."""
     fields = _decode_array(encoded, 6)
     version, chain_id, sender, recipient, amount, nonce = fields
-    if version != PROTOCOL_VERSION or isinstance(version, bool):
+    if version != PROTOCOL_VERSION:
         raise EncodingError("unsupported protocol version")
     if not isinstance(chain_id, bytes) or len(chain_id) != CHAIN_ID_SIZE:
         raise EncodingError("chain_id must be exactly 32 bytes")
@@ -85,9 +86,9 @@ def decode_transaction_payload(encoded: bytes) -> dict[str, object]:
         raise EncodingError("sender must be exactly 32 bytes")
     if not isinstance(recipient, bytes) or len(recipient) != ACCOUNT_ID_SIZE:
         raise EncodingError("recipient must be exactly 32 bytes")
-    if isinstance(amount, bool) or not isinstance(amount, int) or not 1 <= amount <= UINT64_MAX:
+    if not isinstance(amount, int) or not 1 <= amount <= UINT64_MAX:
         raise EncodingError("amount must be a positive uint64")
-    if isinstance(nonce, bool) or not isinstance(nonce, int) or not 0 <= nonce <= UINT64_MAX:
+    if not isinstance(nonce, int) or not 0 <= nonce <= UINT64_MAX:
         raise EncodingError("nonce must be a uint64")
     if transaction_payload(chain_id, sender, recipient, amount, nonce) != encoded:
         raise EncodingError("transaction payload is not canonical")
@@ -105,19 +106,18 @@ def decode_signed_transaction(encoded: bytes) -> dict[str, object]:
     """Decode and validate the exact eight-field complete signed transaction."""
     fields = _decode_array(encoded, 8)
     version, chain_id, sender, recipient, amount, nonce, public_key, signature = fields
-    base = transaction_payload(
-        chain_id, sender, recipient, amount, nonce
-    ) if (
-        isinstance(chain_id, bytes)
-        and isinstance(sender, bytes)
-        and isinstance(recipient, bytes)
-        and isinstance(amount, int) and not isinstance(amount, bool)
-        and isinstance(nonce, int) and not isinstance(nonce, bool)
-    ) else None
-    if base is None:
-        raise EncodingError("malformed signed transaction payload")
-    if version != PROTOCOL_VERSION or isinstance(version, bool):
+    if version != PROTOCOL_VERSION:
         raise EncodingError("unsupported protocol version")
+    if not isinstance(chain_id, bytes) or len(chain_id) != CHAIN_ID_SIZE:
+        raise EncodingError("chain_id must be exactly 32 bytes")
+    if not isinstance(sender, bytes) or len(sender) != ACCOUNT_ID_SIZE:
+        raise EncodingError("sender must be exactly 32 bytes")
+    if not isinstance(recipient, bytes) or len(recipient) != ACCOUNT_ID_SIZE:
+        raise EncodingError("recipient must be exactly 32 bytes")
+    if not isinstance(amount, int) or not 1 <= amount <= UINT64_MAX:
+        raise EncodingError("amount must be a positive uint64")
+    if not isinstance(nonce, int) or not 0 <= nonce <= UINT64_MAX:
+        raise EncodingError("nonce must be a uint64")
     if not isinstance(public_key, bytes) or len(public_key) != PUBLIC_KEY_SIZE:
         raise EncodingError("public_key must be exactly 32 bytes")
     if not isinstance(signature, bytes) or len(signature) != SIGNATURE_SIZE:
