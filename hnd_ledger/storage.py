@@ -22,6 +22,7 @@ STORE_FORMAT = b"HND-SQLITE-CHAIN-V1"
 MAX_BLOCK_TRANSACTIONS = 100_000
 MAX_TRANSACTION_BYTES = 1_048_576
 MAX_BLOCK_TRANSACTION_BYTES = 67_108_864
+MAX_SQLITE_INTEGER = (1 << 63) - 1
 
 
 class StorageError(ValueError):
@@ -282,6 +283,8 @@ class SQLiteChainStore:
             block = build_block(
                 parent_header, parent_hash, balances, nonces, transactions, timestamp
             )
+            if block["height"] > MAX_SQLITE_INTEGER:
+                raise StorageError("block height exceeds SQLite signed 64-bit integer range")
             tx_blob = _encode_transactions(transactions)
             connection.execute(
                 "INSERT INTO blocks(height, header, block_hash, transactions) "
