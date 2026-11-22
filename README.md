@@ -8,7 +8,7 @@ HND-Ledger is an experimental educational project for studying a signed transact
 - **Version 0.2 working branch:** `work/v02-canonical-transaction-core`.
 - **Implemented on this branch:** restricted deterministic CBOR encoding and strict transaction decoding for v0.2; domain-separated account identifiers, transaction signing messages, and complete signed-transaction IDs; Ed25519 signature verification; an in-memory account ledger enforcing chain ID, amount, nonce, self-transfer, replay, and supply-cap rules.
 - **Test evidence:** golden byte/hash vectors and unit tests are committed. A passing CI result for the current branch has not yet been independently confirmed.
-- **Not yet implemented:** strict CBOR decoding, genesis/block execution, durable storage, backup/restore, distributed consensus, peer networking, or production key management.
+- **Not yet implemented:** genesis/block execution, durable storage, backup/restore, distributed consensus, peer networking, or production key management.
 - **Production status:** not production-ready; no public network, exchange, or investment use is authorized or implied.
 
 The version 0.1 archive reports 1,212 core tests, 3,000 sequential transfer operations, and a displayed total supply of 1,000,000 units. These are archive-reported results and have not been independently reproduced from the current repository.
