@@ -23,6 +23,7 @@ See:
 - [Block execution and independent replay verification](docs/V02_BLOCK_EXECUTION.md)
 - [Durable SQLite chain storage and replay verification](docs/V02_DURABLE_STORAGE.md)
 - [Source provenance and ownership evidence](docs/PROVENANCE_AND_OWNERSHIP.md)
+- [Independent technical review and ownership-evidence protocol](docs/INDEPENDENT_REVIEW_PROTOCOL.md)
 - [Architecture and implementation gates](docs/ARCHITECTURE.md)
 - [Version 0.2 protocol baseline](docs/PROTOCOL.md)
 - [Cryptographic and canonical encoding profile](docs/CRYPTO_FORMAT.md)
