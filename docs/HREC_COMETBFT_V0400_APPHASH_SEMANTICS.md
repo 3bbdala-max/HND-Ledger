@@ -43,7 +43,7 @@ Therefore:
 
 For a proposed transition from application height `h-1` to `h`, an independent HREC verifier must:
 
-1. Load the previously committed HREC checkpoint and recover the exact predecessor application state (or a state whose app hash is independently verified to equal the checkpoint's `A[h-1]`).
+1. Load the previously committed HREC checkpoint and recover the complete predecessor application state snapshot (or a content-addressed snapshot whose app hash is independently verified to equal `A[h-1]`). An app hash alone cannot reconstruct application state.
 2. Obtain a CometBFT v0.40.0 `LightBlock` for height `h`: the signed header and the validator set required by the light client.
 3. Verify the signed header against the previously trusted light-client state using the pinned CometBFT light-client implementation. Check chain ID, header/commit height, commit BlockID/header hash consistency, validator-set hash binding, cryptographic signatures, voting power, trust period, and the configured sequential or skipping verification rules.
 4. Obtain the full CometBFT block `B[h]`. Validate its header against the verified signed header and validate the complete block identity, including the BlockID hash and PartSetHeader, not merely a caller-supplied header hash.
@@ -52,7 +52,7 @@ For a proposed transition from application height `h-1` to `h`, an independent H
 7. Recompute `A[h]` using the HND v0.2 app-hash function. Require exact equality with the resulting local HND store's `Info.last_block_app_hash`, height, and independently reconstructed state. A mismatch is a hard quarantine.
 8. Only then may the anchor prepare and commit a checkpoint for application height `h`, binding the verified signed-header/block evidence, predecessor checkpoint digest, exact HND build/config identity, and derived `A[h]`.
 
-The anchor must retain the proof material or a durable content-addressed reference to it. A bare block hash or app hash without the signed-header trust path and deterministic execution evidence is insufficient.
+The anchor must retain the proof material and complete predecessor state snapshot, or durable content-addressed references to both. A digest without retrievable state bytes is evidence of identity, not a recovery source. A bare block hash or app hash without the signed-header trust path and deterministic execution evidence is insufficient.
 
 ## 4. Light-client verification requirements
 
@@ -72,6 +72,8 @@ The protocol schema must distinguish these values rather than use one ambiguous 
 
 - `hnd_app_height`: HND state height after deterministic execution and durable Commit of block `h`.
 - `hnd_app_hash`: derived `A[h]`.
+- `predecessor_state_snapshot_digest`: digest/reference to the complete predecessor HND application state needed to replay block `h`; the hash alone cannot reconstruct state.
+- `successor_state_snapshot_digest`: optional retained snapshot reference for the resulting HND state, governed by explicit recovery retention.
 - `cometbft_proof_header_height`: the signed CometBFT header height `h` for the transition.
 - `cometbft_header_app_hash`: `H[h].AppHash`, which must equal the predecessor HND app hash `A[h-1]`.
 - `cometbft_block_id`: complete BlockID identity, including header hash and PartSetHeader.
