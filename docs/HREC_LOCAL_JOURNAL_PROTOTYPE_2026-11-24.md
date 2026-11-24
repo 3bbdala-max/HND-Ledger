@@ -9,6 +9,8 @@ Status: experimental, isolated on branch `hrec-journal-prototype`.
   FULL synchronous mode, immediate write transactions, and startup replay.
 - `tests/test_hrec_journal_model.py`: state-machine invariants.
 - `tests/test_hrec_sqlite_journal.py`: local persistence and reopen tests.
+- `hnd_v02/hrec_checkpoint_anchor.py`: bridge from finalized HREC operation identity to the existing external monotonic-anchor contract.
+- `tests/test_hrec_checkpoint_anchor.py`: checkpoint bootstrap, CAS, idempotency, lost-response reconciliation, and SQLite reference-backend tests.
 
 ## State progression
 
@@ -41,9 +43,8 @@ This prototype is NOT:
 
 1. Run both HREC test modules on this branch and retain exact commit/run evidence.
 2. Add corruption and process-kill tests around SQLite transaction boundaries.
-3. Define an authenticated remote checkpoint authority with monotonic compare-and-set,
-   durable operation lookup, and an independently protected trust anchor.
-4. Integrate the authority with a reviewed CometBFT post-commit boundary. Do not
+3. Provision the existing mTLS remote monotonic-anchor service in a separately administered failure domain; initialize hrec-checkpoint sequence 0 from the independently verified Genesis digest.
+4. Integrate the HREC bridge with a reviewed CometBFT post-commit boundary. Do not
    publish before both HND and CometBFT durable commits are confirmed.
 5. Add a mandatory fail-closed startup gate before any CometBFT or ABCI listener
    starts, including proof that no alternate launch path bypasses it.
