@@ -71,11 +71,16 @@ class Operation:
 class HRECJournalModel:
     """In-memory transition validator; never an independent authority."""
 
-    def __init__(self) -> None:
+    def __init__(self, anchor_height: int = 0,
+                 anchor_checkpoint: Optional[str] = None) -> None:
+        if anchor_height < 0:
+            raise HRECError("anchor_height cannot be negative")
+        if anchor_checkpoint is not None and not _HEX_256.fullmatch(anchor_checkpoint):
+            raise HRECError("anchor_checkpoint must be a SHA-256 hex digest")
         self._operations: Dict[str, Operation] = {}
         self._latest_sequence = 0
-        self._latest_height = 0
-        self._latest_checkpoint: Optional[str] = None
+        self._latest_height = anchor_height
+        self._latest_checkpoint = anchor_checkpoint
 
     def prepare(self, operation: Operation) -> Operation:
         operation.validate()
