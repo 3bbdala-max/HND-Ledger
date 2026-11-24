@@ -11,6 +11,9 @@ Status: experimental, isolated on branch `hrec-journal-prototype`.
 - `tests/test_hrec_sqlite_journal.py`: local persistence and reopen tests.
 - `hnd_v02/hrec_checkpoint_anchor.py`: bridge from finalized HREC operation identity to the existing external monotonic-anchor contract.
 - `tests/test_hrec_checkpoint_anchor.py`: checkpoint bootstrap, CAS, idempotency, lost-response reconciliation, and SQLite reference-backend tests.
+- `hnd_v02/hrec_startup_gate.py`: fail-closed comparison of HND state, CometBFT state, local journal, and remote checkpoint.
+- `tests/test_hrec_startup_gate.py`: genesis, matching state, height/hash mismatch, pending operation, and remote-anchor mismatch tests.
+- `hnd_v02/cometbft_supervisor.py`: now requires an HREC startup-gate callback before spawning the CometBFT process.
 
 ## State progression
 
@@ -46,8 +49,7 @@ This prototype is NOT:
 3. Provision the existing mTLS remote monotonic-anchor service in a separately administered failure domain; initialize hrec-checkpoint sequence 0 from the independently verified Genesis digest.
 4. Integrate the HREC bridge with a reviewed CometBFT post-commit boundary. Do not
    publish before both HND and CometBFT durable commits are confirmed.
-5. Add a mandatory fail-closed startup gate before any CometBFT or ABCI listener
-   starts, including proof that no alternate launch path bypasses it.
+5. Wire the new startup gate to production-grade HND and CometBFT state readers; prove that every supported launch path uses the supervisor and no direct binary/ABCI path bypasses it.
 6. Test crash recovery across every boundary and demonstrate signer fencing.
 
 No production readiness is claimed until all gates pass on the same reviewed
