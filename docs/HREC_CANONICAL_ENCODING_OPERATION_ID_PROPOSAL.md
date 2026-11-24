@@ -54,7 +54,7 @@ Rules:
 | 15 | `protocol_config_digest` | 32-byte digest of the approved protocol/consensus configuration |
 | 16 | `hnd_build_identity_digest` | 32-byte digest binding the exact deterministic HND execution build/source identity |
 | 17 | `cometbft_binary_digest` | 32-byte digest of the exact CometBFT executable/build |
-| 18 | `cometbft_profile_digest` | 32-byte digest of the approved CometBFT node/profile configuration |
+| 18 | `cometbft_profile_digest` | 32-byte digest of the approved network-wide consensus profile only; MUST exclude validator-local identity, addresses, keys, and node-specific operational settings |
 | 19 | `trusted_light_client_root_digest` | 32-byte digest identifying the independently approved light-client trust root and trust policy |
 | 20 | `hnd_store_schema` | u32 big-endian |
 | 21 | `cometbft_version` | Exact ASCII version string; for this target, `0.40.0` |
@@ -81,7 +81,7 @@ Represent these digests externally as lowercase 64-character hexadecimal strings
 
 The anchor assigns the successor checkpoint sequence and commit receipt after accepting the transition. Those service-generated values, timestamps, PREPARED/COMMITTED status, retry count, local validator identity, and transport metadata MUST NOT be included in C. This keeps every honest validator's operation ID identical for the same transition.
 
-The predecessor sequence and digest ARE included, preventing the same transition from being silently attached to a different checkpoint history.
+The predecessor sequence and digest ARE included, preventing the same transition from being silently attached to a different checkpoint history. Every field in C must be network-global and byte-identical across validators. In particular, tag 18 cannot be a hash of a validator-specific node configuration; it binds only the common approved consensus profile.
 
 The anchor MUST enforce:
 - one immutable canonical payload per operation ID;
@@ -103,7 +103,7 @@ Before PREPARE, the independent verifier MUST establish all of the following:
 7. The local HND durable store and CometBFT native state/block store are consistent with this transition.
 8. Genesis, network, protocol config, HND build, CometBFT binary/profile, store schema, and trust-root identities match the approved values.
 
-A caller-supplied digest is a locator/integrity claim, not proof by itself. The verifier must fetch the referenced bytes and verify them.
+A caller-supplied digest is a locator/integrity claim, not proof by itself. The verifier must fetch the referenced bytes and verify them. The exact canonical manifests for the predecessor snapshot, execution-input bundle, signed-header proof bundle, and profile/build artifacts are separate versioned subformats and remain a mandatory pre-implementation freeze item. Until those subformats are specified, this outer encoding can identify a transition but cannot by itself make the referenced evidence reproducible.
 
 ## 6. Synthetic cross-language test vector
 
@@ -163,6 +163,8 @@ At minimum, test that:
 - reusing an operation ID with altered canonical bytes is a fatal anchor conflict.
 
 ## 8. Open decisions that remain outside this encoding proposal
+
+In addition to the service/security items below, the subformats used to compute tags 12–19 need exact byte-level definitions. They must define the content-addressed object manifest, artifact ordering, compression policy (preferably no implicit compression), and digest domain separation. A digest of an ambiguous concatenation is not acceptable.
 
 This proposal does not settle:
 - the cryptographic signature/envelope format for anchor receipts;
