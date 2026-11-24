@@ -27,6 +27,8 @@ A checkpoint payload MUST bind, as one authenticated immutable record:
 | `cometbft_release_identity` | Exact pinned CometBFT v0.40.0 source/build identity |
 | `hnd_app_height` | HND application state height after deterministic execution and durable Commit of block `h` |
 | `hnd_app_hash` | HND application hash produced after executing block `h` from the authenticated predecessor state |
+| `predecessor_state_snapshot_digest` | Digest/reference for the complete predecessor HND state snapshot needed to replay block `h`; the app hash alone cannot reconstruct state |
+| `successor_state_snapshot_digest` | Digest/reference for the resulting HND state snapshot, if retained for recovery
 | `cometbft_proof_header_height` | Height `h` of the signed CometBFT header and committed block used to verify the HND transition |
 | `cometbft_block_id` | Complete BlockID identity for the signed block, including header hash and PartSetHeader |
 | `cometbft_header_app_hash` | `Header.AppHash` in the signed header; for height `h` it must equal the predecessor HND app hash at height `h-1` |
@@ -140,7 +142,7 @@ No automatic truncation, reset, downgrade, regeneration of established-chain sta
 
 ## 8. Replay requirements
 
-Replay is an explicit recovery operation, never an ordinary startup fallback. The normal transition is: signed header/block at height `h` authenticates the predecessor HND app hash `A[h-1]`; deterministic execution of that full block produces `A[h]`. It is eligible only when:
+Replay is an explicit recovery operation, never an ordinary startup fallback. The checkpoint must make the complete predecessor state recoverable; a digest without retrievable state bytes is evidence of identity, not a recovery source. The normal transition is: signed header/block at height `h` authenticates the predecessor HND app hash `A[h-1]`; deterministic execution of that full block produces `A[h]`. It is eligible only when:
 - exact HND network/Genesis/config and pinned CometBFT release identities match;
 - the independent authenticated checkpoint establishes the target chain identity and position;
 - the native CometBFT store is independently shown to be the trusted source for the missing transitions;
