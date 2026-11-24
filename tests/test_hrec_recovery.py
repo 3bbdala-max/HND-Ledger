@@ -64,6 +64,19 @@ class HRECRecoveryTests(unittest.TestCase):
             MonotonicRecord(1, self.op.checkpoint_digest()),
         )
 
+    def test_pending_operation_recovers_after_sqlite_reopen(self):
+        self.journal.prepare(self.op)
+        self.journal.close()
+        self.journal = SQLiteHRECJournal(
+            str(Path(self.temp.name) / "journal.sqlite"),
+            anchor_height=6, anchor_checkpoint=GENESIS,
+        )
+        result = recover_pending_hrec_operation(
+            anchor=self.anchor, journal=self.journal,
+            hnd=self.hnd, comet=self.comet,
+        )
+        self.assertEqual(result.phase, Phase.FINALIZED)
+
     def test_application_committed_operation_recovers(self):
         self.journal.prepare(self.op)
         self.journal.advance("recovery-op-1", Phase.APPLICATION_COMMITTED)
