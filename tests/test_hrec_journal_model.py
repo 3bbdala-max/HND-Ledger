@@ -11,11 +11,11 @@ DIGEST_C = "c" * 64
 DIGEST_D = "d" * 64
 
 
-def operation(operation_id="op-1", sequence=1, previous=DIGEST_D):
+def operation(operation_id="op-1", sequence=1, previous=DIGEST_D, height=7):
     return Operation(
         operation_id=operation_id,
         chain_id="hnd-test",
-        height=7,
+        height=height,
         block_hash=DIGEST_A,
         app_state_hash=DIGEST_B,
         consensus_state_hash=DIGEST_C,
@@ -66,7 +66,7 @@ class HRECJournalModelTests(unittest.TestCase):
         self.assertEqual(journal.latest_sequence, 1)
         self.assertIsNotNone(journal.latest_checkpoint)
         next_op = operation("op-2", sequence=2,
-                            previous=journal.latest_checkpoint)
+                            previous=journal.latest_checkpoint, height=8)
         journal.prepare(next_op)
 
     def test_stale_sequence_is_rejected(self):
