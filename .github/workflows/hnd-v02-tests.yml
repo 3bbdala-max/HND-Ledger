@@ -120,6 +120,7 @@ jobs:
           tests.test_hrec03_pre_rename_crash_boundary
           tests.test_hrec_journal_model
           tests.test_hrec_sqlite_journal
+          tests.test_hrec_checkpoint_anchor
           tests.test_v02_strict_json
           tests.test_workflow_contract
 
