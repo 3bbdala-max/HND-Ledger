@@ -27,6 +27,11 @@ class SQLiteHRECJournal:
     ) -> None:
         if not path or path == ":memory:":
             raise HRECError("a filesystem database path is required")
+        # Validate the configured trust anchor before creating or modifying files.
+        HRECJournalModel(
+            anchor_height=anchor_height,
+            anchor_checkpoint=anchor_checkpoint,
+        )
         self.path = str(Path(path))
         self._db = sqlite3.connect(
             self.path, timeout=30.0, isolation_level=None
