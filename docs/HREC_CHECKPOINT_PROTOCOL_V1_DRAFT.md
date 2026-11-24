@@ -1,7 +1,7 @@
 # HND/CometBFT Recovery Checkpoint Protocol v1 — Design Draft
 
 **Status:** Draft for protocol-owner and independent security review. Not an implementation contract.
-**Decision basis:** DEC-HREC-01 (2026-11-18).
+**Decision basis:** [DEC-HREC-01](DECISION_HREC_RECOVERY_POLICY_2026-11-18.md) and [HREC-CP-01](HREC_INDEPENDENT_CHECKPOINT_INTERFACE_DESIGN_2026-11-18.md) (2026-11-18).
 **Target:** HND v0.2 with the pinned CometBFT v0.40.0 build.
 **Release boundary:** This document does not authorize production deployment, signing, public listeners, token issuance, or real-value use.
 
@@ -105,9 +105,9 @@ The anchor atomically verifies the predecessor and reserves the immutable operat
 
 ### 5.2 Commit
 
-After all required state writes and independent verification required by the final protocol are durable, the caller submits COMMIT for the same operation ID and exact prepared digest. The anchor atomically promotes that immutable payload to the latest committed checkpoint and changes the separate operation record from PREPARED to COMMITTED. The payload and digest do not change during this transition.
+After CometBFT `ApplyVerifiedBlock` has returned successfully, both native and HND stores have been independently reread, and the full proof/execution checks have passed, the caller submits COMMIT for the same operation ID and exact prepared digest. The anchor atomically promotes that immutable payload to the latest committed checkpoint and changes the separate operation record from PREPARED to COMMITTED. The payload and digest do not change during this transition.
 
-The protocol owner MUST decide the precise ordering between local durable state, CometBFT native commit, PREPARE, and COMMIT. The order must be consistent with the pinned CometBFT commit boundary and must be proven by crash injection. This draft intentionally does not guess that ordering.
+The pinned v0.40.0 ordering is specified in `docs/HREC_CHECKPOINT_PUBLICATION_BOUNDARY_PROPOSAL.md` and `docs/HREC_INDEPENDENT_CHECKPOINT_INTERFACE_DESIGN_2026-11-18.md` §9. The publisher MUST NOT run inside the HND ABCI `Commit` handler: HND state may be durable while CometBFT's native state database has not yet completed `Store.Save(state)`. PREPARE/COMMIT are permitted only after `ApplyVerifiedBlock` returns successfully and the publisher independently rereads and verifies both stores, the native block/commit evidence, and deterministic HND execution. No such post-ApplyVerifiedBlock hook is currently implemented in this repository. Until its exact integration point and failure propagation are reviewed and tested, HREC checkpoint publication is not implementable through the current Python ABCI adapter alone.
 
 ### 5.3 Unknown outcomes
 
@@ -120,7 +120,7 @@ The caller MUST:
 4. retry only the same idempotent operation when the observed state proves that retry is safe;
 5. reject any conflicting operation, digest, predecessor, or unexpected sequence.
 
-If the anchor is unavailable or the outcome cannot be established, no replay, listener, transaction admission, or signing is permitted.
+If the anchor is unavailable or the outcome cannot be established, no replay, listener, transaction admission, or signing is permitted. If publication fails after local commit, the node must not proceed into the next consensus round; it must stop or remain in an enforced quarantine state until the exact operation outcome is reconciled.
 
 ## 7. Recovery decision matrix
 
@@ -167,7 +167,7 @@ In addition to the existing local HREC03 pre-rename fsync-failure regression, ad
 - older CometBFT native database;
 - missing established-chain HND state;
 - anchor unavailable, stale, unauthenticated, and malformed responses;
-- crash before/after PREPARE, during COMMIT, and after durable COMMIT with lost response;
+- crash before/after blockstore save and WAL EndHeight, during ABCI FinalizeBlock/Commit, after HND durable Commit but before CometBFT state Store.Save, after Store.Save but before ApplyVerifiedBlock returns, before/after PREPARE, during COMMIT, and after durable COMMIT with lost response;
 - same-operation retry and conflicting operation-ID reuse;
 - two concurrent recovery attempts for one predecessor;
 - anchor replica failover and read-after-write consistency;
@@ -204,6 +204,8 @@ The checkpoint payload, anchor operation record, and audit event are three disti
 Any implementation that hashes mutable lifecycle status into the checkpoint payload violates this protocol and MUST be rejected by tests.
 
 ## 12. Relationship to existing components
+
+- `docs/HREC_CHECKPOINT_PUBLICATION_BOUNDARY_PROPOSAL.md` records the exact pinned v0.40.0 publication boundary. A publisher invoked from the HND ABCI Commit handler is prohibited; no post-ApplyVerifiedBlock callback is currently implemented.
 
 - `hnd_v02/remote_monotonic_anchor.py` and `docs/REMOTE_MONOTONIC_ANCHOR_PROTOCOL.md` implement/reference the existing Trust Manifest/VSP sequence-and-digest contract. They are not the HREC record or operation protocol.
 - `hnd_v02/remote_activation_intent.py` and `hnd_v02/activation_coordinator.py` coordinate profile activation intent and local activation. They do not reconcile HND application state with CometBFT native state.
