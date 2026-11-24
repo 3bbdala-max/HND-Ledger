@@ -197,7 +197,7 @@ class RemoteMonotonicAnchor:
                     })
         except (TypeError, ValueError) as exc:
             raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-RECORD") from exc
-        bootstrap = 0 if namespace == "trust-manifest" else 1
+        bootstrap = {"trust-manifest": 0, "vsp-profile": 1, "hrec-checkpoint": 0}[namespace]
         expected_sequence = (
             bootstrap if expected_current is None
             else expected_current.sequence + 1
