@@ -180,6 +180,26 @@ class SQLiteHRECJournal:
         return self._model.get(operation_id)
 
     @property
+    def anchor_height(self) -> int:
+        row = self._db.execute(
+            "SELECT value FROM hrec_meta WHERE key='anchor'"
+        ).fetchone()
+        return json.loads(row[0])["height"]
+
+    @property
+    def anchor_checkpoint(self) -> Optional[str]:
+        row = self._db.execute(
+            "SELECT value FROM hrec_meta WHERE key='anchor'"
+        ).fetchone()
+        return json.loads(row[0])["checkpoint"]
+
+    def latest_operation(self) -> Optional[Operation]:
+        row = self._db.execute(
+            "SELECT payload, phase FROM hrec_operations ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else self._decode(row[0], row[1])
+
+    @property
     def latest_sequence(self) -> int:
         return self._model.latest_sequence
 
