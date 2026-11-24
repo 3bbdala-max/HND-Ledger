@@ -1,6 +1,7 @@
 # HREC checkpoint scope — decision proposal
 
 **Status:** Proposed architecture decision; requires protocol-owner ratification and independent security review.
+**Controlling inputs:** [DEC-HREC-01](DECISION_HREC_RECOVERY_POLICY_2026-11-18.md) and [HREC-CP-01](HREC_INDEPENDENT_CHECKPOINT_INTERFACE_DESIGN_2026-11-18.md).
 **Related draft:** `HREC_CHECKPOINT_PROTOCOL_V1_DRAFT.md`
 **Target:** HND v0.2 / pinned CometBFT v0.40.0.
 **No implementation authorization is granted by this proposal.**
@@ -19,7 +20,7 @@ A network-global checkpoint avoids that split-brain authority. All validators co
 
 ## Required verification model
 
-The anchor is a monotonic checkpoint store plus a verifier. It is not a consensus engine and must not invent finality.
+The anchor is a monotonic checkpoint store plus a verifier. It is not a consensus engine and must not invent finality. Checkpoint publication is forbidden inside the HND ABCI `Commit` handler: the HND store is durable before CometBFT's subsequent native `Store.Save(state)`. The only currently acceptable candidate is a reviewed hook after pinned CometBFT `ApplyVerifiedBlock` returns successfully, followed by independent reads of both stores. The current repository has no such hook; see `HREC_CHECKPOINT_PUBLICATION_BOUNDARY_PROPOSAL.md`.
 
 For each proposed transition from HND application state `A[h-1]` to `A[h]`, the verifier must:
 - verify chain ID and Genesis/trust-root identity;
@@ -64,6 +65,7 @@ Costs and open questions:
 - the anchor must implement or use a reviewed CometBFT light-client verifier;
 - validator-set transitions, trust periods, skipped-height verification, and clock drift become security-critical;
 - the anchor becomes an availability dependency for safe startup/recovery, so outages must fail closed;
+- a version-pinned post-ApplyVerifiedBlock integration hook and failure-propagation rule must be implemented and reviewed before publication is possible;
 - the one-block AppHash relationship and deterministic HND execution proof must be implemented and tested against the pinned v0.40.0 source;
 - Genesis bootstrap, trust-root rotation, validator-set changes, and emergency recovery require explicit witnessed procedures;
 - the proof retention and audit model must be frozen.
