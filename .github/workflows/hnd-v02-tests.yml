@@ -121,6 +121,7 @@ jobs:
           tests.test_hrec_journal_model
           tests.test_hrec_sqlite_journal
           tests.test_hrec_checkpoint_anchor
+          tests.test_hrec_startup_gate
           tests.test_v02_strict_json
           tests.test_workflow_contract
 
