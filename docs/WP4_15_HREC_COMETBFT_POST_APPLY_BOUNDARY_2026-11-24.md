@@ -56,7 +56,7 @@ The existing Python supervisor gate is only a pre-launch check. It does not yet 
 1. Add a pinned, reviewable CometBFT source patch or maintained fork for both synchronous hooks.
 2. Define a local authenticated IPC contract between CometBFT and the HND recovery/checkpoint service; bind it to the pinned node process and reject unauthenticated callers.
 3. Implement readers for the authoritative HND and CometBFT state stores.
-4. Implement explicit recovery for the one-block-ahead and lost-response cases.
+4. Add the explicit Python recovery primitive in `hnd_v02/hrec_recovery.py`; still required: production HND/CometBFT state readers, authenticated IPC invocation, and process-kill fault injection for one-block-ahead and lost-response cases.
 5. Add process-kill fault injection at every boundary and prove no next-height vote can be signed before checkpoint confirmation.
 6. Run the full tests on the exact same source commit and retain successful CI evidence.
 
