@@ -109,5 +109,20 @@ class WorkflowContractTests(unittest.TestCase):
                 references.append(reference)
         self.assertGreater(len(references), 0)
 
+    def test_hrec03_pre_rename_crash_boundary_is_executed_in_ci(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        start = workflow.index("- name: Run isolated v0.2 tests")
+        end = workflow.index("\n\n  cometbft-single-node-smoke:", start)
+        self.assertIn(
+            "tests.test_hrec03_pre_rename_crash_boundary",
+            workflow[start:end],
+            "HREC03 pre-rename crash-boundary regression must run in CI",
+        )
+
 if __name__ == "__main__":
     unittest.main()
