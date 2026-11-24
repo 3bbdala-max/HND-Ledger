@@ -128,6 +128,16 @@ class SQLiteHRECJournal:
         self._db.execute("BEGIN IMMEDIATE")
         try:
             result = self._model.prepare(operation)
+            existing_row = self._db.execute(
+                "SELECT payload, phase FROM hrec_operations WHERE operation_id=?",
+                (operation.operation_id,),
+            ).fetchone()
+            if existing_row is not None:
+                persisted = self._decode(existing_row[0], existing_row[1])
+                if persisted.identity() != operation.identity() or persisted.phase != result.phase:
+                    raise HRECError("persisted HREC operation conflicts with in-memory state")
+                self._db.execute("COMMIT")
+                return result
             inserted = self._db.execute("""
                 INSERT INTO hrec_operations
                     (sequence, operation_id, payload, phase)
