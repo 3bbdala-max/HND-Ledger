@@ -77,6 +77,19 @@ class RemoteMonotonicAnchorTests(unittest.TestCase):
         self.assertTrue(any(url.endswith("/hnd/v1/state/compare-and-advance")
                             for url, *_ in self.service.requests))
 
+    def test_hrec_checkpoint_namespace_bootstrap_and_successor(self):
+        first = advance_monotonic_state(
+            self.anchor, "hrec-checkpoint", sequence=0,
+            digest="a" * 64, predecessor_digest=None,
+        )
+        second = advance_monotonic_state(
+            self.anchor, "hrec-checkpoint", sequence=1,
+            digest="b" * 64, predecessor_digest="a" * 64,
+        )
+        self.assertEqual(first, MonotonicRecord(0, "a" * 64))
+        self.assertEqual(second, MonotonicRecord(1, "b" * 64))
+        self.assertEqual(self.anchor.read_state("hrec-checkpoint"), second)
+
     def test_stale_compare_and_advance_returns_false(self):
         current = MonotonicRecord(0, "a" * 64)
         self.service.state["trust-manifest"] = current
