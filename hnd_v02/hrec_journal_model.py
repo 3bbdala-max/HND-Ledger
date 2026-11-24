@@ -61,11 +61,24 @@ class Operation:
             self.previous_checkpoint, self.sequence,
         )
 
-    def fingerprint(self) -> str:
-        payload = asdict(self)
-        payload["phase"] = int(self.phase)
+    def checkpoint_digest(self) -> str:
+        """Stable digest of immutable operation identity, independent of phase."""
+        payload = {
+            "operation_id": self.operation_id,
+            "chain_id": self.chain_id,
+            "height": self.height,
+            "block_hash": self.block_hash,
+            "app_state_hash": self.app_state_hash,
+            "consensus_state_hash": self.consensus_state_hash,
+            "previous_checkpoint": self.previous_checkpoint,
+            "sequence": self.sequence,
+        }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()
+
+    def fingerprint(self) -> str:
+        """Backward-compatible alias for the stable checkpoint digest."""
+        return self.checkpoint_digest()
 
 
 class HRECJournalModel:
@@ -126,7 +139,7 @@ class HRECJournalModel:
         if phase == Phase.FINALIZED:
             self._latest_sequence = updated.sequence
             self._latest_height = updated.height
-            self._latest_checkpoint = updated.fingerprint()
+            self._latest_checkpoint = updated.checkpoint_digest()
         return updated
 
     def get(self, operation_id: str) -> Optional[Operation]:
