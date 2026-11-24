@@ -9,11 +9,13 @@ Status: experimental, isolated on branch `hrec-journal-prototype`.
   FULL synchronous mode, immediate write transactions, and startup replay.
 - `tests/test_hrec_journal_model.py`: state-machine invariants.
 - `tests/test_hrec_sqlite_journal.py`: local persistence and reopen tests.
-- `hnd_v02/hrec_checkpoint_anchor.py`: bridge from finalized HREC operation identity to the existing external monotonic-anchor contract.
+- `hnd_v02/hrec_checkpoint_anchor.py`: bridge that publishes a `CONSENSUS_COMMITTED` operation to the existing external monotonic-anchor contract.
 - `tests/test_hrec_checkpoint_anchor.py`: checkpoint bootstrap, CAS, idempotency, lost-response reconciliation, and SQLite reference-backend tests.
 - `hnd_v02/hrec_startup_gate.py`: fail-closed comparison of HND state, CometBFT state, local journal, and remote checkpoint.
 - `tests/test_hrec_startup_gate.py`: genesis, matching state, height/hash mismatch, pending operation, and remote-anchor mismatch tests.
-- `hnd_v02/cometbft_supervisor.py`: now requires an HREC startup-gate callback before spawning the CometBFT process.
+- `hnd_v02/hrec_recovery.py`: explicit recovery of one pending operation after exact HND/CometBFT durable-state agreement; accepts only the exact predecessor or already-published checkpoint.
+- `tests/test_hrec_recovery.py`: pending-operation recovery, SQLite reopen, lost local phase update, and mismatch/conflict rejection.
+- `hnd_v02/cometbft_supervisor.py`: requires an HREC pre-launch callback before spawning the CometBFT process; this is not the post-WAL-replay gate.
 
 ## State progression
 
@@ -44,13 +46,13 @@ This prototype is NOT:
 
 ## Required next gates
 
-1. Run both HREC test modules on this branch and retain exact commit/run evidence.
+1. Obtain a functioning GitHub Actions runner and run the full HREC suite on one exact commit; recent runs fail before steps exist, so no test pass is claimed.
 2. Add corruption and process-kill tests around SQLite transaction boundaries.
 3. Provision the existing mTLS remote monotonic-anchor service in a separately administered failure domain; initialize hrec-checkpoint sequence 0 from the independently verified Genesis digest.
 4. Integrate the HREC bridge with a reviewed CometBFT post-commit boundary. Do not
    publish before both HND and CometBFT durable commits are confirmed.
 5. Wire the new startup gate to production-grade HND and CometBFT state readers; prove that every supported launch path uses the supervisor and no direct binary/ABCI path bypasses it.
-6. Test crash recovery across every boundary and demonstrate signer fencing.
+6. Add process-kill fault injection across every storage boundary and demonstrate signer fencing. The new Python recovery primitive is not yet wired to production state readers or CometBFT.
 
 No production readiness is claimed until all gates pass on the same reviewed
 source revision.
