@@ -42,9 +42,11 @@ class Operation:
     phase: Phase = Phase.PREPARED
 
     def validate(self) -> None:
-        if not self.operation_id or not self.chain_id:
-            raise HRECError("operation_id and chain_id are required")
-        if self.height < 1 or self.sequence < 1:
+        if type(self.operation_id) is not str or not self.operation_id.strip():
+            raise HRECError("operation_id is required")
+        if type(self.chain_id) is not str or not self.chain_id.strip():
+            raise HRECError("chain_id is required")
+        if type(self.height) is not int or type(self.sequence) is not int or self.height < 1 or self.sequence < 1:
             raise HRECError("height and sequence must be positive")
         for name in ("block_hash", "app_state_hash",
                      "consensus_state_hash", "previous_checkpoint"):
@@ -86,9 +88,11 @@ class HRECJournalModel:
 
     def __init__(self, anchor_height: int = 0,
                  anchor_checkpoint: Optional[str] = None) -> None:
-        if anchor_height < 0:
-            raise HRECError("anchor_height cannot be negative")
-        if anchor_checkpoint is not None and not _HEX_256.fullmatch(anchor_checkpoint):
+        if type(anchor_height) is not int or anchor_height < 0:
+            raise HRECError("anchor_height must be a nonnegative integer")
+        if anchor_checkpoint is not None and (
+            type(anchor_checkpoint) is not str or not _HEX_256.fullmatch(anchor_checkpoint)
+        ):
             raise HRECError("anchor_checkpoint must be a SHA-256 hex digest")
         self._operations: Dict[str, Operation] = {}
         self._latest_sequence = 0
@@ -118,10 +122,10 @@ class HRECJournalModel:
         current = self._operations.get(operation_id)
         if current is None:
             raise HRECError("unknown operation")
-        if phase == current.phase:
-            return current
         if not isinstance(phase, Phase):
             raise HRECError("phase must be a Phase value")
+        if phase == current.phase:
+            return current
         if int(phase) != int(current.phase) + 1:
             raise HRECError("phase transition must advance exactly one step")
         updated = Operation(
