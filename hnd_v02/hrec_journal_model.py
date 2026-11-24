@@ -1,9 +1,8 @@
 """Experimental HREC journal state machine.
 
-This module is a deterministic protocol model only. It is NOT a durable journal,
-checkpoint authority, CometBFT integration, signer fence, or production control.
-Persistence and independent authority must be supplied by separately reviewed
-components before this state machine can authorize any service.
+Deterministic protocol model only. NOT durable storage, an independent
+checkpoint authority, CometBFT integration, signer fencing, or production
+authorization. Never use this in-memory model to authorize a service.
 """
 from __future__ import annotations
 
@@ -55,6 +54,13 @@ class Operation:
         if not isinstance(self.phase, Phase):
             raise HRECError("phase must be a Phase value")
 
+    def identity(self) -> tuple:
+        return (
+            self.operation_id, self.chain_id, self.height, self.block_hash,
+            self.app_state_hash, self.consensus_state_hash,
+            self.previous_checkpoint, self.sequence,
+        )
+
     def fingerprint(self) -> str:
         payload = asdict(self)
         payload["phase"] = int(self.phase)
@@ -63,7 +69,7 @@ class Operation:
 
 
 class HRECJournalModel:
-    """In-memory transition validator; never use as an independent authority."""
+    """In-memory transition validator; never an independent authority."""
 
     def __init__(self) -> None:
         self._operations: Dict[str, Operation] = {}
@@ -74,11 +80,13 @@ class HRECJournalModel:
         operation.validate()
         existing = self._operations.get(operation.operation_id)
         if existing is not None:
-            if existing == operation:
-                return existing  # exact retry is idempotent
+            if existing.identity() == operation.identity():
+                return existing  # same request remains idempotent after advancement
             raise HRECError("operation_id reused with different contents")
         if operation.sequence != self._latest_sequence + 1:
             raise HRECError("sequence must be exactly the next sequence")
+        if any(item.phase != Phase.FINALIZED for item in self._operations.values()):
+            raise HRECError("another operation is still pending")
         if self._latest_checkpoint is not None:
             if operation.previous_checkpoint != self._latest_checkpoint:
                 raise HRECError("previous checkpoint does not match latest checkpoint")
