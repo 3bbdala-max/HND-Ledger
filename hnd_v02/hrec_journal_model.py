@@ -74,6 +74,7 @@ class HRECJournalModel:
     def __init__(self) -> None:
         self._operations: Dict[str, Operation] = {}
         self._latest_sequence = 0
+        self._latest_height = 0
         self._latest_checkpoint: Optional[str] = None
 
     def prepare(self, operation: Operation) -> Operation:
@@ -85,6 +86,8 @@ class HRECJournalModel:
             raise HRECError("operation_id reused with different contents")
         if operation.sequence != self._latest_sequence + 1:
             raise HRECError("sequence must be exactly the next sequence")
+        if operation.height != self._latest_height + 1:
+            raise HRECError("height must be exactly the next committed height")
         if any(item.phase != Phase.FINALIZED for item in self._operations.values()):
             raise HRECError("another operation is still pending")
         if self._latest_checkpoint is not None:
@@ -99,6 +102,8 @@ class HRECJournalModel:
             raise HRECError("unknown operation")
         if phase == current.phase:
             return current
+        if not isinstance(phase, Phase):
+            raise HRECError("phase must be a Phase value")
         if int(phase) != int(current.phase) + 1:
             raise HRECError("phase transition must advance exactly one step")
         updated = Operation(
@@ -115,6 +120,7 @@ class HRECJournalModel:
         self._operations[operation_id] = updated
         if phase == Phase.FINALIZED:
             self._latest_sequence = updated.sequence
+            self._latest_height = updated.height
             self._latest_checkpoint = updated.fingerprint()
         return updated
 
