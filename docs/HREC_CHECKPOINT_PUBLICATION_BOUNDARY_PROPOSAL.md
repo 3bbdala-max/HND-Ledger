@@ -43,17 +43,24 @@ The publisher must not infer CometBFT native state from the ABCI Commit response
 
 ## 3. Candidate integration boundary
 
-No supported post-`ApplyVerifiedBlock` checkpoint callback has been established in the current HND repository.
+The pinned v0.40.0 source exposes a concrete, auditable integration route, although no HREC hook is implemented yet:
 
-The preferred prototype candidate is a narrowly scoped, auditable hook in the pinned CometBFT integration, invoked only after `ApplyVerifiedBlock` returns nil and before consensus schedules the next round. The hook must:
-- receive the exact height and block identity just applied;
-- read the persisted native CometBFT state and block store, not trust caller-supplied height/hash values;
-- read the HND state through an authenticated, read-only observation boundary;
-- independently verify the signed header/light-client path, full block identity, predecessor AppHash, and deterministic HND transition;
-- synchronously complete checkpoint publication or fail closed before consensus proceeds;
-- never enable signing/listeners itself.
+- `consensus/state.go`: after `cs.blockExec.ApplyVerifiedBlock(...)` returns nil, before `cs.updateToState(...)` and `cs.scheduleRound0(...)`.
+- `consensus/state_ingest.go`: after `cs.blockExec.ApplyVerifiedBlock(...)` returns nil, before `cs.updateToState(...)` and `cs.scheduleRound0(...)`.
+- `blocksync/reactor.go`: after `r.blockExec.ApplyVerifiedBlock(...)` returns nil, before the block-sync loop continues.
 
-This candidate requires a version-pinned CometBFT patch/fork or an equivalent upstream-supported callback. It is not present in the current Python ABCI server. The patch's exact source diff and build identity must be reviewed and pinned before implementation.
+All three normal committed-block paths must call the same HREC publisher helper. If publication fails, the existing call path must panic/stop before advancing to the next round or accepting more blocks. The supervisor must then keep restart quarantined until the same operation ID, anchor outcome, and both stores are reconciled.
+
+The existing CometBFT interfaces make a read-only evidence collector feasible:
+- `state.Store.Load()` reads the persisted native state; `LoadValidators(height)` reads the validator set.
+- `state.BlockStore.LoadBlockMeta(height)`, `LoadBlock(height)`, and `LoadBlockCommit(height)` expose the stored block identity, full block, and commit.
+- `proxy.AppConns` already exposes `Query() AppConnQuery`; `AppConnQuery.Info()` returns the ABCI application height and latest persisted app hash. `node/node.go` currently passes only `proxyApp.Consensus()` to `NewBlockExecutor`, so a small optional `BlockExecutorWithAppQuery(proxyApp.Query())` option is needed for the collector.
+
+The proposed patch should add one shared post-apply collector/publisher method to `BlockExecutor`, configured with the read-only query connection and a checkpoint publisher interface. The three call sites invoke it only after `ApplyVerifiedBlock` succeeds. The collector independently rereads native state, block metadata/full block/commit, validator set, and HND Info; it does not trust the in-memory state argument alone. The independent anchor still verifies the signed-header trust path and deterministic HND execution from the recoverable predecessor snapshot.
+
+The startup WAL-replay path in `consensus/replay.go` uses `ApplyBlock`, not `ApplyVerifiedBlock`. It MUST NOT automatically publish each replayed block. Recovery replay remains quarantined and is reconciled by the explicit DEC-HREC-01 recovery coordinator after the complete replay target has been verified.
+
+This requires a version-pinned CometBFT patch/fork and a reviewed publisher interface. It is not present in the current Python ABCI server. The exact source diff, build identity, all three call-site tests, and failure propagation must be reviewed and pinned before implementation.
 
 A polling sidecar without an explicit completion signal is not approved by this proposal. It could observe a partially completed cross-store transition and cannot infer from blockstore height or WAL EndHeight alone that the native state save completed.
 
@@ -96,8 +103,8 @@ The local CometBFT state AppHash and HND Info are cross-store consistency observ
 Before writing the callback or publisher:
 1. Review DEC-HREC-01 and HREC-CP-01 as controlling project decisions.
 2. Freeze the one-block AppHash relationship and deterministic execution evidence in `HREC_COMETBFT_V0400_APPHASH_SEMANTICS.md`.
-3. Specify the exact CometBFT hook location, failure propagation, process-stop/quarantine behavior, and recovery-on-restart path.
-4. Specify read-only native-state inspection and HND state observation, including how they are authenticated and protected from TOCTOU.
+3. Specify the shared publisher helper and all three normal `ApplyVerifiedBlock` call sites (`consensus/state.go`, `consensus/state_ingest.go`, and `blocksync/reactor.go`), failure propagation, process-stop/quarantine behavior, and recovery-on-restart path.
+4. Specify read-only native-state inspection and HND state observation, including `Store.Load`, `BlockStore` metadata/block/commit reads, `LoadValidators`, `AppConnQuery.Info`, and how those reads are authenticated and protected from TOCTOU.
 5. Freeze deterministic operation-ID preimage and concurrent-validator publication semantics.
 6. Add fault injection at every boundary in section 4 and run on the exact pinned CometBFT v0.40.0 build.
 7. Obtain independent security review of the patch, publisher, anchor service, and threat boundary.
