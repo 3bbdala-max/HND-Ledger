@@ -1,9 +1,12 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from hnd_v02.hrec_checkpoint_anchor import (
     NAMESPACE, initialize_hrec_anchor, publish_hrec_checkpoint,
 )
 from hnd_v02.hrec_journal_model import HRECError, Operation, Phase
+from hnd_v02.sqlite_monotonic_anchor import SQLiteMonotonicAnchor
 from hnd_v02.monotonic_anchor import (
     MonotonicAnchorConflict, MonotonicRecord,
 )
@@ -103,6 +106,16 @@ class HRECCheckpointAnchorTests(unittest.TestCase):
         with self.assertRaises(MonotonicAnchorConflict):
             publish_hrec_checkpoint(self.anchor, bad)
         self.assertEqual(self.anchor.calls, 0)
+
+    def test_sqlite_reference_backend_persists_hrec_namespace(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "anchor.sqlite"
+            anchor = SQLiteMonotonicAnchor(path)
+            initialize_hrec_anchor(anchor, genesis_digest=GENESIS)
+            op = committed_operation()
+            expected = publish_hrec_checkpoint(anchor, op)
+            reopened = SQLiteMonotonicAnchor(path)
+            self.assertEqual(reopened.read_state(NAMESPACE), expected)
 
     def test_genesis_replacement_is_rejected(self):
         with self.assertRaises(MonotonicAnchorConflict):
