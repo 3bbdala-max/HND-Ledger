@@ -34,6 +34,24 @@ class HRECJournalModelTests(unittest.TestCase):
             journal.prepare(first).phase, Phase.APPLICATION_COMMITTED
         )
 
+    def test_checkpoint_digest_is_stable_across_phase_transitions(self):
+        journal = HRECJournalModel(anchor_height=6, anchor_checkpoint=DIGEST_D)
+        journal.prepare(operation())
+        prepared = journal.get("op-1").checkpoint_digest()
+        journal.advance("op-1", Phase.APPLICATION_COMMITTED)
+        journal.advance("op-1", Phase.CONSENSUS_COMMITTED)
+        self.assertEqual(journal.get("op-1").checkpoint_digest(), prepared)
+
+    def test_bool_is_not_accepted_as_height_or_sequence(self):
+        bad = Operation(
+            operation_id="bad-bool", chain_id="hnd-test", height=True,
+            block_hash=DIGEST_A, app_state_hash=DIGEST_B,
+            consensus_state_hash=DIGEST_C, previous_checkpoint=DIGEST_D,
+            sequence=1,
+        )
+        with self.assertRaises(HRECError):
+            bad.validate()
+
     def test_operation_id_cannot_be_reused_with_different_contents(self):
         journal = HRECJournalModel(anchor_height=6, anchor_checkpoint=DIGEST_D)
         journal.prepare(operation())
