@@ -71,9 +71,9 @@ A polling sidecar without an explicit completion signal is not approved by this 
 | COMMIT durable but response lost | Query the same operation ID and exact latest checkpoint; never create a new operation ID |
 | Anchor unavailable/conflicting | Stop/quarantine before the next consensus round; no signer/listener release |
 
-A publication timeout is an unknown outcome. The publisher must query the same deterministic operation ID and exact payload. It must never advance with a different successor or infer failure from a timeout.
+A publication timeout is an unknown outcome. The publisher must query the same deterministic operation ID and exact payload. It must never advance with a different successor or infer failure from a timeout. If publication is unavailable or conflicting after local commit, the CometBFT process must not schedule another consensus round; the supervisor must stop it or keep it quarantined, and restart must not re-enable consensus until the anchor outcome and both stores are reconciled.
 
-For a network-global checkpoint, the operation ID should be deterministically derived from the chain namespace, predecessor checkpoint digest, signed block identity, and successor HND app hash (using a frozen canonical preimage). This allows independent validators to propose the same semantic transition idempotently. The exact derivation remains a protocol-freeze decision.
+For a network-global checkpoint, the operation ID should be deterministically derived from the chain namespace, predecessor checkpoint digest, signed block identity, and successor HND app hash (using a frozen canonical preimage). This allows independent validators to propose the same semantic transition idempotently. The exact derivation remains a protocol-freeze decision. It must be based on a canonical preimage shared by every validator so two validators proposing the same network transition do not create different operation IDs.
 
 ## 5. Required cross-store consistency checks
 
