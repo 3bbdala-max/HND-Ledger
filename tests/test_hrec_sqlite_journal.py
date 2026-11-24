@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 
@@ -81,6 +82,21 @@ class SQLiteHRECJournalTests(unittest.TestCase):
         with self.assertRaises(HRECError):
             SQLiteHRECJournal(self.path, anchor_height=-1)
         self.assertFalse(os.path.exists(self.path))
+
+    def test_reopen_rejects_row_key_payload_mismatch(self):
+        with self.open_journal() as journal:
+            journal.prepare(op())
+        db = sqlite3.connect(self.path)
+        try:
+            db.execute(
+                "UPDATE hrec_operations SET operation_id=? WHERE sequence=1",
+                ("tampered-id",),
+            )
+            db.commit()
+        finally:
+            db.close()
+        with self.assertRaises(HRECError):
+            self.open_journal()
 
     def test_changed_anchor_is_rejected(self):
         with self.open_journal():
