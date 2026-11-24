@@ -110,10 +110,14 @@ class SQLiteHRECJournal:
             anchor_checkpoint=anchor["checkpoint"],
         )
         rows = self._db.execute(
-            "SELECT payload, phase FROM hrec_operations ORDER BY sequence"
+            "SELECT sequence, operation_id, payload, phase "
+            "FROM hrec_operations ORDER BY sequence"
         ).fetchall()
-        for payload, stored_phase in rows:
+        for row_sequence, row_operation_id, payload, stored_phase in rows:
             stored = self._decode(payload, stored_phase)
+            if (row_sequence != stored.sequence
+                    or row_operation_id != stored.operation_id):
+                raise HRECError("HREC journal row key does not match its payload")
             model.prepare(self._decode(payload, int(Phase.PREPARED)))
             for phase in range(2, int(stored.phase) + 1):
                 model.advance(stored.operation_id, Phase(phase))
@@ -124,14 +128,17 @@ class SQLiteHRECJournal:
         self._db.execute("BEGIN IMMEDIATE")
         try:
             result = self._model.prepare(operation)
-            self._db.execute("""
-                INSERT OR IGNORE INTO hrec_operations
+            inserted = self._db.execute("""
+                INSERT INTO hrec_operations
                     (sequence, operation_id, payload, phase)
                 VALUES (?, ?, ?, ?)
+                ON CONFLICT(operation_id) DO NOTHING
             """, (
                 operation.sequence, operation.operation_id,
                 self._payload(operation), int(Phase.PREPARED),
-            ))
+            )).rowcount
+            if inserted != 1:
+                raise HRECError("HREC operation row was not uniquely inserted")
             self._db.execute("COMMIT")
             return result
         except Exception:
@@ -146,10 +153,12 @@ class SQLiteHRECJournal:
             if current is None:
                 raise HRECError("unknown operation")
             updated = self._model.advance(operation_id, phase)
-            self._db.execute(
-                "UPDATE hrec_operations SET phase=? WHERE operation_id=?",
-                (int(updated.phase), operation_id),
-            )
+            changed = self._db.execute(
+                "UPDATE hrec_operations SET phase=? WHERE operation_id=? AND phase=?",
+                (int(updated.phase), operation_id, int(current.phase)),
+            ).rowcount
+            if changed != 1:
+                raise HRECError("HREC phase update did not affect exactly one row")
             self._db.execute("COMMIT")
             return updated
         except Exception:
