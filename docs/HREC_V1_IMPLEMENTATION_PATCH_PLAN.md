@@ -2,7 +2,7 @@
 
 **Status:** Engineering patch plan only. Not an implementation contract, source patch, or production approval.  
 **Target:** HND v0.2 with the exact CometBFT v0.40.0 source commit `0880b4d378f347ab16e54ec677ff50d803f37d62`.  
-**Design inputs:** DEC-HREC-01, HREC-CP-01, HREC checkpoint protocol draft, scope proposal, AppHash semantics note, and publication-boundary proposal.  
+**Design inputs:** DEC-HREC-01, HREC-CP-01, HREC checkpoint protocol draft, scope proposal, AppHash semantics note, publication-boundary proposal, and [canonical encoding / operation-ID proposal](HREC_CANONICAL_ENCODING_OPERATION_ID_PROPOSAL.md).  
 **Release boundary:** No signer, public listener, transaction admission, token issuance, or real-value operation is authorized.
 
 ## 1. Purpose and implementation gate
