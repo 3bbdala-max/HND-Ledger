@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="HND Ledger is an experimental blockchain and distributed-ledger engineering project offered for acquisition discussions.">
+  <meta name="theme-color" content="#101827">
+  <title>HND Ledger | Blockchain Engineering Project</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1220;--panel:#121d30;--panel2:#17243a;--ink:#eef4fb;--muted:#a9b8ca;--line:#2a3a52;--accent:#68d5c2;--gold:#e9c982}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:radial-gradient(ellipse at 80% 0%,#1b3450 0,transparent 38%),var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+    .wrap{width:min(1080px,calc(100% - 40px));margin:auto}
+    header{padding:26px 0;border-bottom:1px solid var(--line)}
+    .brand{font-weight:800;letter-spacing:.12em;font-size:15px}.brand span{color:var(--accent)}
+    .hero{padding:86px 0 62px}
+    .eyebrow{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+    h1{font-size:clamp(42px,7vw,76px);line-height:1.04;letter-spacing:-.045em;margin:18px 0 20px;max-width:850px}
+    .lead{font-size:clamp(18px,2.5vw,22px);color:#c8d5e4;max-width:760px}
+    .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+    .btn{display:inline-block;padding:12px 18px;border-radius:8px;font-weight:750;border:1px solid var(--accent)}
+    .btn.primary{background:var(--accent);color:#09201f}.btn.secondary{color:var(--ink);border-color:#52647d}
+    .notice{margin:0 0 58px;padding:18px 20px;border:1px solid #75613b;background:#302817;border-radius:10px;color:#f4e4bd}
+    .notice strong{color:#ffe4a5}
+    section{padding:30px 0 48px}
+    h2{font-size:27px;letter-spacing:-.02em;margin:0 0 16px}
+    .intro{color:var(--muted);max-width:800px;margin:0 0 24px}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .card{background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:21px}
+    .card h3{font-size:17px;margin:0 0 8px}.card p{color:var(--muted);font-size:14px;margin:0}
+    .tag{display:inline-block;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    ul{padding-left:20px;color:var(--muted)}li{margin:8px 0}
+    .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
+    .fact{padding:18px;border-top:2px solid var(--accent);background:#101b2c;border-radius:0 0 8px 8px}
+    .fact b{display:block;font-size:22px}.fact span{color:var(--muted);font-size:13px}
+    .acq{background:linear-gradient(135deg,#142b3a,#152238);border:1px solid #35576a;border-radius:14px;padding:28px}
+    footer{border-top:1px solid var(--line);padding:26px 0 40px;color:#8293a8;font-size:13px}
+    .small{font-size:13px;color:#91a2b7}
+    @media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.hero{padding:62px 0 42px}}
+    @media(max-width:480px){.grid{grid-template-columns:1fr}.wrap{width:min(100% - 28px,1080px)}}
+  </style>
+</head>
+<body>
+<header><div class="wrap"><div class="brand">HND <span>LEDGER</span></div></div></header>
+<main>
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Blockchain engineering project · Pre-revenue</div>
+      <h1>A foundation for a purpose-built ledger.</h1>
+      <p class="lead">HND Ledger is an independently developed, Python-based experimental blockchain and distributed-ledger project. It brings together core ledger mechanics, cryptographic transaction verification, deterministic block construction, and a CometBFT integration reference.</p>
+      <div class="actions">
+        <a class="btn primary" href="#overview">Explore the project</a>
+        <a class="btn secondary" href="#acquisition">Acquisition information</a>
+      </div>
+    </section>
+
+    <div class="notice"><strong>Development status:</strong> HND v0.2 is an experimental engineering reference. It is not production software and is not approved for public deployment, real-value signing, token issuance, exchange listing, or payment use. No live public network or revenue is represented here.</div>
+
+    <section id="overview">
+      <h2>Project overview</h2>
+      <p class="intro">The project explores the engineering components required for a verifiable ledger, with an emphasis on deterministic behavior, transaction integrity, and a documented path toward consensus integration. The repository preserves an earlier educational prototype while keeping the v0.2 engineering work isolated.</p>
+      <div class="grid">
+        <article class="card"><div class="tag">Ledger core</div><h3>Chained block structure</h3><p>Block height, timestamp, previous hash, transactions, Merkle root, and block hash are represented in the ledger model.</p></article>
+        <article class="card"><div class="tag">Cryptography</div><h3>Transaction verification</h3><p>Ed25519 signing and verification components, with nonce handling and replay-protection logic in the prototype.</p></article>
+        <article class="card"><div class="tag">Integrity</div><h3>Deterministic construction</h3><p>Deterministic block construction and chain-integrity checks are part of the engineering reference.</p></article>
+        <article class="card"><div class="tag">Data structure</div><h3>Merkle commitments</h3><p>Merkle-root calculation is included as a mechanism for representing transaction-set integrity.</p></article>
+        <article class="card"><div class="tag">Consensus research</div><h3>CometBFT reference</h3><p>The project includes an ABCI integration reference targeting CometBFT v0.40.0. This is not a claim of a production-ready network.</p></article>
+        <article class="card"><div class="tag">Engineering</div><h3>Tests and documentation</h3><p>Automated test and integration harnesses, alongside technical, security, and recovery documentation.</p></article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Current scope and limitations</h2>
+      <div class="two">
+        <div class="card">
+          <h3>Included in the prototype</h3>
+          <ul>
+            <li>Python-based ledger and block model.</li>
+            <li>Cryptographic transaction verification components.</li>
+            <li>Balance and nonce-related processing logic.</li>
+            <li>Merkle-root and chain-integrity mechanisms.</li>
+            <li>CometBFT ABCI integration reference and test harnesses.</li>
+            <li>Engineering, security, and recovery documentation.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Not yet established</h3>
+          <ul>
+            <li>Production readiness or independent security approval.</li>
+            <li>Complete validator identity, trust-root, and lifecycle governance.</li>
+            <li>Fully enforced anti-rollback and signature-release controls.</li>
+            <li>Complete cross-store recovery implementation.</li>
+            <li>Public-network operation, token issuance, or financial use.</li>
+            <li>Successful execution of every CI workflow or test suite.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="small">The scope above is a summary of the project's documented engineering state, not an independent audit or certification. Prospective acquirers should conduct their own technical and legal due diligence.</p>
+    </section>
+
+    <section>
+      <h2>Project snapshot</h2>
+      <div class="facts">
+        <div class="fact"><b>Pre-revenue</b><span>Not presented as an operating business</span></div>
+        <div class="fact"><b>Experimental</b><span>Engineering reference, not production software</span></div>
+        <div class="fact"><b>Open to offers</b><span>Acquisition discussions through Flippa</span></div>
+      </div>
+    </section>
+
+    <section id="acquisition">
+      <div class="acq">
+        <div class="eyebrow">Acquisition opportunity</div>
+        <h2>HND Ledger is available for acquisition discussions.</h2>
+        <p class="intro">The project may be of interest to a developer, research group, or technology company looking to continue the engineering work. Any transaction would require a clearly defined asset schedule, verification of ownership and transfer rights, technical due diligence, and a written agreement covering the transfer scope.</p>
+        <p><strong>Interested parties:</strong> Please use the Flippa listing or its messaging system for inquiries and due-diligence requests.</p>
+        <p class="small">No valuation, revenue, investment return, regulatory approval, or production capability is guaranteed or implied by this page.</p>
+      </div>
+    </section>
+  </div>
+</main>
+<footer><div class="wrap">HND Ledger · Project information page · Last reviewed: 24 November 2026<br>All technical statements are subject to verification during due diligence.</div></footer>
+</body>
+</html>
