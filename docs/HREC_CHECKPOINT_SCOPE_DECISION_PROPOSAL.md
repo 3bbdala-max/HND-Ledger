@@ -20,7 +20,7 @@ A network-global checkpoint avoids that split-brain authority. All validators co
 
 ## Required verification model
 
-The anchor is a monotonic checkpoint store plus a verifier. It is not a consensus engine and must not invent finality. Checkpoint publication is forbidden inside the HND ABCI `Commit` handler: the HND store is durable before CometBFT's subsequent native `Store.Save(state)`. The only currently acceptable candidate is a reviewed hook after pinned CometBFT `ApplyVerifiedBlock` returns successfully, followed by independent reads of both stores. The current repository has no such hook; see `HREC_CHECKPOINT_PUBLICATION_BOUNDARY_PROPOSAL.md`.
+The anchor is a monotonic checkpoint store plus a verifier. It is not a consensus engine and must not invent finality. Checkpoint publication is forbidden inside the HND ABCI `Commit` handler: the HND store is durable before CometBFT's subsequent native `Store.Save(state)`. The only currently acceptable candidate is a reviewed hook after pinned CometBFT `ApplyVerifiedBlock` returns successfully, followed by independent reads of both stores. The current repository has no such hook. The pinned v0.40.0 candidate call sites and available read-only interfaces are identified in `HREC_CHECKPOINT_PUBLICATION_BOUNDARY_PROPOSAL.md`; a shared helper and exact patch remain unimplemented.
 
 For each proposed transition from HND application state `A[h-1]` to `A[h]`, the verifier must:
 - verify chain ID and Genesis/trust-root identity;
