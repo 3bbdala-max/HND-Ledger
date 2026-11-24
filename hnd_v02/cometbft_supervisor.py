@@ -12,7 +12,7 @@ import hashlib
 import os
 import stat
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from hnd_v02.activation_transaction import AtomicActivationBackend
@@ -84,6 +84,7 @@ def start_authorized_cometbft(
     expected_binary_sha256: str,
     arguments: Sequence[str],
     cwd: str,
+    hrec_startup_gate: Callable[[], None],
     environment: Mapping[str, str] | None = None,
     popen: Any = subprocess.Popen,
 ) -> tuple[Any, Any]:
@@ -114,9 +115,17 @@ def start_authorized_cometbft(
             for key in environment
         ):
             raise CometBFTSupervisorError("HND-SUPERVISOR-E-ENVIRONMENT")
+        if not callable(hrec_startup_gate):
+            raise CometBFTSupervisorError("HND-SUPERVISOR-E-HREC-GATE")
         child_environment = dict(environment)
 
         def launch_after_commit(_state: Any) -> Any:
+            # HREC reconciliation is mandatory and runs after Station 2
+            # authorization but before the CometBFT process can open listeners.
+            try:
+                hrec_startup_gate()
+            except Exception as exc:
+                raise CometBFTSupervisorError("HND-SUPERVISOR-E-HREC-STARTUP") from exc
             # Re-hash the same open inode immediately before exec; never reopen
             # the mutable pathname after the initial O_NOFOLLOW open.
             _verify_open_executable(executable_fd, expected_binary_sha256)
