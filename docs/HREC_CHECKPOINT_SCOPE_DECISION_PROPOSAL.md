@@ -27,7 +27,7 @@ For each proposed transition from HND application state `A[h-1]` to `A[h]`, the 
 - verify commit/header height and BlockID linkage, validator-set hash binding, cryptographic signatures, voting power, and validator-set transitions;
 - verify the full block `h` against the signed BlockID, including its header hash and PartSetHeader;
 - require `Header[h].AppHash == A[h-1]`;
-- execute the full block with the exact approved HND build, Genesis, protocol configuration, transactions, and all state-affecting evidence inputs to derive `A[h]`;
+- execute the full block with the exact approved HND build, Genesis, protocol configuration, transactions, and all state-affecting evidence inputs to derive `A[h]`; the complete predecessor state snapshot must be retrievable, because an app hash alone cannot reconstruct it;
 - require the derived `A[h]` to match the local durable HND state and checkpoint candidate.
 
 The source-grounded one-block relationship is documented in `HREC_COMETBFT_V0400_APPHASH_SEMANTICS.md`. The initial prototype should use upstream `SequentialVerification()` rather than custom signature logic or skipping verification. Any future skipping mode must freeze trust level, witness independence, trust period, clock drift, and attack handling, with independent review. This proposal does not assert that a verifier or anchor is already implemented.
