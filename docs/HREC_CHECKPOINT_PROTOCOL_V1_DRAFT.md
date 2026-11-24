@@ -25,21 +25,34 @@ A checkpoint payload MUST bind, as one authenticated immutable record:
 | `genesis_hash` | Approved HND Genesis identity |
 | `protocol_config_digest` | Digest of the approved HND protocol/configuration identity |
 | `cometbft_release_identity` | Exact pinned CometBFT v0.40.0 source/build identity |
-| `hnd_height` | Last committed HND application height |
-| `hnd_app_hash` | HND application hash at that height |
-| `cometbft_height` | Corresponding CometBFT committed height |
-| `cometbft_block_identity` | Version-pinned identity of the corresponding CometBFT block |
-| `cometbft_app_hash` | CometBFT-recorded application hash, with semantics verified against the pinned source |
+| `hnd_app_height` | HND application state height after deterministic execution and durable Commit of block `h` |
+| `hnd_app_hash` | HND application hash produced after executing block `h` from the authenticated predecessor state |
+| `cometbft_proof_header_height` | Height `h` of the signed CometBFT header and committed block used to verify the HND transition |
+| `cometbft_block_id` | Complete BlockID identity for the signed block, including header hash and PartSetHeader |
+| `cometbft_header_app_hash` | `Header.AppHash` in the signed header; for height `h` it must equal the predecessor HND app hash at height `h-1` |
 | `sequence` | Monotonic checkpoint generation |
 | `predecessor_digest` | Digest of the preceding committed checkpoint; absent only at approved bootstrap |
 | `operation_id` | Globally unique immutable identifier for the checkpoint transition |
+| `signed_header_proof_digest` | Digest/reference for the signed header, commit, validator set, and trusted light-client verification evidence |
+| `block_execution_input_digest` | Digest/reference for the full verified block and all HND execution inputs used to derive the successor app hash |
+| `hnd_build_identity` | Exact approved HND source/build identity used for deterministic execution |
 | `authenticator_metadata` | Authenticated principal/key identity and verification metadata, without private material |
 
-The checkpoint MUST NOT infer equality merely from matching heights. Both store identities, block identity, and app-hash relationships must be compared using semantics established for the exact pinned CometBFT version.
+The checkpoint MUST NOT infer equality merely from matching heights. Both store identities, block identity, and app-hash relationships must be compared using semantics established for the exact pinned CometBFT version. In particular, `Header[h].AppHash` is the application hash after the previous block, not the result of executing block `h`. For the normal HND transition, `Header[h].AppHash` must equal the predecessor HND app hash at height `h-1`; the successor HND app hash at height `h` is derived by deterministic execution of the full authenticated block `h`.
 
 If the deployment requires validator-specific checkpoints, the protocol owner must decide whether validator identity is part of the record's scope and how a validator-set transition is represented. This draft does not silently impose a per-validator or network-global scope.
 
-## 3. Encoding and digest
+## 3. CometBFT v0.40.0 application-hash relationship
+
+The source-grounded mapping is specified in `docs/HREC_COMETBFT_V0400_APPHASH_SEMANTICS.md`. It is mandatory input to this protocol, not optional background.
+
+For HND application hash `A[h]` after committing block `h`, CometBFT header `H[h]` carries `H[h].AppHash == A[h-1]`. The signed header at height `h` commits to block `h`; the verifier must authenticate the full block against its BlockID, then execute the exact HND transition from the authenticated predecessor state `A[h-1]` to derive `A[h]`. The resulting HND app hash must match the local durable HND state. The ABCI `Info` handshake is a local consistency check only; it is not an independent cryptographic proof of the app hash.
+
+The first block is a special bootstrap case: its header AppHash is the initial application hash returned by `InitChainResponse.app_hash`. Genesis authorization must pin that value, the chain ID, the initial validator set, and the exact Genesis/configuration identity.
+
+Do not compare `HND Info.last_block_app_hash` directly with `Header[h].AppHash` at the same height. Do not use an ambiguous `cometbft_app_hash` field. The checkpoint must separately bind the predecessor hash in the signed header and the successor hash derived by deterministic execution.
+
+## 4. Encoding and digest
 
 Before implementation, the protocol owner and independent reviewer MUST freeze:
 - canonical serialization format and exact version;
@@ -55,7 +68,7 @@ The checkpoint payload MUST NOT contain a mutable operation status. `PREPARED` a
 
 No implementation may substitute a local checksum, unsigned JSON file, environment variable, CI artifact, or co-located digest for the authenticated checkpoint.
 
-## 4. Independent anchor contract
+## 5. Independent anchor contract
 
 The anchor MUST operate in a separate administrative and failure domain from the validator host, its ordinary writable storage, backups, and operator credentials. The existing SQLite anchor is reference/test-only and does not satisfy this deployment requirement.
 
@@ -74,7 +87,7 @@ The service contract MUST provide:
 
 A pending PREPARED operation MUST remain visible and MUST block a conflicting successor until it is explicitly reconciled under the same operation ID. This draft does not define an unsafe cancel/forget operation.
 
-## 5. Candidate operation lifecycle
+## 6. Candidate operation lifecycle
 
 The following lifecycle is a proposal for review, not a frozen wire API.
 
@@ -107,7 +120,7 @@ The caller MUST:
 
 If the anchor is unavailable or the outcome cannot be established, no replay, listener, transaction admission, or signing is permitted.
 
-## 6. Recovery decision matrix
+## 7. Recovery decision matrix
 
 | Observed condition | Required result |
 |---|---|
@@ -125,9 +138,9 @@ If the anchor is unavailable or the outcome cannot be established, no replay, li
 
 No automatic truncation, reset, downgrade, regeneration of established-chain state, or fallback to a convenient older backup is permitted.
 
-## 7. Replay requirements
+## 8. Replay requirements
 
-Replay is an explicit recovery operation, never an ordinary startup fallback. It is eligible only when:
+Replay is an explicit recovery operation, never an ordinary startup fallback. The normal transition is: signed header/block at height `h` authenticates the predecessor HND app hash `A[h-1]`; deterministic execution of that full block produces `A[h]`. It is eligible only when:
 - exact HND network/Genesis/config and pinned CometBFT release identities match;
 - the independent authenticated checkpoint establishes the target chain identity and position;
 - the native CometBFT store is independently shown to be the trusted source for the missing transitions;
@@ -138,7 +151,7 @@ Replay is an explicit recovery operation, never an ordinary startup fallback. It
 
 Any absent, stale, ambiguous, or inconsistent prerequisite prohibits replay.
 
-## 8. Required tests and evidence
+## 9. Required tests and evidence
 
 The final protocol implementation must execute HREC01–HREC09 and FRESH-01–FRESH-14 against the exact pinned CometBFT v0.40.0 build, with disposable keys and state.
 
@@ -159,26 +172,26 @@ In addition to the existing local HREC03 pre-rename fsync-failure regression, ad
 - recovery service disaster-recovery and witnessed restore;
 - proof that no listener, transaction admission, or signer becomes active while quarantined or ambiguous.
 
-Each test must capture exact source/build identity, HND height/app hash, CometBFT height/block identity/app hash, checkpoint sequence/digest/operation state, process/listener/signing state, logs, and final store hashes. Test steps must actually execute on the exact commit; zero-step Actions failures are infrastructure blocks, not test results.
+Each test must capture exact source/build identity, HND app height/hash, CometBFT proof-header height, Header.AppHash, complete BlockID, signed-header verification result, block execution-input digest, checkpoint sequence/digest/operation state, process/listener/signing state, logs, and final store hashes. Tests must explicitly prove the one-block AppHash relationship and must reject same-height direct AppHash comparisons. Test steps must actually execute on the exact commit; zero-step Actions failures are infrastructure blocks, not test results.
 
-## 9. Decisions still required before implementation
+## 10. Decisions still required before implementation
 
 The following are intentionally unresolved and require explicit protocol-owner disposition plus independent review:
 
-1. Network-global versus validator-specific checkpoint scope.
-2. Canonical encoding, digest domain separation, and schema versioning.
-3. Exact CometBFT block identity and app-hash semantics from pinned v0.40.0 source.
-4. Genesis bootstrap authorization and initial sequence.
-5. Exact PREPARE/COMMIT ordering relative to HND and CometBFT durable commit boundaries.
+1. Canonical encoding, digest domain separation, and schema versioning.
+2. Exact full-block retrieval, BlockID/PartSetHeader verification, and proof-material retention.
+3. Exact HND deterministic execution inputs, app build identity, and replay API.
+4. Genesis bootstrap authorization, InitChain app hash, initial validator set, and initial sequence.
+5. Exact PREPARE/COMMIT ordering relative to HND durable Commit and CometBFT native-state commit boundaries.
 6. Whether a pending PREPARED operation can ever be superseded, and the witnessed procedure if its owner is permanently unavailable.
-7. Checkpoint cadence and performance/availability budget.
-8. Service identity, administrator separation, mTLS certificate issuance/rotation/revocation, and independent backup/disaster recovery.
-9. Retention and audit evidence requirements.
-10. Validator identity and validator-set transition binding, if checkpoint scope is validator-specific.
+7. Sequential versus skipping light-client verification; if skipping is ever used, trust level, witness independence, trust period, clock drift, and attack handling.
+8. Checkpoint cadence and performance/availability budget.
+9. Service identity, administrator separation, mTLS certificate issuance/rotation/revocation, and independent backup/disaster recovery.
+10. Retention and audit evidence requirements.
 
 No source code, schema, production endpoint, key, trust root, workflow, or runtime configuration should be changed until these decisions are frozen.
 
-## 10. Record separation invariant
+## 11. Record separation invariant
 
 The checkpoint payload, anchor operation record, and audit event are three distinct data objects:
 
@@ -188,7 +201,7 @@ The checkpoint payload, anchor operation record, and audit event are three disti
 
 Any implementation that hashes mutable lifecycle status into the checkpoint payload violates this protocol and MUST be rejected by tests.
 
-## 11. Relationship to existing components
+## 12. Relationship to existing components
 
 - `hnd_v02/remote_monotonic_anchor.py` and `docs/REMOTE_MONOTONIC_ANCHOR_PROTOCOL.md` implement/reference the existing Trust Manifest/VSP sequence-and-digest contract. They are not the HREC record or operation protocol.
 - `hnd_v02/remote_activation_intent.py` and `hnd_v02/activation_coordinator.py` coordinate profile activation intent and local activation. They do not reconcile HND application state with CometBFT native state.
@@ -197,7 +210,7 @@ Any implementation that hashes mutable lifecycle status into the checkpoint payl
 
 These components may be reused only after their contracts are extended and reviewed for HREC semantics. Reusing their names or interfaces does not establish the required guarantees.
 
-## 12. Approval and release boundary
+## 13. Approval and release boundary
 
 This draft records a proposed protocol decomposition derived from DEC-HREC-01. It is not the independent review, signed protocol freeze, implementation, integration test, or production approval.
 
