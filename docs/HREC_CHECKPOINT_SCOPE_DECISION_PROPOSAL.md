@@ -9,7 +9,7 @@
 
 Use one **network-global checkpoint stream per HND network and Genesis identity**, not one competing global sequence per validator.
 
-The checkpoint represents a finalized chain position, not the health or local disk state of an individual validator. The anchor must accept an advancement only when the submitted CometBFT commit/header evidence is independently verified against the trusted validator-set history for that network. A caller's assertion, local HND database, local CometBFT database, or app-hash value by itself is insufficient.
+The checkpoint represents an authenticated HND application-state transition plus the CometBFT signed block that produced it, not the health or local disk state of an individual validator. The anchor must accept an advancement only after it verifies the signed header/commit and full block against trusted validator-set history, checks the header's AppHash against the predecessor HND state, and deterministically executes the exact HND transition to reproduce the successor app hash. A caller's assertion, local HND database, local CometBFT database, ABCI Info response, or app-hash value by itself is insufficient.
 
 ## Why network-global
 
@@ -21,26 +21,27 @@ A network-global checkpoint avoids that split-brain authority. All validators co
 
 The anchor is a monotonic checkpoint store plus a verifier. It is not a consensus engine and must not invent finality.
 
-For each proposed advancement, the verifier must validate, using the exact pinned CometBFT v0.40.0 semantics:
-- chain ID and Genesis/trust-root identity;
-- header height, block ID, and commit linkage;
-- commit signatures and voting power against the correct validator set;
-- validator-set transitions from the last trusted checkpoint;
-- application-hash field semantics and the exact relationship between the header and HND application state;
-- monotonic height and valid adjacent/trust-bounded light-client verification rules.
+For each proposed transition from HND application state `A[h-1]` to `A[h]`, the verifier must:
+- verify chain ID and Genesis/trust-root identity;
+- verify the CometBFT v0.40.0 signed header at height `h` using the pinned upstream light-client implementation and a previously trusted light-client state;
+- verify commit/header height and BlockID linkage, validator-set hash binding, cryptographic signatures, voting power, and validator-set transitions;
+- verify the full block `h` against the signed BlockID, including its header hash and PartSetHeader;
+- require `Header[h].AppHash == A[h-1]`;
+- execute the full block with the exact approved HND build, Genesis, protocol configuration, transactions, and all state-affecting evidence inputs to derive `A[h]`;
+- require the derived `A[h]` to match the local durable HND state and checkpoint candidate.
 
-The precise proof object, trusted validator-set transition algorithm, trust period, clock/drift policy, and treatment of skipped heights must be specified against the pinned CometBFT source and independently reviewed before implementation. This document does not assert those details are already implemented.
+The source-grounded one-block relationship is documented in `HREC_COMETBFT_V0400_APPHASH_SEMANTICS.md`. The initial prototype should use upstream `SequentialVerification()` rather than custom signature logic or skipping verification. Any future skipping mode must freeze trust level, witness independence, trust period, clock drift, and attack handling, with independent review. This proposal does not assert that a verifier or anchor is already implemented.
 
 ## Local node recovery remains separate
 
 The global checkpoint proves an authenticated chain position. It does not prove that a particular validator's local HND or CometBFT database is intact.
 
 Each node must, while quarantined:
-1. read and authenticate the current network checkpoint;
-2. inspect its local HND and CometBFT state without enabling signing or listeners;
-3. compare heights, block identity, app-hash semantics, and network/config identities;
-4. remain quarantined on missing, stale, ahead, or inconsistent state;
-5. replay only from a separately verified source under DEC-HREC-01, then prove exact equality with the checkpoint;
+1. read and authenticate the current network checkpoint and trusted light-client state;
+2. inspect its local HND and CometBFT native state without enabling signing or listeners;
+3. compare the local application state with deterministic execution from the anchored predecessor and verified full block, not by comparing same-height Header.AppHash values;
+4. remain quarantined on missing proof material, stale trust root, invalid block, replay mismatch, or ambiguous state;
+5. replay only from an authenticated predecessor under DEC-HREC-01 and verify the exact derived HND app hash;
 6. pass the independent activation gate before enabling any service.
 
 A validator-specific local recovery receipt may be recorded as operational evidence, but it must not advance or replace the network-global checkpoint.
@@ -63,7 +64,7 @@ Costs and open questions:
 - the anchor must implement or use a reviewed CometBFT light-client verifier;
 - validator-set transitions, trust periods, skipped-height verification, and clock drift become security-critical;
 - the anchor becomes an availability dependency for safe startup/recovery, so outages must fail closed;
-- the exact HND app-hash versus CometBFT header-height mapping must be verified from v0.40.0 source;
+- the one-block AppHash relationship and deterministic HND execution proof must be implemented and tested against the pinned v0.40.0 source;
 - Genesis bootstrap, trust-root rotation, validator-set changes, and emergency recovery require explicit witnessed procedures;
 - the proof retention and audit model must be frozen.
 
