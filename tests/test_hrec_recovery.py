@@ -97,6 +97,90 @@ class HRECRecoveryTests(unittest.TestCase):
         )
         self.assertEqual(result.phase, Phase.FINALIZED)
 
+    def test_recovery_resumes_after_crash_immediately_after_application_phase_save(self):
+        self.journal.prepare(self.op)
+
+        class CrashAfterPhase:
+            def __init__(inner, wrapped):
+                inner.wrapped = wrapped
+                inner.crashed = False
+            def __getattr__(inner, name):
+                return getattr(inner.wrapped, name)
+            def advance(inner, operation_id, phase):
+                result = inner.wrapped.advance(operation_id, phase)
+                if phase == Phase.APPLICATION_COMMITTED and not inner.crashed:
+                    inner.crashed = True
+                    raise RuntimeError("simulated process loss after durable phase save")
+                return result
+
+        with self.assertRaisesRegex(HRECRecoveryError, "TRANSITION"):
+            recover_pending_hrec_operation(
+                anchor=self.anchor, journal=CrashAfterPhase(self.journal),
+                hnd=self.hnd, comet=self.comet,
+            )
+        result = recover_pending_hrec_operation(
+            anchor=self.anchor, journal=self.journal,
+            hnd=self.hnd, comet=self.comet,
+        )
+        self.assertEqual(result.phase, Phase.FINALIZED)
+
+    def test_recovery_resumes_after_crash_immediately_after_consensus_phase_save(self):
+        self.journal.prepare(self.op)
+        self.journal.advance("recovery-op-1", Phase.APPLICATION_COMMITTED)
+
+        class CrashAfterPhase:
+            def __init__(inner, wrapped):
+                inner.wrapped = wrapped
+                inner.crashed = False
+            def __getattr__(inner, name):
+                return getattr(inner.wrapped, name)
+            def advance(inner, operation_id, phase):
+                result = inner.wrapped.advance(operation_id, phase)
+                if phase == Phase.CONSENSUS_COMMITTED and not inner.crashed:
+                    inner.crashed = True
+                    raise RuntimeError("simulated process loss after durable phase save")
+                return result
+
+        with self.assertRaisesRegex(HRECRecoveryError, "TRANSITION"):
+            recover_pending_hrec_operation(
+                anchor=self.anchor, journal=CrashAfterPhase(self.journal),
+                hnd=self.hnd, comet=self.comet,
+            )
+        result = recover_pending_hrec_operation(
+            anchor=self.anchor, journal=self.journal,
+            hnd=self.hnd, comet=self.comet,
+        )
+        self.assertEqual(result.phase, Phase.FINALIZED)
+
+    def test_recovery_resumes_after_crash_immediately_after_checkpoint_phase_save(self):
+        self.journal.prepare(self.op)
+        self.journal.advance("recovery-op-1", Phase.APPLICATION_COMMITTED)
+        self.journal.advance("recovery-op-1", Phase.CONSENSUS_COMMITTED)
+
+        class CrashAfterPhase:
+            def __init__(inner, wrapped):
+                inner.wrapped = wrapped
+                inner.crashed = False
+            def __getattr__(inner, name):
+                return getattr(inner.wrapped, name)
+            def advance(inner, operation_id, phase):
+                result = inner.wrapped.advance(operation_id, phase)
+                if phase == Phase.CHECKPOINT_PUBLISHED and not inner.crashed:
+                    inner.crashed = True
+                    raise RuntimeError("simulated process loss after durable phase save")
+                return result
+
+        with self.assertRaisesRegex(HRECRecoveryError, "TRANSITION"):
+            recover_pending_hrec_operation(
+                anchor=self.anchor, journal=CrashAfterPhase(self.journal),
+                hnd=self.hnd, comet=self.comet,
+            )
+        result = recover_pending_hrec_operation(
+            anchor=self.anchor, journal=self.journal,
+            hnd=self.hnd, comet=self.comet,
+        )
+        self.assertEqual(result.phase, Phase.FINALIZED)
+
     def test_durable_state_mismatch_does_not_advance_journal_or_anchor(self):
         self.journal.prepare(self.op)
         bad_comet = CometBFTCommittedState("hnd-test", 7, A, "e" * 64, C)
