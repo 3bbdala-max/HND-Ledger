@@ -29,20 +29,20 @@ Allowed values:
 - object with unique string keys;
 - array;
 - string containing printable ASCII bytes only, U+0020 through U+007E;
-- unsigned integer from 0 through 2^64-1;
+- non-negative integer in canonical decimal notation; the enclosing artifact schema supplies a field-specific maximum value and digit bound;
 - boolean;
 - null.
 
 Rejected values:
 
 - negative integers, floating-point values, exponent-form numbers, NaN, and Infinity;
-- integers greater than 2^64-1;
+- negative integers, and integers exceeding the field-specific bound or configured digit limit;
 - strings or object keys containing non-ASCII characters or control characters;
 - duplicate object keys;
 - invalid UTF-8, UTF-8 BOM, unpaired surrogates;
 - unknown or missing fields at the enclosing artifact-schema validation layer.
 
-Python implementations MUST use exact type checks so `bool` is not accepted as an integer. Go implementations MUST decode number tokens without converting through float64 and MUST reject any token outside the unsigned-integer grammar/range.
+Python implementations MUST use exact type checks so `bool` is not accepted as an integer. Go implementations MUST decode number tokens without converting through float64 (for example with `json.Decoder.UseNumber()` and `math/big.Int`) and MUST reject any token outside the non-negative integer grammar or that field's schema-specific range.
 
 The profile permits JSON null and booleans at the generic encoder layer, but each HREC artifact schema must state explicitly whether a particular field permits them. The HND snapshot and execution-input schemas should reject null for all required fields.
 
@@ -55,7 +55,7 @@ The canonical byte stream is UTF-8 with no BOM and no trailing newline.
 - Array order is preserved exactly.
 - No insignificant whitespace is emitted.
 - Strings are enclosed in ASCII double quotes. Within a string, only quote and backslash are escaped as `\\"` and `\\\\`. All other permitted characters are emitted as their single ASCII byte.
-- Unsigned integers use shortest base-10 notation: zero is `0`; no leading zeroes.
+- Non-negative integers use shortest base-10 notation: zero is `0`; no leading zeroes. The generic profile does not impose one global bit width. Each artifact schema defines its maximum value and maximum decimal digits per field; those limits must be consistent with the pinned HND protocol and must be checked before expensive big-integer allocation.
 - Booleans are lowercase `true` and `false`; null is lowercase `null`.
 
 Because strings are printable ASCII only, there are no Unicode normalization, UTF-16 ordering, HTML escaping, or Unicode escape-case ambiguities. The profile intentionally rejects such inputs rather than attempting to normalize them.
@@ -70,7 +70,7 @@ The HREC encoder must recursively validate the value domain before serialization
 
 The Go encoder must preserve integers exactly, reject unsupported values before serialization, disable HTML escaping, remove the encoder's terminal newline if using `json.Encoder`, and verify the final bytes against the same fixture. A generic decode through `interface{}` with float64 numbers is prohibited. Decode numbers with `json.Decoder.UseNumber()` or typed unsigned fields.
 
-Both implementations must validate object keys and string values before encoding. Both must reject duplicate keys while parsing untrusted bytes, then re-encode and require byte-for-byte equality with the received bytes.
+Both implementations must validate object keys and string values before encoding. The HND ledger currently bounds nonces to u64 but does not impose a universal u64 ceiling on `total_supply`, balances, or `ProtocolConfig.max_amount`; therefore a blanket u64 limit would silently narrow existing semantics. Every numeric field needs an explicit schema-specific bound before protocol freeze. Both must reject duplicate keys while parsing untrusted bytes, then re-encode and require byte-for-byte equality with the received bytes.
 
 ## 5. HREC artifact digest domains
 
@@ -144,7 +144,7 @@ Both implementations must accept the same valid vectors and produce byte-identic
 
 The maximum snapshot, execution-input, and proof-bundle sizes; maximum nesting depth; and maximum collection/string lengths must be fixed per artifact profile before implementation freeze. They must be selected from actual HND block, transaction, evidence, and state limits, not copied from unrelated VSP limits.
 
-This proposal does not authorize implementation against a guessed limit. Before freeze, reviewers must confirm that every string in the real HND consensus state is printable ASCII and every integer is within the unsigned 64-bit range. If any existing consensus field violates those constraints, the profile must be revised or the field must receive a separately specified encoding; silent coercion is forbidden.
+This proposal does not authorize implementation against a guessed limit. Before freeze, reviewers must confirm that every string in the real HND consensus state is printable ASCII and every integer is within the field-specific numeric bounds, including the existing u64 nonce constraint. If any existing consensus field violates those constraints, the profile must be revised or the field must receive a separately specified encoding; silent coercion is forbidden.
 
 ## 9. Relationship to existing CI
 
