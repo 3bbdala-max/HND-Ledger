@@ -77,6 +77,11 @@ class SQLiteHRECJournalTests(unittest.TestCase):
             result = journal.prepare(op())
             self.assertEqual(result.phase, Phase.APPLICATION_COMMITTED)
 
+    def test_invalid_anchor_does_not_create_database(self):
+        with self.assertRaises(HRECError):
+            SQLiteHRECJournal(self.path, anchor_height=-1)
+        self.assertFalse(os.path.exists(self.path))
+
     def test_changed_anchor_is_rejected(self):
         with self.open_journal():
             pass
