@@ -15,6 +15,7 @@ from tests.test_activation_bundle import ActivationBundleTests
 
 
 _DEFAULT_ENVIRONMENT = object()
+_DEFAULT_HREC_GATE = object()
 
 
 class CometBFTSupervisorTests(unittest.TestCase):
@@ -25,6 +26,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
         self.digest = profile_digest(self.fixture.vsp.payload).hex()
         self.calls = []
         self.child = object()
+        self.hrec_checks = 0
 
     def _backend(self, path):
         return SQLiteAtomicActivationBackend(
@@ -35,7 +37,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
         )
 
     def _launch(self, directory, *, valid_acks=True, expected_digest=None,
-                environment=_DEFAULT_ENVIRONMENT):
+                environment=_DEFAULT_ENVIRONMENT, hrec_gate=_DEFAULT_HREC_GATE):
         root = Path(directory)
         binary = root / "cometbft"
         binary.write_bytes(b"pinned-cometbft-test-binary")
@@ -50,6 +52,7 @@ class CometBFTSupervisorTests(unittest.TestCase):
             os.lseek(fd, 0, os.SEEK_SET)
             pinned_bytes = os.read(fd, 1024)
             os.lseek(fd, 0, os.SEEK_SET)
+            self.assertEqual(self.hrec_checks, 1)
             self.calls.append((args, kwargs, self.backend.read_active_state(), pinned_bytes))
             return self.child
 
@@ -66,6 +69,10 @@ class CometBFTSupervisorTests(unittest.TestCase):
             expected_binary_sha256=expected_digest or actual_digest,
             arguments=["start", "--home", str(root / "node-home")],
             cwd=str(root),
+            hrec_startup_gate=(
+                (lambda: setattr(self, "hrec_checks", self.hrec_checks + 1))
+                if hrec_gate is _DEFAULT_HREC_GATE else hrec_gate
+            ),
             environment=(
                 {"PATH": "/usr/bin"}
                 if environment is _DEFAULT_ENVIRONMENT else environment
@@ -92,6 +99,22 @@ class CometBFTSupervisorTests(unittest.TestCase):
             self.assertIs(kwargs["close_fds"], True)
             self.assertEqual(kwargs["pass_fds"], (fd,))
             self.assertEqual(kwargs["env"], {"PATH": "/usr/bin"})
+
+    def test_missing_hrec_gate_never_spawns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            with self.assertRaisesRegex(CometBFTSupervisorError, "HREC-GATE"):
+                self._launch(directory, hrec_gate=None)
+            self.assertEqual(self.calls, [])
+
+    def test_hrec_gate_failure_prevents_process_spawn(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "node-home").mkdir()
+            def reject():
+                raise RuntimeError("checkpoint mismatch")
+            with self.assertRaisesRegex(CometBFTSupervisorError, "HREC-STARTUP"):
+                self._launch(directory, hrec_gate=reject)
+            self.assertEqual(self.calls, [])
 
     def test_wrong_binary_digest_never_activates_or_spawns(self):
         with tempfile.TemporaryDirectory() as directory:
