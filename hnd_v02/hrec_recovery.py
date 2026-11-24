@@ -6,7 +6,7 @@ operation already prepared in the journal and never invents a replacement.
 """
 from __future__ import annotations
 
-from hnd_v02.hrec_journal_model import HRECError, Phase
+from hnd_v02.hrec_journal_model import HRECError, Operation, Phase
 from hnd_v02.hrec_checkpoint_anchor import (
     NAMESPACE, publish_hrec_checkpoint,
 )
@@ -34,9 +34,20 @@ def recover_pending_hrec_operation(
     This is an explicit operator/service recovery operation, not a normal
     startup side effect. Any mismatch or unknown remote outcome fails closed.
     """
-    operation = journal.latest_operation()
+    if type(hnd) is not HNDApplicationState or type(comet) is not CometBFTCommittedState:
+        raise HRECRecoveryError("HND-HREC-RECOVERY-E-STATE-SHAPE")
+    try:
+        operation = journal.latest_operation()
+    except Exception as exc:
+        raise HRECRecoveryError("HND-HREC-RECOVERY-E-JOURNAL-READ") from exc
     if operation is None:
         raise HRECRecoveryError("HND-HREC-RECOVERY-E-NO-PENDING-OPERATION")
+    if type(operation) is not Operation:
+        raise HRECRecoveryError("HND-HREC-RECOVERY-E-OPERATION-SHAPE")
+    try:
+        operation.validate()
+    except Exception as exc:
+        raise HRECRecoveryError("HND-HREC-RECOVERY-E-OPERATION-INVALID") from exc
     if operation.phase == Phase.FINALIZED:
         raise HRECRecoveryError("HND-HREC-RECOVERY-E-NOTHING-TO-RECOVER")
     if hnd.chain_id != comet.chain_id or operation.chain_id != hnd.chain_id:
