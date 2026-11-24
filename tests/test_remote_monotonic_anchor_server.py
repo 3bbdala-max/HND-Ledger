@@ -35,6 +35,27 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
             self.anchor, "/v1/state/read", {"namespace": "trust-manifest"}
         ), {"record": {"sequence": 0, "digest": "a" * 64}})
 
+    def test_hrec_checkpoint_namespace_is_supported(self):
+        bootstrap = {
+            "namespace": "hrec-checkpoint",
+            "expected_current": None,
+            "new_record": {"sequence": 0, "digest": "b" * 64},
+        }
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/compare-and-advance", bootstrap
+        ), {"advanced": True})
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/read", {"namespace": "hrec-checkpoint"}
+        ), {"record": {"sequence": 0, "digest": "b" * 64}})
+        successor = {
+            "namespace": "hrec-checkpoint",
+            "expected_current": {"sequence": 0, "digest": "b" * 64},
+            "new_record": {"sequence": 1, "digest": "c" * 64},
+        }
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/compare-and-advance", successor
+        ), {"advanced": True})
+
     def test_stale_compare_and_advance_is_false_and_does_not_mutate(self):
         dispatch_monotonic_anchor_request(
             self.anchor, "/v1/state/compare-and-advance", self.bootstrap
