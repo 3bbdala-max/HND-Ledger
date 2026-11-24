@@ -120,7 +120,7 @@ The caller MUST:
 4. retry only the same idempotent operation when the observed state proves that retry is safe;
 5. reject any conflicting operation, digest, predecessor, or unexpected sequence.
 
-If the anchor is unavailable or the outcome cannot be established, no replay, listener, transaction admission, or signing is permitted. If publication fails after local commit, the node must not proceed into the next consensus round; it must stop or remain in an enforced quarantine state until the exact operation outcome is reconciled.
+If the anchor is unavailable or the outcome cannot be established, no replay, listener, transaction admission, or signing is permitted. If publication fails after local commit, the node must not proceed into the next consensus round; it must stop or remain in an enforced quarantine state until the exact operation outcome is reconciled. A restarted process must not resume consensus until the same operation ID, anchor outcome, and both local stores have been reconciled.
 
 ## 7. Recovery decision matrix
 
@@ -185,7 +185,7 @@ The following are intentionally unresolved and require explicit protocol-owner d
 3. Exact HND deterministic execution inputs, app build identity, and replay API.
 4. Genesis bootstrap authorization, InitChain app hash, initial validator set, and initial sequence.
 5. Exact PREPARE/COMMIT ordering relative to HND durable Commit and CometBFT native-state commit boundaries.
-6. Whether a pending PREPARED operation can ever be superseded, and the witnessed procedure if its owner is permanently unavailable.
+6. Deterministic operation-ID preimage shared across validators; whether a pending PREPARED operation can ever be superseded, and the witnessed procedure if its owner is permanently unavailable.
 7. Sequential versus skipping light-client verification; if skipping is ever used, trust level, witness independence, trust period, clock drift, and attack handling.
 8. Checkpoint cadence and performance/availability budget.
 9. Service identity, administrator separation, mTLS certificate issuance/rotation/revocation, and independent backup/disaster recovery.
