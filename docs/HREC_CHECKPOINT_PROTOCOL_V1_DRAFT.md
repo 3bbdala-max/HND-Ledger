@@ -125,14 +125,14 @@ If the anchor is unavailable or the outcome cannot be established, no replay, li
 | Observed condition | Required result |
 |---|---|
 | Fresh Genesis with no prior committed state | Explicit, separately authorized Genesis bootstrap only |
-| HND and CometBFT match the authenticated checkpoint | Continue to the separate startup authorization gate |
-| HND is behind CometBFT | Quarantine; explicit replay only if every DEC-HREC-01 prerequisite is met |
-| HND is ahead of CometBFT | Quarantine; no automatic HND rollback |
-| Equal height but app hash or block identity differs | Quarantine; reject silent acceptance |
+| HND state at height `h` equals deterministic execution of verified block `h` from anchored predecessor state `h-1`, and local CometBFT native state verifies against the same signed block | Continue to the separate startup authorization gate |
+| HND state is behind the anchored application checkpoint | Quarantine; replay only from the authenticated predecessor and verified contiguous blocks under DEC-HREC-01 |
+| HND app height exceeds the latest verified CometBFT block height, or the local native store cannot prove the intervening blocks | Quarantine; no automatic HND rollback or acceptance |
+| Equal numeric height but HND hash differs from deterministic replay output, or signed block identity differs | Quarantine; reject silent acceptance. Never compare HND `Info.last_block_app_hash` directly to the same-height header `AppHash` |
 | Established-chain HND state is missing | Quarantine; no empty-state initialization |
-| CometBFT native store is missing, stale, or older than checkpoint | Quarantine; witnessed restore only |
+| CometBFT native store is missing, stale, or older than the latest anchored proof header | Quarantine; witnessed restore only |
 | Anchor unavailable, stale, unauthenticated, or ambiguous | Quarantine; no replay/listener/signing |
-| Replay does not reproduce the authenticated target | Quarantine and preserve all evidence |
+| Replay does not reproduce the exact HND app hash derived from the verified block | Quarantine and preserve all evidence |
 | Operation outcome is PREPARED or unknown | Quarantine; reconcile the same operation ID |
 | Operation is COMMITTED and all local/native state re-reads match it | Continue to a separate activation authorization gate |
 
