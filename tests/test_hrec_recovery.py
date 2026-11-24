@@ -192,6 +192,25 @@ class HRECRecoveryTests(unittest.TestCase):
         self.assertEqual(self.journal.get("recovery-op-1").phase, Phase.PREPARED)
         self.assertEqual(self.anchor.record, MonotonicRecord(0, GENESIS))
 
+    def test_recovery_rejects_bool_height_in_reader_result(self):
+        self.journal.prepare(self.op)
+        bad_hnd = HNDApplicationState("hnd-test", True, B)
+        with self.assertRaisesRegex(HRECRecoveryError, "HEIGHT"):
+            recover_pending_hrec_operation(
+                anchor=self.anchor, journal=self.journal,
+                hnd=bad_hnd, comet=self.comet,
+            )
+        self.assertEqual(self.journal.get("recovery-op-1").phase, Phase.PREPARED)
+
+    def test_recovery_rejects_untrusted_state_object_shape(self):
+        self.journal.prepare(self.op)
+        with self.assertRaisesRegex(HRECRecoveryError, "STATE-SHAPE"):
+            recover_pending_hrec_operation(
+                anchor=self.anchor, journal=self.journal,
+                hnd={"chain_id": "hnd-test", "height": 7, "app_state_hash": B},
+                comet=self.comet,
+            )
+
     def test_remote_conflict_blocks_recovery(self):
         self.journal.prepare(self.op)
         self.anchor.record = MonotonicRecord(1, "e" * 64)
