@@ -149,3 +149,22 @@ This proposal does not authorize implementation against a guessed limit. Before 
 ## 9. Relationship to existing CI
 
 The existing `hnd-v02-tests.yml` workflow does not yet contain dedicated HREC canonical-JSON Go/Python conformance tests. Its current Python JCS compatibility spike is explicitly isolated to VSP and explicitly does not replace HND's `canonical_json`. HREC tests should be added only after this profile and its limits are approved. This proposal does not modify workflows or claim any CI pass.
+
+
+## 10. Current HND numeric/string source audit
+
+A read-only source audit of the current HND v0.2 implementation confirms why numeric bounds must be field-specific:
+
+| Field family | Current source behavior | HREC encoding consequence |
+|---|---|---|
+| `nonce` | Explicit u64 check in `transaction.py` | Enforce 0..2^64-1 |
+| `protocol_version` | Positive Python integer; no explicit upper bound | Freeze an explicit protocol schema maximum |
+| `max_amount` | Positive Python integer; no explicit upper bound | Do not assume u64 without a protocol decision |
+| `total_supply` | Positive Python integer in Genesis; no explicit upper bound | Do not assume u64 without a protocol decision |
+| `balances` | Non-negative Python integers; supply sum invariant | Bound by approved total supply and artifact limits |
+| `validator_power`, `total_voting_power`, evidence height | Positive/non-negative integer checks in evidence normalization; source inputs originate in CometBFT ABCI types | Bind to the pinned CometBFT field widths and reject overflow before HND normalization |
+| `network_id`, account IDs, signatures, evidence timestamps | ASCII-constrained network ID, ASCII account prefix/digest, Base64 signature, normalized `unix:seconds:nanos` timestamp | Compatible with the printable-ASCII string profile |
+
+Relevant current source locations: `hnd_v02/transaction.py` (`MAX_NONCE`, `ProtocolConfig.__post_init__`, `validate_transaction`); `hnd_v02/ledger.py` (`_assert_invariants`, `_state_payload`, `restore`); `hnd_v02/genesis.py` (Genesis supply/allocation validation); and `hnd_v02/abci_app.py` (`_merge_evidence`, app/store hash construction).
+
+This audit supports the restricted ASCII string domain for the current HND consensus payload fields. It does **not** establish final maximum decimal digits, maximum artifact sizes, or every upstream CometBFT numeric bound. Those values must be written into the final artifact schemas before a protocol freeze. If a future consensus field introduces Unicode or negative numbers, it requires an explicit versioned schema change rather than implicit normalization.
