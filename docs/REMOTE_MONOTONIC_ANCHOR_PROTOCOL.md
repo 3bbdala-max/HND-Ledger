@@ -43,7 +43,7 @@ Response when initialized:
 {"record":{"sequence":0,"digest":"<64 lowercase hexadecimal characters>"}}
 ```
 
-Allowed namespaces are exactly trust-manifest and vsp-profile.
+Allowed namespaces are exactly trust-manifest, vsp-profile, and hrec-checkpoint. Bootstrap sequences are 0, 1, and 0 respectively. The hrec-checkpoint namespace stores the HREC chain checkpoint digest; its initial sequence-0 digest must be provisioned out-of-band from the independently verified HND genesis.
 
 ### Compare and advance
 
@@ -75,7 +75,7 @@ The service implementation MUST provide all of the following, not merely rely on
 
 1. Linearizable compare-and-advance across all service replicas and regions.
 2. Durable commit before returning advanced:true.
-3. Exact bootstrap values: trust-manifest starts at sequence 0; vsp-profile starts at sequence 1.
+3. Exact bootstrap values: trust-manifest starts at sequence 0; vsp-profile starts at sequence 1; hrec-checkpoint starts at sequence 0 with an out-of-band pinned genesis digest.
 4. Thereafter, only current.sequence + 1 is accepted. No replay, skip, reset, delete, namespace recreation, or digest replacement at the same sequence.
 5. expected_current must match both sequence and digest exactly; concurrent writers must have one winner.
 6. A committed record cannot be rolled back by an ordinary service database restore, operator console, backup restore, or disaster-recovery procedure. Recovery must preserve the highest committed record or require a separately witnessed recovery ceremony that does not silently lower sequence.
@@ -89,6 +89,10 @@ The service implementation MUST provide all of the following, not merely rely on
 hnd_v02/remote_monotonic_anchor.py implements the client-side HTTPS/mTLS request and strict response boundary. tests/test_remote_monotonic_anchor.py uses an in-memory fake service to exercise the client contract; it does not prove a real service is deployed, independently administered, linearizable, or rollback-resistant.
 
 The existing SQLiteMonotonicAnchor remains a single-host reference adapter only. It MUST NOT be configured as the production anti-rollback authority.
+
+## HREC checkpoint integration
+
+The isolated HREC prototype adds the hrec-checkpoint namespace and a bridge in hnd_v02/hrec_checkpoint_anchor.py. The genesis digest must be provisioned through a separately witnessed ceremony. A block checkpoint is published only after the caller has independently confirmed durable HND and CometBFT commits. The bridge enforces exact predecessor sequence/digest and reconciles a lost compare-and-advance response by reading the exact proposed record. This bridge does not itself observe or prove either database commit, does not provide an independently operated service, and is not wired into the CometBFT commit path or mandatory startup gate.
 
 ## Activation integration still required
 
