@@ -24,7 +24,7 @@ The implemented narrow API is:
 - `create_backup(store, destination, signer)`
 - `verify_backup(backup_directory, trusted_public_key=..., expected_chain_id=..., expected_genesis_hash=..., expected_tip_height=..., expected_tip_block_hash=...)`
 
-The functions are exported from `hnd_ledger`. Restore has no public API yet.
+The functions are exported from `hnd_ledger`. The first restore API is `restore_backup(backup_directory, destination_database, **independent_verification_arguments)`.
 
 ### Snapshot procedure
 
@@ -121,7 +121,7 @@ Never delete or replace the only valid database before the staged restore has pa
 
 Tests must use temporary directories and subprocesses where process isolation matters. They must not rely on wall-clock timing or claim to simulate physical power loss unless a real fault-injection harness is used.
 
-## 8. Implemented backup subset
+## 8. Implemented backup and restore subset
 
 The current implementation exposes:
 
@@ -130,9 +130,19 @@ The current implementation exposes:
 
 The destination must not already exist. The manifest signer key is never written into the backup. The caller must preserve the public key and checkpoint independently. The timestamp is informational, not a trusted timestamp. The current verifier deliberately requires an exact tip checkpoint; it does not accept descendants.
 
-This subset does **not** implement restore, atomic replacement of a live database, crash-safe restore recovery, key rotation, or a production key-management interface. It must not be used as a substitute for an independently stored recovery plan.
+The restore API deliberately requires a **new, non-existing destination path**. It verifies the signed backup against an independently supplied public key and exact checkpoint, copies the database to a staging directory on the destination filesystem, replays it, finalizes SQLite WAL state, and publishes the final filename with an atomic hard-link operation that refuses to overwrite an existing path.
 
-## 9. Acceptance gates
+This is atomic publication of a new database file, not replacement of a live database. Existing database files and their sidecars are never intentionally overwritten. The implementation does **not** yet implement in-place replacement, crash-recovery orchestration for a multi-file live database, key rotation, a production key-management interface, or cross-platform guarantees on filesystems that do not support hard links. It must not be used as a substitute for an independently stored recovery plan.
+
+## 9. Restore-specific limitations
+
+- Restore is to a new path only; it will reject an existing destination.
+- The caller remains responsible for ensuring the target path is not being used by another application and for selecting the correct independent chain checkpoint.
+- The trusted public key and checkpoint must be retained outside the backup directory.
+- A successful function return means the staged database passed the implemented local checks and was atomically published under a new filename. It does not prove power-loss durability on every filesystem or production disaster-recovery readiness.
+- Process-kill and filesystem fault-injection tests remain outstanding.
+
+## 10. Acceptance gates
 
 The feature is not complete until:
 
