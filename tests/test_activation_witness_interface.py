@@ -10,7 +10,7 @@ from hnd_v02.witness_production_attestation import (
     require_production_witness_backend,
 )
 
-_DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1\\x00"
+_DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1" + bytes([0])
 
 
 class _ProductionContractFake:
