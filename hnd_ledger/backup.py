@@ -269,11 +269,50 @@ def verify_backup(
             raise BackupError("unexpected database filename")
         if manifest["signature_algorithm"] != "Ed25519":
             raise BackupError("unsupported manifest signature algorithm")
+        for field in ("chain_id_hex", "genesis_hash_hex", "tip_block_hash_hex"):
+            value = manifest[field]
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or value != value.lower()
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise BackupError(f"manifest {field} must be 32-byte lowercase hex")
+        if (
+            isinstance(manifest["tip_height"], bool)
+            or not isinstance(manifest["tip_height"], int)
+            or manifest["tip_height"] < 0
+        ):
+            raise BackupError("manifest tip height must be a non-negative integer")
+        if (
+            not isinstance(manifest["tip_header_hex"], str)
+            or len(manifest["tip_header_hex"]) % 2
+            or manifest["tip_header_hex"] != manifest["tip_header_hex"].lower()
+        ):
+            raise BackupError("manifest tip header must be lowercase hex")
+        try:
+            bytes.fromhex(manifest["tip_header_hex"])
+        except ValueError as exc:
+            raise BackupError("manifest tip header is not valid hex") from exc
+        if (
+            not isinstance(manifest["database_sha256"], str)
+            or len(manifest["database_sha256"]) != 64
+            or manifest["database_sha256"] != manifest["database_sha256"].lower()
+            or any(character not in "0123456789abcdef" for character in manifest["database_sha256"])
+        ):
+            raise BackupError("manifest database digest must be lowercase SHA-256 hex")
+        if not isinstance(manifest["created_at_utc"], str):
+            raise BackupError("manifest creation timestamp must be text")
         if manifest["signer_key_id"] != hashlib.sha256(trusted_public_key).hexdigest():
             raise BackupError("backup signer does not match the independently trusted key")
 
         signature_hex = manifest["signature_hex"]
-        if not isinstance(signature_hex, str) or len(signature_hex) != 128:
+        if (
+            not isinstance(signature_hex, str)
+            or len(signature_hex) != 128
+            or signature_hex != signature_hex.lower()
+            or any(character not in "0123456789abcdef" for character in signature_hex)
+        ):
             raise BackupError("manifest signature has invalid encoding")
         unsigned = dict(manifest)
         del unsigned["signature_hex"]
