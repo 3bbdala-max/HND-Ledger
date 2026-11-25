@@ -10,15 +10,11 @@ from __future__ import annotations
 import base64
 import json
 import time
-from typing import Any, Mapping
+from typing import Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from hnd_v02.activation_witness_interface import (
-    ActivationWitnessStoreError,
-    WitnessBackendCapabilities,
-)
 
 _SCHEMA = "hnd.station2.witness-production-attestation.v1"
 _DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1\x00"
@@ -90,6 +86,8 @@ def verify_production_attestation(
     identity = getattr(store, "backend_identity", None)
     if not isinstance(identity, Mapping):
         raise ValueError("HND-WITNESS-SERVICE-E-BACKEND-IDENTITY")
+    if capabilities.get("backend") != payload["backend"]:
+        raise ValueError("HND-WITNESS-SERVICE-E-ATTESTATION-BINDING")
     for key in _ID_FIELDS + ("config_epoch",):
         if identity.get(key) != payload[key]:
             raise ValueError("HND-WITNESS-SERVICE-E-ATTESTATION-BINDING")
