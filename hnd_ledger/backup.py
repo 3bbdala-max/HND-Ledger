@@ -375,3 +375,107 @@ def verify_backup(
         raise
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, sqlite3.Error, KeyError, TypeError, ValueError, StorageError) as exc:
         raise BackupError("backup verification failed") from exc
+
+
+
+def restore_backup(
+    backup_directory: str | os.PathLike[str],
+    destination_database: str | os.PathLike[str],
+    *,
+    trusted_public_key: bytes,
+    expected_chain_id: bytes,
+    expected_genesis_hash: bytes,
+    expected_tip_height: int,
+    expected_tip_block_hash: bytes,
+) -> dict[str, Any]:
+    """Restore a verified backup to a new database path without overwriting data.
+
+    The destination must not exist. Validation and SQLite replay happen in a
+    temporary directory on the destination filesystem. A hard-link publication
+    makes the final name appear atomically and fails if another process created
+    the destination first. Existing databases and their WAL files are untouched.
+    """
+    manifest = verify_backup(
+        backup_directory,
+        trusted_public_key=trusted_public_key,
+        expected_chain_id=expected_chain_id,
+        expected_genesis_hash=expected_genesis_hash,
+        expected_tip_height=expected_tip_height,
+        expected_tip_block_hash=expected_tip_block_hash,
+    )
+
+    target = Path(destination_database)
+    if target.name in ("", ".", ".."):
+        raise BackupError("destination must name a database file")
+    if target.exists() or target.is_symlink():
+        raise BackupError("restore destination already exists; refusing to overwrite")
+    parent = target.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    if not parent.is_dir():
+        raise BackupError("restore parent must be a directory")
+
+    staging_directory = Path(tempfile.mkdtemp(prefix=".hnd-restore-", dir=parent))
+    staged_database = staging_directory / DATABASE_FILENAME
+    try:
+        source_database = Path(backup_directory) / DATABASE_FILENAME
+        shutil.copyfile(source_database, staged_database)
+
+        connection = sqlite3.connect(staged_database)
+        try:
+            rows = dict(connection.execute("SELECT key, value FROM metadata"))
+        finally:
+            connection.close()
+        if rows.get("chain_id") != expected_chain_id:
+            raise BackupError("staged database chain ID differs from checkpoint")
+        if rows.get("genesis_hash") != expected_genesis_hash:
+            raise BackupError("staged database genesis differs from checkpoint")
+        balances, _ = _parse_state(rows["genesis_state"])
+
+        restored_store = SQLiteChainStore(
+            staged_database, expected_chain_id, balances
+        )
+        if not restored_store.verify():
+            raise BackupError("staged restore failed SQLite integrity or chain replay")
+        tip = restored_store.get_tip()
+        if (
+            tip["height"] != expected_tip_height
+            or tip["block_hash"] != expected_tip_block_hash
+        ):
+            raise BackupError("staged restore tip differs from independent checkpoint")
+
+        # Every store operation closes its own connection. Consolidate WAL and
+        # switch to DELETE mode before publishing a single standalone file.
+        connection = sqlite3.connect(staged_database)
+        try:
+            checkpoint = connection.execute(
+                "PRAGMA wal_checkpoint(TRUNCATE)"
+            ).fetchone()
+            if checkpoint and checkpoint[0] != 0:
+                raise BackupError("could not checkpoint staged restore WAL")
+            mode = connection.execute("PRAGMA journal_mode=DELETE").fetchone()
+            if not mode or str(mode[0]).lower() != "delete":
+                raise BackupError("could not finalize staged restore database")
+        finally:
+            connection.close()
+
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(str(staged_database) + suffix)
+            if sidecar.exists() and sidecar.stat().st_size:
+                raise BackupError("staged restore has a non-empty SQLite sidecar")
+            sidecar.unlink(missing_ok=True)
+
+        _fsync_file(staged_database)
+        # os.link is atomic and, unlike os.replace, never overwrites an existing
+        # destination. Staging is on the same filesystem as the final path.
+        os.link(staged_database, target)
+        _fsync_directory(parent)
+        return manifest
+    except BackupError:
+        raise
+    except FileExistsError as exc:
+        raise BackupError("restore destination appeared during restore; nothing overwritten") from exc
+    except (OSError, sqlite3.Error, KeyError, TypeError, ValueError, StorageError) as exc:
+        raise BackupError("restore failed before publication; destination was not replaced") from exc
+    finally:
+        if staging_directory.exists():
+            shutil.rmtree(staging_directory, ignore_errors=True)
