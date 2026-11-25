@@ -276,6 +276,10 @@ class SQLiteChainStore:
         self, transactions: Sequence[Transaction], timestamp: int
     ) -> dict[str, Any]:
         """Atomically validate and persist one next block, returning its details."""
+        # Enforce cheap structural/resource limits before opening SQLite or
+        # replaying the existing chain. Full signature and state validation
+        # still occurs in build_block inside the write transaction.
+        tx_blob = _encode_transactions(transactions)
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -285,7 +289,6 @@ class SQLiteChainStore:
             )
             if block["height"] > MAX_SQLITE_INTEGER:
                 raise StorageError("block height exceeds SQLite signed 64-bit integer range")
-            tx_blob = _encode_transactions(transactions)
             connection.execute(
                 "INSERT INTO blocks(height, header, block_hash, transactions) "
                 "VALUES(?, ?, ?, ?)",
