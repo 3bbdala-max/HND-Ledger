@@ -137,6 +137,50 @@ class WitnessBackendInterfaceTests(unittest.TestCase):
                 trusted_attestor_public_key=self.public_key, now=self.now,
             )
 
+    def test_capability_backend_name_must_match_signed_backend(self):
+        class MismatchedBackend(_ProductionContractFake):
+            capabilities = {
+                **_ProductionContractFake.capabilities,
+                "backend": "different-backend",
+            }
+
+        with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-ATTESTATION-BINDING"):
+            require_production_witness_backend(
+                MismatchedBackend(), attestation=self.attestation,
+                trusted_attestor_public_key=self.public_key, now=self.now,
+            )
+
+    def test_future_issued_attestation_is_rejected(self):
+        future = dict(self.attestation)
+        future["issued_at"] = self.now + 61
+        future["expires_at"] = self.now + 3600
+        future = self._signed({k: v for k, v in future.items() if k != "signature"})
+        with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-ATTESTATION-EXPIRED"):
+            require_production_witness_backend(
+                _ProductionContractFake(), attestation=future,
+                trusted_attestor_public_key=self.public_key, now=self.now,
+            )
+
+    def test_attestation_validity_window_cannot_exceed_90_days(self):
+        long_lived = dict(self.attestation)
+        long_lived["issued_at"] = self.now
+        long_lived["expires_at"] = self.now + 90 * 24 * 60 * 60 + 1
+        long_lived = self._signed({k: v for k, v in long_lived.items() if k != "signature"})
+        with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-ATTESTATION-EXPIRED"):
+            require_production_witness_backend(
+                _ProductionContractFake(), attestation=long_lived,
+                trusted_attestor_public_key=self.public_key, now=self.now,
+            )
+
+    def test_attestation_rejects_unknown_payload_fields(self):
+        extra = dict(self.attestation)
+        extra["operator_note"] = "not covered by the signed schema"
+        with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-ATTESTATION-SHAPE"):
+            require_production_witness_backend(
+                _ProductionContractFake(), attestation=extra,
+                trusted_attestor_public_key=self.public_key, now=self.now,
+            )
+
     def test_identity_mismatch_is_rejected_after_signature_verification(self):
         mismatched = dict(self.attestation)
         mismatched["anchor_id"] = "different-anchor"
