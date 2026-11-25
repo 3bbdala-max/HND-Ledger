@@ -130,3 +130,19 @@ def test_oversized_block_is_rejected_before_opening_database(chain_setup, monkey
     )
     with pytest.raises(StorageError, match="transaction count"):
         store.append_block([None] * (MAX_BLOCK_TRANSACTIONS + 1), 1)
+
+
+def test_stored_transaction_count_is_preflighted_before_decoding(monkeypatch):
+    import hnd_ledger.storage as storage
+
+    payload = (1).to_bytes(4, "big") + b"x"
+    payload *= storage.MAX_BLOCK_TRANSACTIONS + 1
+    monkeypatch.setattr(
+        storage,
+        "decode_signed_transaction",
+        lambda _: (_ for _ in ()).throw(
+            AssertionError("transaction decoder ran before count preflight")
+        ),
+    )
+    with pytest.raises(StorageError, match="transaction count"):
+        storage._decode_transactions(payload)
