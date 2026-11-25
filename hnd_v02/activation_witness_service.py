@@ -14,8 +14,8 @@ from typing import Any
 
 from hnd_v02.activation_witness_interface import (
     ActivationWitnessStore, ActivationWitnessStoreError,
-    require_production_witness_backend,
 )
+from hnd_v02.witness_production_attestation import require_production_witness_backend
 
 _MAX_REQUEST_BYTES = 4096
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", re.ASCII)
@@ -76,13 +76,18 @@ def create_activation_witness_server(
     authorized_client_cert_sha256: set[str] | frozenset[str],
     address: tuple[str, int] = ("127.0.0.1", 9445),
     require_production_backend: bool = True,
+    production_attestation: dict | None = None,
+    trusted_attestor_public_key: bytes | None = None,
 ) -> ThreadingHTTPServer:
     if not callable(getattr(store, "acknowledge", None)):
         raise ValueError("HND-WITNESS-SERVICE-E-STORE-INTERFACE")
     if type(require_production_backend) is not bool:
         raise ValueError("HND-WITNESS-SERVICE-E-MODE")
     if require_production_backend:
-        require_production_witness_backend(store)
+        require_production_witness_backend(
+            store, attestation=production_attestation,
+            trusted_attestor_public_key=trusted_attestor_public_key,
+        )
     if not isinstance(ssl_context, ssl.SSLContext):
         raise ValueError("server SSLContext required")
     if ssl_context.protocol not in (ssl.PROTOCOL_TLS_SERVER, ssl.PROTOCOL_TLS):
