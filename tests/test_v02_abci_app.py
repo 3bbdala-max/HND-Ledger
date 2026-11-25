@@ -353,7 +353,9 @@ class TestV02ABCIApplication(unittest.TestCase):
         events = []
         real_fsync, real_replace = os.fsync, os.replace
         def record_fsync(fd):
-            events.append(("fsync", stat.S_ISDIR(os.fstat(fd).st_mode)))
+            mode = os.fstat(fd).st_mode
+            kind = "directory" if stat.S_ISDIR(mode) else "regular" if stat.S_ISREG(mode) else "other"
+            events.append(("fsync", kind))
             return real_fsync(fd)
         def record_replace(source, destination, **kwargs):
             events.append(("replace", None))
@@ -361,13 +363,13 @@ class TestV02ABCIApplication(unittest.TestCase):
         with patch("hnd_v02.abci_app.os.fsync", side_effect=record_fsync):
             with patch("hnd_v02.abci_app.os.replace", side_effect=record_replace):
                 self.app.commit()
-        expected = [("fsync", False), ("replace", None)]
+        expected = [("fsync", "regular"), ("replace", None)]
         if os.name == "posix":
-            expected.append(("fsync", True))
+            expected.append(("fsync", "directory"))
         self.assertEqual(events, expected)
 
     def test_directory_fsync_failure_does_not_publish_in_memory_commit(self):
-        self.app.finalize_block(height=1, transactions=[self.raw(amount=10, nonce=0)])
+        finalized = self.app.finalize_block(height=1, transactions=[self.raw(amount=10, nonce=0)])
         real_fsync = os.fsync
         def fail_directory_fsync(fd):
             if stat.S_ISDIR(os.fstat(fd).st_mode):
@@ -385,6 +387,13 @@ class TestV02ABCIApplication(unittest.TestCase):
         restarted = self.make_app()
         self.assertEqual(restarted.last_committed_height, 1)
         self.assertEqual(restarted.account_view(self.alice_id)["balance"], 599_990)
+
+        # The original process still owns the exact pending transition. Retrying
+        # those same bytes must reconcile the ambiguous post-replace outcome.
+        self.assertEqual(self.app.commit(), finalized["app_hash"])
+        self.assertEqual(self.app.last_committed_height, 1)
+        self.assertEqual(self.app.info(), restarted.info())
+        self.assertIsNone(self.app._pending)
 
     def test_commit_without_finalize_is_rejected(self):
         with self.assertRaisesRegex(ABCIApplicationError, "no finalized block"):
@@ -409,14 +418,14 @@ class TestV02ABCIApplication(unittest.TestCase):
         # Pending state remains available for a safe retry after the storage fault clears.
         self.assertEqual(self.app.commit(), bytes.fromhex(self.app.committed_state_hash))
 
-    def test_restart_after_durable_replace_recovers_committed_height_and_hash(self):
+    def test_restart_after_replace_before_directory_fsync_recovers_committed_height_and_hash(self):
         raw = self.raw(amount=60, nonce=0)
         finalized = self.app.finalize_block(height=1, transactions=[raw])
         real_replace = __import__("os").replace
 
         def replace_then_simulate_process_loss(source, destination, **kwargs):
             real_replace(source, destination, **kwargs)
-            raise OSError("simulated process loss after durable rename")
+            raise OSError("simulated interruption after replace before directory fsync")
 
         with patch("hnd_v02.abci_app.os.replace", side_effect=replace_then_simulate_process_loss):
             with self.assertRaisesRegex(OSError, "simulated process loss"):

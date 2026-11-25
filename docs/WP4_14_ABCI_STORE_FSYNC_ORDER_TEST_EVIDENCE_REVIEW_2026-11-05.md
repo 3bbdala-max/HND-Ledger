@@ -3,7 +3,7 @@
 **Date:** 2026-11-05  
 **Workstream:** WP4.14 — Durable state and restart review  
 **Branch:** `phase-0.2-planning`  
-**Status:** Documentation-only static review. No source, test, or workflow files changed.
+**Status:** Historical documentation-only review. Current test-coverage reconciliation is recorded in §7; this document does not certify real power-loss behavior.
 
 ## 1. Executive result
 
@@ -89,3 +89,24 @@ For ABCIDUR04, the test must not label the result “not committed” at the fil
 ## 6. Release boundary
 
 This review does not certify power-loss behavior across filesystems, storage controllers, virtual machines, or operating systems. It records a bounded gap in test evidence. Cross-store CometBFT recovery, independent anti-rollback protection, and production durability remain separate open gates.
+
+
+## 7. 2026-11-25 reconciliation with current repository tests
+
+The earlier test-evidence gap is now addressed in source and test definitions on `phase-0.2-planning`. The original sections above remain the historical finding as of 2026-11-05; do not read their unqualified statements as the current test inventory.
+
+Current implementation inspection confirms that `HNDABCIApplication._write_store()` still performs the intended sequence without a source change: temporary-file write/flush, regular-file `fsync`, atomic `os.replace`, installed-entry validation, then parent-directory `fsync` on POSIX.
+
+The current test module `tests/test_v02_abci_app.py` now contains these distinct checks:
+
+- `test_commit_fsyncs_file_before_replace_and_directory_after_replace` records the exact event order and distinguishes a regular-file descriptor from a directory descriptor. On POSIX it requires regular-file fsync → replace → directory fsync.
+- `test_directory_fsync_failure_does_not_publish_in_memory_commit` injects failure specifically after the successful replace, verifies that the running application's committed height is not advanced and the pending transition remains available, then opens a fresh application and validates the complete replacement state. The test has been strengthened to retry the same pending transition and require exact in-memory/restarted-state reconciliation.
+- `test_restart_after_replace_before_directory_fsync_recovers_committed_height_and_hash` accurately names the separate interruption point: after the rename but before the directory fsync. It does not claim that the directory fsync occurred.
+- `test_commit_storage_failure_leaves_old_committed_state` continues to cover failure of the replace operation before the new state is installed.
+- `tests.test_v02_abci_app` is included in the isolated v0.2 workflow command. A workflow-contract regression now protects that inclusion.
+
+No production persistence algorithm, filesystem policy, or consensus rule was changed. These are test-definition improvements; their execution is not established until a completed successful job runs the exact commit.
+
+The tests exercise deterministic fault injection on the CI host filesystem. They do not simulate physical power loss, certify every filesystem/storage controller, or establish the independent HND/CometBFT checkpoint and anchor required by DEC-HREC-01. A directory-fsync error after rename remains an uncertain durability outcome; the retry assertion covers only the exact same pending state in the same live process.
+
+The separate HREC03 pre-rename crash test remains in the workflow. The HREC checkpoint design in draft PR #58 is not implemented or frozen. Production recovery, signer fencing, independent anchor custody, and external review remain separate release blockers.
