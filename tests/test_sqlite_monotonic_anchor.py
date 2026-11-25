@@ -98,5 +98,23 @@ class SQLiteMonotonicAnchorTests(unittest.TestCase):
                 )
 
 
+    def test_activation_witness_namespace_is_monotonic_and_persistent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "anchor.db"
+            anchor = SQLiteMonotonicAnchor(path)
+            first = MonotonicRecord(0, "a" * 64)
+            self.assertTrue(anchor.compare_and_advance(
+                "activation-witness", None, first
+            ))
+            reopened = SQLiteMonotonicAnchor(path)
+            self.assertEqual(reopened.read_state("activation-witness"), first)
+            self.assertTrue(reopened.compare_and_advance(
+                "activation-witness", first, MonotonicRecord(1, "b" * 64)
+            ))
+            with self.assertRaises(MonotonicAnchorConflict):
+                reopened.compare_and_advance(
+                    "activation-witness", None, MonotonicRecord(0, "c" * 64)
+                )
+
 if __name__ == "__main__":
     unittest.main()
