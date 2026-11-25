@@ -38,10 +38,14 @@ def backed_up_chain(tmp_path):
     store = SQLiteChainStore(
         tmp_path / "live.sqlite3", LOCAL_CHAIN_ID, balances
     )
+    # Keep a WAL-mode connection open so the committed block remains represented
+    # in the live WAL while the online backup snapshot is taken.
+    wal_keeper = store._connect()
     store.append_block([make_tx(sender_key, sender_pub, sender, recipient, 25, 0)], 1)
     signer = Ed25519PrivateKey.generate()
     destination = tmp_path / "backup-001"
     manifest = create_backup(store, destination, signer)
+    wal_keeper.close()
     return destination, manifest, signer, store, balances
 
 
@@ -115,3 +119,28 @@ def test_backup_rejects_unexpected_files(backed_up_chain):
     (directory / "extra.txt").write_text("unexpected")
     with pytest.raises(BackupError, match="unexpected files"):
         verify_backup(directory, **_verify_args(manifest, signer))
+
+
+
+def test_backup_rejects_duplicate_manifest_keys(backed_up_chain):
+    directory, manifest, signer, _, _ = backed_up_chain
+    path = directory / "manifest.json"
+    original = path.read_text(encoding="ascii")
+    duplicate = original.replace(
+        '"format":"HND-SQLITE-BACKUP-MANIFEST-V1",',
+        '"format":"HND-SQLITE-BACKUP-MANIFEST-V1","format":"HND-SQLITE-BACKUP-MANIFEST-V1",',
+        1,
+    )
+    path.write_text(duplicate, encoding="ascii")
+    with pytest.raises(BackupError, match="duplicate JSON keys"):
+        verify_backup(directory, **_verify_args(manifest, signer))
+
+
+def test_backup_rejects_wrong_independent_chain_id(backed_up_chain):
+    directory, manifest, signer, _, _ = backed_up_chain
+    wrong_chain_id = bytes([1]) * 32
+    with pytest.raises(BackupError, match="chain ID"):
+        verify_backup(
+            directory,
+            **_verify_args(manifest, signer, chain_id=wrong_chain_id),
+        )
