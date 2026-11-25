@@ -110,9 +110,9 @@ class Ledger:
                 isinstance(nonce, bool)
                 or not isinstance(nonce, int)
                 or nonce < 0
-                or nonce >= UINT64_MAX
+                or nonce > UINT64_MAX
             ):
-                raise LedgerError("initial nonce must permit a checked uint64 increment")
+                raise LedgerError("initial nonce must be a uint64")
             self._balances[address] = balance
             self._nonces[address] = nonce
 
