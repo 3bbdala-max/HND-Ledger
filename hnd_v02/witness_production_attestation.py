@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 
 _SCHEMA = "hnd.station2.witness-production-attestation.v1"
-_DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1\x00"
+_DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1" + bytes([0])
 _FIELDS = frozenset({
     "schema", "backend", "witness_id", "config_epoch", "quorum_id",
     "anchor_id", "signing_key_ref", "review_reference", "issued_at",
