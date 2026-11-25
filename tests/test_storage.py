@@ -172,6 +172,8 @@ def test_concurrent_appends_serialize_same_nonce(chain_setup):
 
     assert [kind for kind, _ in outcomes].count("ok") == 1
     assert [kind for kind, _ in outcomes].count("rejected") == 1
+    rejected_error = next(value for kind, value in outcomes if kind == "rejected")
+    assert "nonce conflict" in str(rejected_error.__cause__)
     assert store.get_tip()["height"] == 1
     assert store.get_state()[0][sender] == 990
     assert store.verify()
