@@ -84,6 +84,60 @@ The service implementation MUST provide all of the following, not merely rely on
 9. Read-after-write consistency is mandatory. A successful advance must be visible to every subsequent read.
 10. The service must be monitored; inability to read or advance is a hard startup/activation failure.
 
+## Witness checkpoint digest and crash-recovery protocol
+
+The `activation-witness` namespace protects the receipt-log checkpoint, not merely a free-running counter. The witness implementation MUST use a deterministic, domain-separated digest chain.
+
+Genesis checkpoint:
+
+```text
+genesis_digest = SHA256(
+  "HND-STATION2-WITNESS-GENESIS-V1\\0" ||
+  canonical_json({schema, witness_id, config_epoch})
+)
+```
+
+For each receipt at counter `n + 1`:
+
+```text
+checkpoint_digest = SHA256(
+  "HND-STATION2-WITNESS-CHECKPOINT-V1\\0" ||
+  canonical_json({
+    schema,
+    witness_id,
+    config_epoch,
+    counter,
+    previous_checkpoint_digest,
+    activation_id,
+    activation_digest,
+    receipt_sha256
+  })
+)
+```
+
+Canonical JSON is UTF-8, sorted keys, no insignificant whitespace, ASCII-safe strings, and rejects non-finite values. `receipt_sha256` is SHA-256 over the exact canonical receipt bytes, including the Ed25519 signature. The anchor sequence equals the committed witness counter. Sequence 0 is the genesis checkpoint; the first receipt advances it to sequence 1.
+
+### Required write protocol
+
+The witness quorum store and independent anchor cannot participate in one atomic transaction. The implementation MUST therefore use a single serialized pending operation and explicit reconciliation:
+
+1. Read the quorum-committed witness counter/checkpoint and the independent anchor. Require exact equality. On first bootstrap only, initialize both at counter 0 with the same deterministic genesis digest. Never initialize an empty anchor if the witness store already contains receipt history.
+2. For a new activation, create one immutable pending record in a durable quorum transaction. It contains the exact activation ID/digest, proposed counter, signed receipt, previous checkpoint digest, and proposed checkpoint digest. The transaction compares the current counter and requires the pending slot to be absent.
+3. Advance the independent anchor from the exact previous record to the proposed counter/checkpoint digest using linearizable compare-and-advance.
+4. Finalize in a second quorum transaction: compare the exact pending record and previous counter, write the immutable receipt, advance the committed counter/checkpoint, and remove the pending slot.
+5. Return the receipt only after finalization is confirmed by a linearizable read.
+
+### Crash and ambiguity reconciliation
+
+- If the anchor is still at the previous counter and the exact pending record exists, retry the same anchor compare-and-advance.
+- If the anchor is already at the pending counter and its digest exactly matches the pending record, finalize that same pending record.
+- If the witness store is at the anchor counter and the checkpoint digests match, the operation is committed; return the stored original receipt for a retry.
+- If the anchor is ahead of the restored witness store, the pending record is missing, counters regress, or any digest differs, fail closed. Do not reset either counter or invent a replacement activation ID.
+- A pending record for another activation must be reconciled before a new acknowledgement can be accepted. The implementation must not create two simultaneous pending records.
+- A timeout after any write is an unknown outcome. The caller reconciles the same activation ID and digest.
+
+This protocol makes a whole-cluster stale restore detectable only if the independent anchor itself remains outside the witness cluster's administrative, credential, and backup/restore failure domain. The protocol document and test doubles do not establish that deployment fact.
+
 ## Client reference
 
 hnd_v02/remote_monotonic_anchor.py implements the client-side HTTPS/mTLS request and strict response boundary. tests/test_remote_monotonic_anchor.py uses an in-memory fake service to exercise the client contract; it does not prove a real service is deployed, independently administered, linearizable, or rollback-resistant.
