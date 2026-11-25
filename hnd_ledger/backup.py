@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -47,6 +48,14 @@ def _public_bytes(private_key: Ed25519PrivateKey) -> bytes:
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _fsync_file(path: Path) -> None:
@@ -141,7 +150,7 @@ def create_backup(
         if database_size <= 0 or database_size > MAX_BACKUP_DATABASE_BYTES:
             raise BackupError("snapshot database size is outside permitted limits")
         _fsync_file(snapshot_path)
-        database_digest = hashlib.sha256(snapshot_path.read_bytes()).hexdigest()
+        database_digest = _sha256_file(snapshot_path)
         public_key = _public_bytes(signer)
         unsigned = {
             "format": MANIFEST_FORMAT,
@@ -272,7 +281,7 @@ def verify_backup(
             Ed25519PublicKey.from_public_bytes(trusted_public_key).verify(
                 bytes.fromhex(signature_hex), _canonical_json(unsigned)
             )
-        except (ValueError, TypeError, Exception) as exc:
+        except (ValueError, TypeError, InvalidSignature) as exc:
             # InvalidSignature is deliberately normalized to one public error.
             raise BackupError("manifest signature verification failed") from exc
 
@@ -285,7 +294,7 @@ def verify_backup(
             or size > MAX_BACKUP_DATABASE_BYTES
         ):
             raise BackupError("database size does not match the signed manifest")
-        digest = hashlib.sha256(database_path.read_bytes()).hexdigest()
+        digest = _sha256_file(database_path)
         if not isinstance(manifest["database_sha256"], str) or digest != manifest["database_sha256"]:
             raise BackupError("database digest does not match the signed manifest")
 
