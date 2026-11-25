@@ -86,6 +86,9 @@ def verify_production_attestation(
     capabilities = getattr(store, "capabilities", None)
     if not isinstance(capabilities, Mapping):
         raise ValueError("HND-WITNESS-SERVICE-E-CAPABILITIES")
+    capabilities = getattr(store, "capabilities", None)
+    if not isinstance(capabilities, Mapping):
+        raise ValueError("HND-WITNESS-SERVICE-E-CAPABILITIES")
     identity = getattr(store, "backend_identity", None)
     if not isinstance(identity, Mapping):
         raise ValueError("HND-WITNESS-SERVICE-E-BACKEND-IDENTITY")
