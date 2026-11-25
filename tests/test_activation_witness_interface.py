@@ -79,6 +79,21 @@ class WitnessBackendInterfaceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-PRODUCTION-GATE"):
             require_production_witness_backend(store)
 
+    def test_development_reference_service_cannot_bind_non_loopback(self):
+        store = SQLiteActivationWitnessStore(
+            ":memory:", witness_id="witness-test", config_epoch=1,
+            signing_key=Ed25519PrivateKey.generate(),
+        )
+        with self.assertRaisesRegex(
+            ValueError, "HND-WITNESS-SERVICE-E-DEVELOPMENT-BIND"
+        ):
+            create_activation_witness_server(
+                store, ssl_context=None,
+                authorized_client_cert_sha256={"a" * 64},
+                address=("0.0.0.0", 9445),
+                require_production_backend=False,
+            )
+
     def test_service_rejects_sqlite_by_default(self):
         store = SQLiteActivationWitnessStore(
             ":memory:", witness_id="witness-test", config_epoch=1,
