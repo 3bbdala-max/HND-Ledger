@@ -24,7 +24,7 @@ from .crypto import address_from_public_key, generate_keypair, sign_transaction
 from .decoder import decode_signed_transaction, decode_transaction_payload
 from .ledger import Ledger, LedgerError, Transaction
 from .storage import SQLiteChainStore, StorageError
-from .backup import BackupError, create_backup, verify_backup
+from .backup import BackupError, create_backup, restore_backup, verify_backup
 
 __all__ = [
     "EncodingError",
@@ -37,6 +37,7 @@ __all__ = [
     "StorageError",
     "BackupError",
     "create_backup",
+    "restore_backup",
     "verify_backup",
     "LedgerError",
     "Transaction",
