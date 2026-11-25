@@ -4,7 +4,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from hnd_ledger.backup import BackupError, create_backup, verify_backup
+from hnd_ledger.backup import BackupError, create_backup, restore_backup, verify_backup
 from hnd_ledger.canonical import LOCAL_CHAIN_ID, signing_message
 from hnd_ledger.crypto import address_from_public_key, generate_keypair, sign_transaction
 from hnd_ledger.storage import SQLiteChainStore
@@ -144,3 +144,43 @@ def test_backup_rejects_wrong_independent_chain_id(backed_up_chain):
             directory,
             **_verify_args(manifest, signer, chain_id=wrong_chain_id),
         )
+
+
+
+def test_restore_publishes_verified_database_at_new_path(backed_up_chain, tmp_path):
+    directory, manifest, signer, _, balances = backed_up_chain
+    destination = tmp_path / "restored.sqlite3"
+    restored_manifest = restore_backup(
+        directory, destination, **_verify_args(manifest, signer)
+    )
+    assert restored_manifest == manifest
+    restored = SQLiteChainStore(destination, LOCAL_CHAIN_ID, balances)
+    assert restored.verify()
+    assert restored.get_tip()["height"] == manifest["tip_height"]
+    assert restored.get_tip()["block_hash"].hex() == manifest["tip_block_hash_hex"]
+    assert not (tmp_path / "restored.sqlite3-wal").exists()
+
+
+def test_restore_refuses_to_overwrite_existing_database(backed_up_chain, tmp_path):
+    directory, manifest, signer, _, balances = backed_up_chain
+    destination = tmp_path / "existing.sqlite3"
+    original = b"do not overwrite this file"
+    destination.write_bytes(original)
+    with pytest.raises(BackupError, match="already exists"):
+        restore_backup(
+            directory, destination, **_verify_args(manifest, signer)
+        )
+    assert destination.read_bytes() == original
+
+
+def test_restore_failure_does_not_publish_destination(backed_up_chain, tmp_path):
+    directory, manifest, signer, _, _ = backed_up_chain
+    database = directory / "database.sqlite3"
+    original = database.read_bytes()
+    database.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    destination = tmp_path / "must-not-exist.sqlite3"
+    with pytest.raises(BackupError):
+        restore_backup(
+            directory, destination, **_verify_args(manifest, signer)
+        )
+    assert not destination.exists()
