@@ -146,3 +146,32 @@ def test_stored_transaction_count_is_preflighted_before_decoding(monkeypatch):
     )
     with pytest.raises(StorageError, match="transaction count"):
         storage._decode_transactions(payload)
+
+
+def test_concurrent_appends_serialize_same_nonce(chain_setup):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    path, key, pub, sender, recipient, balances = chain_setup
+    store = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
+    tx = make_tx(key, pub, sender, recipient, 10, 0)
+    barrier = Barrier(2)
+
+    def append_once():
+        barrier.wait()
+        return store.append_block([tx], 1)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(append_once) for _ in range(2)]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append(("ok", future.result()))
+            except StorageError as exc:
+                outcomes.append(("rejected", exc))
+
+    assert [kind for kind, _ in outcomes].count("ok") == 1
+    assert [kind for kind, _ in outcomes].count("rejected") == 1
+    assert store.get_tip()["height"] == 1
+    assert store.get_state()[0][sender] == 990
+    assert store.verify()
