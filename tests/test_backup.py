@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -184,3 +186,35 @@ def test_restore_failure_does_not_publish_destination(backed_up_chain, tmp_path)
             directory, destination, **_verify_args(manifest, signer)
         )
     assert not destination.exists()
+
+
+
+def test_restored_database_reopens_in_clean_process(backed_up_chain, tmp_path):
+    directory, manifest, signer, _, balances = backed_up_chain
+    destination = tmp_path / "fresh-process.sqlite3"
+    restore_backup(directory, destination, **_verify_args(manifest, signer))
+    script = (
+        "import json, sys; "
+        "from hnd_ledger.storage import SQLiteChainStore; "
+        "store = SQLiteChainStore(sys.argv[1], bytes.fromhex(sys.argv[2]), json.loads(sys.argv[3])); "
+        "assert store.verify(); "
+        "tip = store.get_tip(); "
+        "assert tip['height'] == int(sys.argv[4]); "
+        "assert tip['block_hash'].hex() == sys.argv[5]"
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(destination),
+            LOCAL_CHAIN_ID.hex(),
+            json.dumps(balances, sort_keys=True),
+            str(manifest["tip_height"]),
+            manifest["tip_block_hash_hex"],
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
