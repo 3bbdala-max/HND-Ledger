@@ -16,7 +16,7 @@ from hnd_v02.monotonic_anchor import (
 )
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
-_ALLOWED = frozenset({"trust-manifest", "vsp-profile"})
+_ALLOWED = frozenset({"trust-manifest", "vsp-profile", "activation-witness"})
 
 
 class SQLiteMonotonicAnchor:
@@ -76,7 +76,7 @@ class SQLiteMonotonicAnchor:
     @staticmethod
     def _validate_transition(namespace, current, proposed):
         """Enforce namespace bootstrap and exact successor inside the write lock."""
-        bootstrap = {"trust-manifest": 0, "vsp-profile": 1}[namespace]
+        bootstrap = {"trust-manifest": 0, "vsp-profile": 1, "activation-witness": 0}[namespace]
         if current is None:
             if proposed.sequence != bootstrap:
                 raise MonotonicAnchorConflict("HND-SQLITE-ANCHOR-E-BOOTSTRAP")
