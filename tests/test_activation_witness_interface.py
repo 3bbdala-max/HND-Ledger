@@ -1,6 +1,6 @@
 import unittest
 
-from hnd_v02.activation_witness_interface import require_production_witness_backend
+from hnd_v02.witness_production_attestation import require_production_witness_backend
 from hnd_v02.activation_witness_store import SQLiteActivationWitnessStore
 from hnd_v02.activation_witness_service import create_activation_witness_server
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
