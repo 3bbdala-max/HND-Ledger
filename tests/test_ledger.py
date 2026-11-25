@@ -132,3 +132,12 @@ def test_chain_id_must_be_32_bytes(ledger_setup):
     _, _, _, sender, _ = ledger_setup
     with pytest.raises(LedgerError, match="32 bytes"):
         Ledger(b"short", {sender: 1})
+
+
+def test_terminal_uint64_nonce_can_be_restored_but_cannot_advance(ledger_setup):
+    _, _, _, sender, recipient = ledger_setup
+    restored = Ledger(CHAIN_ID, {sender: 1000, recipient: 0}, {sender: UINT64_MAX})
+    assert restored.nonce_of(sender) == UINT64_MAX
+    exported_balances, exported_nonces = restored.export_state()
+    reopened = Ledger(CHAIN_ID, exported_balances, exported_nonces)
+    assert reopened.nonce_of(sender) == UINT64_MAX
