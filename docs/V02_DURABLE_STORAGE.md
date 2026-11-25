@@ -38,3 +38,12 @@ The storage regression tests cover multi-block append, process-style close/reope
 - WAL and `synchronous=FULL` improve local crash durability but do not replace filesystem, disk, backup, or disaster-recovery testing.
 - No production key custody, public networking, mempool, fork choice, validator selection, or release authorization is provided.
 - Independent clean-room execution of the complete test suite on the exact commit remains mandatory.
+
+
+## Signed backup subset
+
+The isolated backup module adds `create_backup` and `verify_backup`. Creation uses SQLite's online backup API, validates the copied database by integrity check and full chain replay, writes a canonical JSON manifest, signs it with Ed25519, and publishes the database/manifest pair in a new directory. Existing destinations are not intentionally overwritten.
+
+Verification requires the trusted Ed25519 public key and exact chain ID, genesis hash, tip height, and tip block hash to be supplied independently of the backup. It rejects duplicate JSON keys, noncanonical manifests, unexpected files, symlinks, signature mismatch, digest/size mismatch, replay failure, and checkpoint mismatch. The public key and checkpoint must be retained outside the backup.
+
+Restore is still unimplemented. No test-pass claim is made until the complete suite is executed against the exact commit SHA.
