@@ -117,3 +117,16 @@ os._exit(23)
     recovered = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
     assert recovered.verify()
     assert recovered.get_tip()["height"] == 1
+
+
+def test_oversized_block_is_rejected_before_opening_database(chain_setup, monkeypatch):
+    from hnd_ledger.storage import MAX_BLOCK_TRANSACTIONS
+
+    path, _, _, _, _, balances = chain_setup
+    store = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
+    monkeypatch.setattr(
+        store, "_connect",
+        lambda: (_ for _ in ()).throw(AssertionError("database opened before preflight")),
+    )
+    with pytest.raises(StorageError, match="transaction count"):
+        store.append_block([None] * (MAX_BLOCK_TRANSACTIONS + 1), 1)
