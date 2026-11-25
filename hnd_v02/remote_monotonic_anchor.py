@@ -161,7 +161,7 @@ class RemoteMonotonicAnchor:
 
     def read_state(self, namespace: str) -> MonotonicRecord | None:
         if type(namespace) is not str or namespace not in {
-            "trust-manifest", "vsp-profile"
+            "trust-manifest", "vsp-profile", "activation-witness"
         }:
             raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-NAMESPACE")
         try:
@@ -181,7 +181,7 @@ class RemoteMonotonicAnchor:
         new_record: MonotonicRecord,
     ) -> bool:
         if type(namespace) is not str or namespace not in {
-            "trust-manifest", "vsp-profile"
+            "trust-manifest", "vsp-profile", "activation-witness"
         }:
             raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-NAMESPACE")
         if expected_current is not None and type(expected_current) is not MonotonicRecord:
@@ -197,7 +197,7 @@ class RemoteMonotonicAnchor:
                     })
         except (TypeError, ValueError) as exc:
             raise MonotonicAnchorError("HND-REMOTE-ANCHOR-E-RECORD") from exc
-        bootstrap = 0 if namespace == "trust-manifest" else 1
+        bootstrap = {"trust-manifest": 0, "vsp-profile": 1, "activation-witness": 0}[namespace]
         expected_sequence = (
             bootstrap if expected_current is None
             else expected_current.sequence + 1
