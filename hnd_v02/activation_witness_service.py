@@ -6,6 +6,7 @@ independently verified deployment evidence, not by this HTTP service alone.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 import ssl
@@ -83,6 +84,16 @@ def create_activation_witness_server(
         raise ValueError("HND-WITNESS-SERVICE-E-STORE-INTERFACE")
     if type(require_production_backend) is not bool:
         raise ValueError("HND-WITNESS-SERVICE-E-MODE")
+    if not require_production_backend:
+        try:
+            bind_host, bind_port = address
+            loopback = ipaddress.ip_address(bind_host).is_loopback
+        except (TypeError, ValueError):
+            loopback = False
+            bind_port = None
+        if (not loopback or type(bind_port) is not int
+                or not 0 <= bind_port <= 65535):
+            raise ValueError("HND-WITNESS-SERVICE-E-DEVELOPMENT-BIND")
     if require_production_backend:
         require_production_witness_backend(
             store, attestation=production_attestation,
