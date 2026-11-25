@@ -383,3 +383,14 @@ This register tracks repository evidence and unresolved gates. The older `HND_FI
 - Current exact-head run for this register-only update will be checked separately. No test pass is inferred from the workflow definition or static source review.
 - PR #58 remains Draft and unapproved. The source-semantics comment [6053463178](https://github.com/3bbdala-max/HND-Ledger/pull/58#pullrequestreview-6053463178) requires caller-specific proof preconditions and independent verification; no HREC implementation or protocol freeze is authorized.
 - External blockers remain unchanged: GitHub Actions runner provisioning, private-repository branch protection, independent signer authority/fencing decision, HREC anchor and proof-format review, and legal/operational approvals. Keep all production signing and launch gates closed.
+
+
+## 27. 2026-11-25 standalone-ledger directory-fsync evidence reconciliation
+
+- Fresh branch HEAD before this change: `04ae96c28e58acebe75c3f7e237c3d466c36be0b`. The exact-head run [45568734400](https://github.com/3bbdala-max/HND-Ledger/actions/runs/45568734400) had HND job `139049853412` = FAILURE with `runner_id=0`, zero steps; CometBFT smoke job `139049867488` = SKIPPED. No log blob or test execution is available.
+- Rechecked the historical WP4.14 standalone-ledger durability finding. Current `hnd_v02/ledger.py::HNDLedger.save()` already performs POSIX parent-directory fsync after `os.replace`; no production source change was necessary. The existing test asserted operation order but only distinguished directory from non-directory descriptors.
+- Strengthened `test_save_fsyncs_file_before_replace_and_directory_after_replace` to require a regular-file descriptor for the first fsync and a directory descriptor for the post-replace fsync.
+- Added a fault-injection regression for a directory-fsync error after successful replace. It requires a complete replay-restorable snapshot and successful retry of the identical ledger state. Added a workflow-contract test that protects execution of `tests.test_v02_ledger` in CI.
+- Updated [WP4.14 standalone-ledger durability review](WP4_14_STANDALONE_LEDGER_SAVE_DIRECTORY_FSYNC_DURABILITY_REVIEW_2026-11-05.md) §8. The source-level omission is closed; the new fault test is not considered passed until an exact-SHA CI job executes it successfully.
+- No protocol, consensus, signer, production key, trust root, network, or release decision changed. The standalone snapshot remains distinct from authoritative HND/CometBFT recovery and independent checkpointing.
+- Exact-SHA CI for this test addition will be recorded after the resulting run is inspected. Keep the repository-addressable work scoped to the existing persistence API; no claims of physical power-loss proof are made.

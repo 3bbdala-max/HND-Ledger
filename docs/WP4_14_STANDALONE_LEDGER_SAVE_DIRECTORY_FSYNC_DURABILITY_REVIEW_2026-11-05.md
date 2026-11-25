@@ -3,7 +3,7 @@
 **Date:** 2026-11-05  
 **Workstream:** WP4.14 — Durable state and restart review  
 **Branch:** `phase-0.2-planning`  
-**Status:** Documentation-only static review. No source, test, or workflow files changed.
+**Status:** Historical static review. Current implementation/test reconciliation is recorded in §8; this document does not certify real power-loss behavior.
 
 ## 1. Executive result
 
@@ -68,3 +68,20 @@ These are proposed tests only. No implementation or test execution is claimed.
 ## 7. Release boundary
 
 This review does not certify filesystem behavior across all operating systems, filesystems, storage controllers, or virtualized environments. Production durability still requires a declared deployment platform/filesystem contract, crash testing, and independent review. Public network and production release gates remain closed.
+
+
+## 8. 2026-11-25 reconciliation with current implementation and tests
+
+The original source finding in §§1–5 is historical. Current inspection of `hnd_v02/ledger.py::HNDLedger.save()` confirms that the implementation now performs the required POSIX parent-directory synchronization after the atomic replacement:
+
+1. write and flush the sibling temporary snapshot;
+2. fsync the temporary file;
+3. atomically replace the destination;
+4. open the destination's parent directory and fsync it on POSIX;
+5. close the directory descriptor.
+
+The current test module `tests/test_v02_ledger.py` already asserted file-fsync → replace → directory-fsync ordering. This remediation strengthens that assertion to distinguish a regular-file descriptor from a directory descriptor and adds `test_save_directory_fsync_failure_after_replace_keeps_complete_snapshot_and_retry`. The new test injects failure only at the parent-directory fsync, validates that the installed snapshot is complete and replay-restorable, then retries saving the exact same ledger state and verifies the restored snapshot again.
+
+A workflow-contract regression now requires `tests.test_v02_ledger` to remain in the isolated v0.2 CI command. The workflow already includes this module; the new assertion protects against future accidental removal.
+
+No production persistence source was changed in this remediation because the POSIX directory-fsync operation is already present. The tests model a deterministic exception on the CI filesystem. They do not simulate physical power loss, prove filesystem/controller behavior across platforms, or authorize use of standalone snapshots as an authoritative validator store. HREC cross-store recovery and an independent freshness anchor remain separate requirements.

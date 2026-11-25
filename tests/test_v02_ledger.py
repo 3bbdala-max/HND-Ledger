@@ -232,7 +232,9 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
             events = []
             real_fsync, real_replace = os.fsync, os.replace
             def record_fsync(fd):
-                events.append(("fsync", stat.S_ISDIR(os.fstat(fd).st_mode)))
+                mode = os.fstat(fd).st_mode
+                kind = "directory" if stat.S_ISDIR(mode) else "regular" if stat.S_ISREG(mode) else "other"
+                events.append(("fsync", kind))
                 return real_fsync(fd)
             def record_replace(source, destination):
                 events.append(("replace", None))
@@ -240,10 +242,43 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
             with mock.patch("hnd_v02.ledger.os.fsync", side_effect=record_fsync), \
                  mock.patch("hnd_v02.ledger.os.replace", side_effect=record_replace):
                 self.ledger.save(path)
-            expected = [("fsync", False), ("replace", None)]
+            expected = [("fsync", "regular"), ("replace", None)]
             if os.name == "posix":
-                expected.append(("fsync", True))
+                expected.append(("fsync", "directory"))
             self.assertEqual(events, expected)
+
+
+    def test_save_directory_fsync_failure_after_replace_keeps_complete_snapshot_and_retry(self):
+        import os
+        import stat
+        from unittest import mock
+
+        if os.name != "posix":
+            self.skipTest("parent-directory fsync is a POSIX durability boundary")
+        with self.tempfile.TemporaryDirectory() as directory:
+            path = self.Path(directory) / "ledger.json"
+            self.ledger.save(path)
+            self.ledger.apply_transaction(self.signed(amount=10, nonce=0))
+            expected = self.ledger.snapshot()
+            real_fsync = os.fsync
+
+            def fail_parent_directory_fsync(fd):
+                if stat.S_ISDIR(os.fstat(fd).st_mode):
+                    raise OSError("simulated parent-directory fsync failure")
+                return real_fsync(fd)
+
+            with mock.patch("hnd_v02.ledger.os.fsync", side_effect=fail_parent_directory_fsync):
+                with self.assertRaisesRegex(OSError, "parent-directory fsync failure"):
+                    self.ledger.save(path)
+
+            # os.replace already installed the complete new snapshot. The failed
+            # directory fsync makes durability uncertain, not the JSON partial.
+            self.assertEqual(self.load(path).snapshot(), expected)
+            self.assertEqual(list(self.Path(directory).glob(".ledger.json.*.tmp")), [])
+
+            # Re-saving the exact same ledger state must reconcile the outcome.
+            self.ledger.save(path)
+            self.assertEqual(self.load(path).snapshot(), expected)
 
     def test_file_snapshot_wrong_genesis_hash_rejected(self):
         from hnd_v02.ledger import LedgerError
