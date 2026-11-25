@@ -13,6 +13,8 @@ import re
 import sqlite3
 from typing import Any
 
+from hnd_v02.activation_witness_interface import WitnessBackendCapabilities
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 _SCHEMA = "hnd.station2.witness-ack.v1"
@@ -83,6 +85,17 @@ class SQLiteActivationWitnessStore:
                 db.commit()
         except sqlite3.Error as exc:
             raise ActivationWitnessStoreError("HND-WITNESS-STORE-E-INIT") from exc
+
+    @property
+    def capabilities(self) -> WitnessBackendCapabilities:
+        """SQLite is deliberately never admissible as a production witness."""
+        return {
+            "backend": "sqlite-reference",
+            "production_capable": False,
+            "quorum_ready": False,
+            "anti_rollback_verified": False,
+            "protected_key_custody": False,
+        }
 
     def acknowledge(self, activation_id: str, activation_digest: str) -> dict[str, Any]:
         if type(activation_id) is not str or not _ID.fullmatch(activation_id):
