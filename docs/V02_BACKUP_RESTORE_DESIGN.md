@@ -1,6 +1,6 @@
 # HND-Ledger v0.2 backup and restore design
 
-**Status: Design only. No backup or restore implementation is claimed by this document.**
+**Status: Partial implementation.** The current working branch implements signed backup creation and verification in `hnd_ledger/backup.py`. Restore remains design-only and is not implemented. The test suite has been added but has not yet been executed on this branch head.
 
 This design applies to the single-host SQLite reference store. It does not introduce distributed consensus or production-node guarantees.
 
@@ -121,7 +121,18 @@ Never delete or replace the only valid database before the staged restore has pa
 
 Tests must use temporary directories and subprocesses where process isolation matters. They must not rely on wall-clock timing or claim to simulate physical power loss unless a real fault-injection harness is used.
 
-## 8. Acceptance gates
+## 8. Implemented backup subset
+
+The current implementation exposes:
+
+- `create_backup(store, destination, signer)`: uses SQLite's online backup API, verifies the captured snapshot by integrity check and full replay, finalizes it as a standalone database, and publishes a new directory containing only the database and signed manifest.
+- `verify_backup(...)`: checks canonical manifest encoding, duplicate keys, the independently trusted Ed25519 public key, the database size and SHA-256 digest, SQLite integrity, full chain replay, and an independently supplied exact chain/genesis/tip checkpoint.
+
+The destination must not already exist. The manifest signer key is never written into the backup. The caller must preserve the public key and checkpoint independently. The timestamp is informational, not a trusted timestamp. The current verifier deliberately requires an exact tip checkpoint; it does not accept descendants.
+
+This subset does **not** implement restore, atomic replacement of a live database, crash-safe restore recovery, key rotation, or a production key-management interface. It must not be used as a substitute for an independently stored recovery plan.
+
+## 9. Acceptance gates
 
 The feature is not complete until:
 
