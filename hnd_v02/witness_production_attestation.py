@@ -10,7 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from typing import Mapping
+from typing import Any, Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -83,6 +83,9 @@ def verify_production_attestation(
     except (ValueError, UnicodeError, InvalidSignature) as exc:
         raise ValueError("HND-WITNESS-SERVICE-E-ATTESTATION-INVALID") from exc
 
+    capabilities = getattr(store, "capabilities", None)
+    if not isinstance(capabilities, Mapping):
+        raise ValueError("HND-WITNESS-SERVICE-E-CAPABILITIES")
     identity = getattr(store, "backend_identity", None)
     if not isinstance(identity, Mapping):
         raise ValueError("HND-WITNESS-SERVICE-E-BACKEND-IDENTITY")
