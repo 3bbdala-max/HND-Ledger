@@ -428,7 +428,7 @@ class TestV02ABCIApplication(unittest.TestCase):
             raise OSError("simulated interruption after replace before directory fsync")
 
         with patch("hnd_v02.abci_app.os.replace", side_effect=replace_then_simulate_process_loss):
-            with self.assertRaisesRegex(OSError, "simulated process loss"):
+            with self.assertRaisesRegex(OSError, "simulated interruption after replace before directory fsync"):
                 self.app.commit()
 
         self.assertEqual(self.app.last_committed_height, 0)
