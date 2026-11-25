@@ -4,7 +4,7 @@
 
 ## Security objective
 
-Keep the accepted Trust Manifest and VSP sequence/digest outside the validator host's rollback domain. Restoring an old local disk, SQLite backup, VM snapshot, or application image must not restore the remote anchor to an earlier value.
+Keep accepted Trust Manifest, VSP, and activation-witness checkpoint state outside the validator and witness-cluster rollback domains. Restoring an old local disk, SQLite backup, VM snapshot, or application image must not restore the remote anchor to an earlier value.
 
 The service must be independently administered and independently recoverable from the HND validator host. A remote URL alone is not independence. A service backed by a database snapshot that an attacker can roll back together with the validator host does not meet this objective.
 
@@ -43,7 +43,7 @@ Response when initialized:
 {"record":{"sequence":0,"digest":"<64 lowercase hexadecimal characters>"}}
 ```
 
-Allowed namespaces are exactly trust-manifest and vsp-profile.
+Allowed namespaces are exactly trust-manifest, vsp-profile, and activation-witness.
 
 ### Compare and advance
 
@@ -75,7 +75,7 @@ The service implementation MUST provide all of the following, not merely rely on
 
 1. Linearizable compare-and-advance across all service replicas and regions.
 2. Durable commit before returning advanced:true.
-3. Exact bootstrap values: trust-manifest starts at sequence 0; vsp-profile starts at sequence 1.
+3. Exact bootstrap values: trust-manifest starts at sequence 0; vsp-profile starts at sequence 1; activation-witness starts at sequence 0.
 4. Thereafter, only current.sequence + 1 is accepted. No replay, skip, reset, delete, namespace recreation, or digest replacement at the same sequence.
 5. expected_current must match both sequence and digest exactly; concurrent writers must have one winner.
 6. A committed record cannot be rolled back by an ordinary service database restore, operator console, backup restore, or disaster-recovery procedure. Recovery must preserve the highest committed record or require a separately witnessed recovery ceremony that does not silently lower sequence.
@@ -90,9 +90,9 @@ hnd_v02/remote_monotonic_anchor.py implements the client-side HTTPS/mTLS request
 
 The existing SQLiteMonotonicAnchor remains a single-host reference adapter only. It MUST NOT be configured as the production anti-rollback authority.
 
-## Activation integration still required
+## Activation and witness integration still required
 
-The activation transaction must use the remote anchor as the authoritative monotonic state and coordinate it with the local atomic profile activation. The implementation must define and test crash recovery for these cases:
+The activation transaction must use the remote anchor as the authoritative monotonic state and coordinate it with the local atomic profile activation. The activation-witness namespace is reserved for a digest-chained checkpoint of the witness receipt log; its sequence must track the committed witness counter. The anchor must be operated under separate administration and recovery credentials from the witness quorum. The implementation must define and test crash recovery for these cases:
 
 - remote advance succeeds but local activation commit fails;
 - local state is stale while remote state is ahead;
