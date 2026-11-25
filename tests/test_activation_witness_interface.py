@@ -2,6 +2,7 @@ import unittest
 
 from hnd_v02.activation_witness_interface import require_production_witness_backend
 from hnd_v02.activation_witness_store import SQLiteActivationWitnessStore
+from hnd_v02.activation_witness_service import create_activation_witness_server
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
@@ -34,6 +35,18 @@ class WitnessBackendInterfaceTests(unittest.TestCase):
             self.assertIs(store.capabilities[key], False)
         with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-PRODUCTION-GATE"):
             require_production_witness_backend(store)
+
+    def test_service_rejects_sqlite_by_default(self):
+        store = SQLiteActivationWitnessStore(
+            ":memory:", witness_id="witness-test", config_epoch=1,
+            signing_key=Ed25519PrivateKey.generate(),
+        )
+        with self.assertRaisesRegex(ValueError, "HND-WITNESS-SERVICE-E-PRODUCTION-GATE"):
+            create_activation_witness_server(
+                store,
+                ssl_context=None,
+                authorized_client_cert_sha256={"a" * 64},
+            )
 
     def test_missing_capabilities_fail_closed(self):
         class IncompleteBackend:
