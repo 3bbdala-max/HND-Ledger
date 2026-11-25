@@ -1,8 +1,7 @@
-"""HTTPS/mTLS reference endpoint for the Station 2 witness ACK store.
+"""HTTPS/mTLS endpoint for the Station 2 activation witness backend.
 
-This endpoint is a single-host reference service when backed by
-SQLiteActivationWitnessStore. It is not an independently administered witness,
-replicated quorum, or production anti-rollback system.
+Production suitability is determined by the backend admission gate and by
+independently verified deployment evidence, not by this HTTP service alone.
 """
 from __future__ import annotations
 
@@ -14,9 +13,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from hnd_v02.activation_witness_interface import (
-    ActivationWitnessStore, require_production_witness_backend,
+    ActivationWitnessStore, ActivationWitnessStoreError,
+    require_production_witness_backend,
 )
-from hnd_v02.activation_witness_store import ActivationWitnessStoreError
 
 _MAX_REQUEST_BYTES = 4096
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", re.ASCII)
