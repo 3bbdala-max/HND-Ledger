@@ -114,5 +114,21 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
             )
 
 
+    def test_server_dispatch_accepts_activation_witness_namespace(self):
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/read", {"namespace": "activation-witness"}
+        ), {"record": None})
+        request = {
+            "namespace": "activation-witness",
+            "expected_current": None,
+            "new_record": {"sequence": 0, "digest": "f" * 64},
+        }
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/compare-and-advance", request
+        ), {"advanced": True})
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/read", {"namespace": "activation-witness"}
+        ), {"record": {"sequence": 0, "digest": "f" * 64}})
+
 if __name__ == "__main__":
     unittest.main()
