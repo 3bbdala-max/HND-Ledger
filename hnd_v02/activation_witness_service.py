@@ -13,9 +13,10 @@ import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from hnd_v02.activation_witness_store import (
-    ActivationWitnessStoreError, SQLiteActivationWitnessStore,
+from hnd_v02.activation_witness_interface import (
+    ActivationWitnessStore, require_production_witness_backend,
 )
+from hnd_v02.activation_witness_store import ActivationWitnessStoreError
 
 _MAX_REQUEST_BYTES = 4096
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", re.ASCII)
@@ -50,7 +51,7 @@ def _strict_loads(raw: bytes) -> Any:
 
 
 def dispatch_witness_request(
-    store: SQLiteActivationWitnessStore, route: str, payload: Any
+    store: ActivationWitnessStore, route: str, payload: Any
 ) -> dict:
     if route != _ROUTE:
         raise ActivationWitnessHTTPError(404, "HND-WITNESS-HTTP-E-ROUTE")
@@ -70,14 +71,19 @@ def dispatch_witness_request(
 
 
 def create_activation_witness_server(
-    store: SQLiteActivationWitnessStore,
+    store: ActivationWitnessStore,
     *,
     ssl_context: ssl.SSLContext,
     authorized_client_cert_sha256: set[str] | frozenset[str],
     address: tuple[str, int] = ("127.0.0.1", 9445),
+    require_production_backend: bool = True,
 ) -> ThreadingHTTPServer:
-    if not isinstance(store, SQLiteActivationWitnessStore):
-        raise ValueError("SQLite reference store required")
+    if not callable(getattr(store, "acknowledge", None)):
+        raise ValueError("HND-WITNESS-SERVICE-E-STORE-INTERFACE")
+    if type(require_production_backend) is not bool:
+        raise ValueError("HND-WITNESS-SERVICE-E-MODE")
+    if require_production_backend:
+        require_production_witness_backend(store)
     if not isinstance(ssl_context, ssl.SSLContext):
         raise ValueError("server SSLContext required")
     if ssl_context.protocol not in (ssl.PROTOCOL_TLS_SERVER, ssl.PROTOCOL_TLS):
@@ -91,7 +97,7 @@ def create_activation_witness_server(
         raise ValueError("explicit lowercase SHA-256 client certificate pins required")
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "HND-Activation-Witness-Reference/1"
+        server_version = "HND-Activation-Witness/1"
         sys_version = ""
 
         def log_message(self, _format, *_args):
