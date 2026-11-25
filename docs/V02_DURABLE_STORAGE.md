@@ -29,7 +29,7 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-The storage regression tests cover multi-block append, process-style close/reopen, deterministic replay, nonce continuity, invalid-block rollback, genesis mismatch, persisted-hash tampering, and recovery after a child process terminates with an uncommitted block row. This is a process-termination simulation, not a physical power-loss or filesystem fault-injection test.
+The storage regression tests cover multi-block append, process-style close/reopen, deterministic replay, nonce continuity, invalid-block rollback, genesis mismatch, persisted-hash tampering, preflight rejection of oversized transaction sets before database access or transaction decoding, concurrent append serialization, and recovery after a child process terminates with an uncommitted block row. This is a process-termination simulation, not a physical power-loss or filesystem fault-injection test.
 
 ## Limitations and next gates
 

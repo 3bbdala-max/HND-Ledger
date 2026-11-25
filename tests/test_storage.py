@@ -117,3 +117,63 @@ os._exit(23)
     recovered = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
     assert recovered.verify()
     assert recovered.get_tip()["height"] == 1
+
+
+def test_oversized_block_is_rejected_before_opening_database(chain_setup, monkeypatch):
+    from hnd_ledger.storage import MAX_BLOCK_TRANSACTIONS
+
+    path, _, _, _, _, balances = chain_setup
+    store = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
+    monkeypatch.setattr(
+        store, "_connect",
+        lambda: (_ for _ in ()).throw(AssertionError("database opened before preflight")),
+    )
+    with pytest.raises(StorageError, match="transaction count"):
+        store.append_block([None] * (MAX_BLOCK_TRANSACTIONS + 1), 1)
+
+
+def test_stored_transaction_count_is_preflighted_before_decoding(monkeypatch):
+    import hnd_ledger.storage as storage
+
+    payload = (1).to_bytes(4, "big") + b"x"
+    payload *= storage.MAX_BLOCK_TRANSACTIONS + 1
+    monkeypatch.setattr(
+        storage,
+        "decode_signed_transaction",
+        lambda _: (_ for _ in ()).throw(
+            AssertionError("transaction decoder ran before count preflight")
+        ),
+    )
+    with pytest.raises(StorageError, match="transaction count"):
+        storage._decode_transactions(payload)
+
+
+def test_concurrent_appends_serialize_same_nonce(chain_setup):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    path, key, pub, sender, recipient, balances = chain_setup
+    store = SQLiteChainStore(path, LOCAL_CHAIN_ID, balances)
+    tx = make_tx(key, pub, sender, recipient, 10, 0)
+    barrier = Barrier(2)
+
+    def append_once():
+        barrier.wait()
+        return store.append_block([tx], 1)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(append_once) for _ in range(2)]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append(("ok", future.result()))
+            except StorageError as exc:
+                outcomes.append(("rejected", exc))
+
+    assert [kind for kind, _ in outcomes].count("ok") == 1
+    assert [kind for kind, _ in outcomes].count("rejected") == 1
+    rejected_error = next(value for kind, value in outcomes if kind == "rejected")
+    assert "nonce conflict" in str(rejected_error.__cause__)
+    assert store.get_tip()["height"] == 1
+    assert store.get_state()[0][sender] == 990
+    assert store.verify()

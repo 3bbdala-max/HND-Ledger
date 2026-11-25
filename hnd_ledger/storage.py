@@ -90,8 +90,11 @@ def _encode_transactions(transactions: Sequence[Transaction]) -> bytes:
 def _decode_transactions(encoded: bytes) -> tuple[Transaction, ...]:
     if not isinstance(encoded, bytes) or len(encoded) > MAX_BLOCK_TRANSACTION_BYTES:
         raise StorageError("stored transaction payload has invalid type or size")
-    transactions: list[Transaction] = []
+
+    # First pass validates framing and count without decoding any transaction.
+    # This prevents a count-limit violation from consuming parser work.
     offset = 0
+    count = 0
     while offset < len(encoded):
         if len(encoded) - offset < 4:
             raise StorageError("truncated transaction length prefix")
@@ -102,6 +105,18 @@ def _decode_transactions(encoded: bytes) -> tuple[Transaction, ...]:
         end = offset + length
         if end > len(encoded):
             raise StorageError("truncated stored transaction")
+        count += 1
+        if count > MAX_BLOCK_TRANSACTIONS:
+            raise StorageError("stored block transaction count exceeds local limit")
+        offset = end
+
+    # Decode only after the complete payload passes the structural preflight.
+    transactions: list[Transaction] = []
+    offset = 0
+    while offset < len(encoded):
+        length = int.from_bytes(encoded[offset:offset + 4], "big")
+        offset += 4
+        end = offset + length
         try:
             fields = decode_signed_transaction(encoded[offset:end])
             transactions.append(Transaction(
@@ -115,8 +130,6 @@ def _decode_transactions(encoded: bytes) -> tuple[Transaction, ...]:
             ))
         except (EncodingError, KeyError, AttributeError, TypeError) as exc:
             raise StorageError("stored transaction is not canonical") from exc
-        if len(transactions) > MAX_BLOCK_TRANSACTIONS:
-            raise StorageError("stored block transaction count exceeds local limit")
         offset = end
     return tuple(transactions)
 
@@ -276,6 +289,10 @@ class SQLiteChainStore:
         self, transactions: Sequence[Transaction], timestamp: int
     ) -> dict[str, Any]:
         """Atomically validate and persist one next block, returning its details."""
+        # Enforce cheap structural/resource limits before opening SQLite or
+        # replaying the existing chain. Full signature and state validation
+        # still occurs in build_block inside the write transaction.
+        tx_blob = _encode_transactions(transactions)
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -285,7 +302,6 @@ class SQLiteChainStore:
             )
             if block["height"] > MAX_SQLITE_INTEGER:
                 raise StorageError("block height exceeds SQLite signed 64-bit integer range")
-            tx_blob = _encode_transactions(transactions)
             connection.execute(
                 "INSERT INTO blocks(height, header, block_hash, transactions) "
                 "VALUES(?, ?, ?, ?)",
