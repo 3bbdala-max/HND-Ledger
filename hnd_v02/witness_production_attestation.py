@@ -21,7 +21,7 @@ from hnd_v02.activation_witness_interface import (
 )
 
 _SCHEMA = "hnd.station2.witness-production-attestation.v1"
-_DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1\\x00"
+_DOMAIN = b"HND-STATION2-WITNESS-PRODUCTION-ATTESTATION-V1\x00"
 _FIELDS = frozenset({
     "schema", "backend", "witness_id", "config_epoch", "quorum_id",
     "anchor_id", "signing_key_ref", "review_reference", "issued_at",
