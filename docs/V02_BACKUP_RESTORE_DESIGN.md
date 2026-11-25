@@ -19,12 +19,12 @@ A hash proves byte integrity relative to a known digest. It does not prove who c
 
 ## 2. Backup creation contract
 
-The implementation should expose a narrow API, for example:
+The implemented narrow API is:
 
-- `SQLiteChainStore.create_backup(database_path, manifest_path, signer)`
-- or a separate `backup_store(source_store, destination, signer)` helper.
+- `create_backup(store, destination, signer)`
+- `verify_backup(backup_directory, trusted_public_key=..., expected_chain_id=..., expected_genesis_hash=..., expected_tip_height=..., expected_tip_block_hash=...)`
 
-The exact public API must be settled with tests before release.
+The functions are exported from `hnd_ledger`. Restore has no public API yet.
 
 ### Snapshot procedure
 
@@ -143,4 +143,4 @@ The feature is not complete until:
 - a reviewer can reproduce the result using documented commands;
 - a sample signed backup is verified using a public key distributed independently from the backup.
 
-Until then, backup/restore remains unimplemented and must not be presented as an available safety feature.
+Until the remaining restore gates pass, the complete backup/restore feature remains incomplete and must not be presented as a disaster-recovery capability.
