@@ -1,4 +1,3 @@
-import hashlib
 import json
 
 import pytest
@@ -6,10 +5,20 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hnd_ledger.backup import BackupError, create_backup, verify_backup
-from hnd_ledger.canonical import LOCAL_CHAIN_ID
-from hnd_ledger.crypto import address_from_public_key, generate_keypair
+from hnd_ledger.canonical import LOCAL_CHAIN_ID, signing_message
+from hnd_ledger.crypto import address_from_public_key, generate_keypair, sign_transaction
 from hnd_ledger.storage import SQLiteChainStore
-from test_storage import make_tx
+
+
+def make_tx(sender_key, sender_pub, sender, recipient, amount, nonce):
+    message = signing_message(
+        LOCAL_CHAIN_ID, bytes.fromhex(sender), bytes.fromhex(recipient), amount, nonce
+    )
+    from hnd_ledger.ledger import Transaction
+    return Transaction(
+        LOCAL_CHAIN_ID, sender, recipient, amount, nonce,
+        sender_pub.hex(), sign_transaction(sender_key, message)
+    )
 
 
 def _public_bytes(private_key):
