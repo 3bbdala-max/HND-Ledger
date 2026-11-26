@@ -119,6 +119,7 @@ jobs:
           tests.test_hrec03_pre_rename_crash_boundary
           tests.test_v02_strict_json
           tests.test_workflow_contract
+          tests.test_disposable_abci_server
 
   cometbft-single-node-smoke:
     needs: hnd-v02-tests

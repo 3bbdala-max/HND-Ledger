@@ -156,5 +156,27 @@ class WorkflowContractTests(unittest.TestCase):
             "standalone ledger fsync-order and retry tests must run in CI",
         )
 
+
+    def test_four_validator_harness_uses_guarded_disposable_abci_server(self):
+        root = Path(__file__).resolve().parents[1]
+        smoke = (root / "scripts" / "cometbft_v040_four_validator_network_smoke.py").read_text(
+            encoding="utf-8"
+        )
+        production_server = (root / "hnd_v02" / "cometbft_v040_server.py").read_text(
+            encoding="utf-8"
+        )
+        workflow = (root / ".github" / "workflows" / "hnd-v02-tests.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("hnd_v02_test_abci_server.py", smoke)
+        self.assertNotIn('"hnd_v02.cometbft_v040_server"', smoke)
+        self.assertIn('app_env["HND_DISPOSABLE_ABCI_TEST_SERVER"] = "1"', smoke)
+        self.assertIn('"--initialize-genesis"', smoke)
+        self.assertIn('"--recovery"', smoke)
+        self.assertIn("standalone ABCI startup is disabled", production_server)
+        self.assertIn("tests.test_disposable_abci_server", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()

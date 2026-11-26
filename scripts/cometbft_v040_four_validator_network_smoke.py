@@ -231,11 +231,30 @@ def main():
                     t=set_toml(t,None,"priv_validator_laddr",json.dumps("unix://"+str(signer_records[i]["socket"])))
             p.write_text(t)
         apps=[None]*N; nodes=[None]*N; ah=[]; nh=[]; signer=None; signer_log=None; other_signers=[]; other_signer_logs=[]
+        app_env = os.environ.copy()
+        app_env["HND_DISPOSABLE_ABCI_TEST_SERVER"] = "1"
         try:
             for i,h in enumerate(homes):
                 al=(root/f"app{i+1}.log").open("w"); nl=(root/f"node{i+1}.log").open("w"); ah.append(al); nh.append(nl)
                 state=root/f"state{i+1}.json"
-                apps[i]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(state),"--listen",eps[i]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
+                apps[i]=subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(ROOT / "scripts" / "hnd_v02_test_abci_server.py"),
+                        "--manifest", str(mp),
+                        "--genesis-hash", gh,
+                        "--network-id", CHAIN,
+                        "--protocol-version", "2",
+                        "--max-amount", str(SUPPLY),
+                        "--state-path", str(state),
+                        "--initialize-genesis",
+                        "--listen", eps[i]["abci"],
+                    ],
+                    cwd=ROOT,
+                    env=app_env,
+                    stdout=al,
+                    stderr=subprocess.STDOUT,
+                )
                 host,port=eps[i]["abci"].split(":")
                 wait(lambda: socket.create_connection((host,int(port)),timeout=.4).close() is None if apps[i].poll() is None else False,f"ABCI app {i+1} startup",30)
             for i,h in enumerate(homes):
@@ -428,7 +447,24 @@ def main():
             # Restart the lagging app from its exact post-shutdown durable state.
             if not state4.is_file() or sha256_file(state4) != pre_state_digest:
                 raise AssertionError("validator 4 HND state file changed or disappeared while stopped")
-            al=ah[3]; apps[3]=subprocess.Popen([sys.executable,"-m","hnd_v02.cometbft_v040_server","--manifest",str(mp),"--genesis-hash",gh,"--network-id",CHAIN,"--protocol-version","2","--max-amount",str(SUPPLY),"--state-path",str(state4),"--recovery","--listen",eps[3]["abci"]],cwd=ROOT,stdout=al,stderr=subprocess.STDOUT)
+            al=ah[3]; apps[3]=subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "hnd_v02_test_abci_server.py"),
+                    "--manifest", str(mp),
+                    "--genesis-hash", gh,
+                    "--network-id", CHAIN,
+                    "--protocol-version", "2",
+                    "--max-amount", str(SUPPLY),
+                    "--state-path", str(state4),
+                    "--recovery",
+                    "--listen", eps[3]["abci"],
+                ],
+                cwd=ROOT,
+                env=app_env,
+                stdout=al,
+                stderr=subprocess.STDOUT,
+            )
             host,port=eps[3]["abci"].split(":")
             wait_for_recovery_readiness(
                 apps[3],
