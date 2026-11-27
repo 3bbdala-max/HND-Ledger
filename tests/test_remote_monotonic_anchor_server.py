@@ -5,8 +5,9 @@ from pathlib import Path
 
 from hnd_v02.monotonic_anchor import MonotonicRecord, MonotonicAnchorConflict
 from hnd_v02.remote_monotonic_anchor_server import (
-    MonotonicAnchorHTTPError, _strict_loads,
-    create_monotonic_anchor_server, dispatch_monotonic_anchor_request,
+    AnchorClientPolicy, AnchorClientRegistry, MonotonicAnchorHTTPError,
+    _strict_loads, create_monotonic_anchor_server,
+    dispatch_monotonic_anchor_request,
 )
 from hnd_v02.sqlite_monotonic_anchor import SQLiteMonotonicAnchor
 
@@ -97,22 +98,97 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
             injected, "/v1/state/read", {"namespace": "trust-manifest"}
         ), {"record": {"sequence": 0, "digest": "a" * 64}})
 
-    def test_server_requires_mtls_and_nonempty_pins(self):
+    def test_server_requires_mtls_and_role_registry(self):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.verify_mode = ssl.CERT_NONE
         with self.assertRaises(ValueError):
             create_monotonic_anchor_server(
                 self.anchor, ssl_context=context,
-                authorized_client_cert_sha256={"a" * 64},
+                client_registry=AnchorClientRegistry({
+                    "a" * 64: AnchorClientPolicy(
+                        "witness-1", "witness",
+                        frozenset({"activation-witness"}),
+                        frozenset({"read", "compare-and-advance"}),
+                    )
+                }),
             )
         context.verify_mode = ssl.CERT_REQUIRED
         with self.assertRaises(ValueError):
             create_monotonic_anchor_server(
                 self.anchor, ssl_context=context,
-                authorized_client_cert_sha256=set(),
+                client_registry={},
             )
 
+
+    def test_role_authorization_blocks_cross_namespace_and_read_only_writes(self):
+        witness = AnchorClientPolicy(
+            "witness-1", "witness",
+            frozenset({"activation-witness"}),
+            frozenset({"read", "compare-and-advance"}),
+        )
+        finalizer = AnchorClientPolicy(
+            "finalizer-1", "finalizer",
+            frozenset({"trust-manifest", "vsp-profile", "activation-witness"}),
+            frozenset({"read"}),
+        )
+        self.assertEqual(dispatch_monotonic_anchor_request(
+            self.anchor, "/v1/state/read",
+            {"namespace": "activation-witness"}, client_policy=witness,
+        ), {"record": None})
+        with self.assertRaisesRegex(MonotonicAnchorHTTPError, "AUTHZ"):
+            dispatch_monotonic_anchor_request(
+                self.anchor, "/v1/state/compare-and-advance", {
+                    "namespace": "trust-manifest", "expected_current": None,
+                    "new_record": {"sequence": 0, "digest": "a" * 64},
+                }, client_policy=witness,
+            )
+        with self.assertRaisesRegex(MonotonicAnchorHTTPError, "AUTHZ"):
+            dispatch_monotonic_anchor_request(
+                self.anchor, "/v1/state/compare-and-advance", self.bootstrap,
+                client_policy=finalizer,
+            )
+        self.assertIsNone(self.anchor.read_state("trust-manifest"))
+
+    def test_recovery_and_operator_roles_have_no_v1_mutation_authority(self):
+        for role in ("recovery", "operator"):
+            policy = AnchorClientPolicy(role + "-1", role, frozenset(), frozenset())
+            with self.assertRaisesRegex(MonotonicAnchorHTTPError, "AUTHZ"):
+                dispatch_monotonic_anchor_request(
+                    self.anchor, "/v1/state/read",
+                    {"namespace": "trust-manifest"}, client_policy=policy,
+                )
+
+    def test_certificate_revocation_and_rotation_take_effect_immediately(self):
+        old_pin, new_pin = "a" * 64, "b" * 64
+        policy = AnchorClientPolicy(
+            "witness-1", "witness",
+            frozenset({"activation-witness"}),
+            frozenset({"read", "compare-and-advance"}),
+        )
+        registry = AnchorClientRegistry({old_pin: policy})
+        self.assertEqual(registry.authorize(old_pin, "read", "activation-witness"), policy)
+        registry.rotate(old_pin, new_pin, policy)
+        with self.assertRaisesRegex(MonotonicAnchorHTTPError, "AUTHZ"):
+            registry.authorize(old_pin, "read", "activation-witness")
+        self.assertEqual(registry.authorize(new_pin, "read", "activation-witness"), policy)
+        registry.revoke(new_pin)
+        with self.assertRaisesRegex(MonotonicAnchorHTTPError, "AUTHZ"):
+            registry.authorize(new_pin, "read", "activation-witness")
+
+    def test_policy_rejects_privilege_escalation(self):
+        with self.assertRaises(ValueError):
+            AnchorClientPolicy(
+                "witness-1", "witness",
+                frozenset({"trust-manifest", "activation-witness"}),
+                frozenset({"read", "compare-and-advance"}),
+            )
+        with self.assertRaises(ValueError):
+            AnchorClientPolicy(
+                "finalizer-1", "finalizer",
+                frozenset({"activation-witness"}),
+                frozenset({"read", "compare-and-advance"}),
+            )
 
     def test_server_dispatch_accepts_activation_witness_namespace(self):
         self.assertEqual(dispatch_monotonic_anchor_request(
