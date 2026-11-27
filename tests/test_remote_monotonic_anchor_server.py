@@ -22,27 +22,44 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
             "new_record": {"sequence": 0, "digest": "a" * 64},
         }
 
+    def policy_for(self, namespace):
+        roles = {
+            "trust-manifest": "trust-manifest-authority",
+            "vsp-profile": "vsp-profile-authority",
+            "activation-witness": "witness",
+        }
+        return AnchorClientPolicy(
+            "test-" + namespace, roles[namespace],
+            frozenset({namespace}),
+            frozenset({"read", "compare-and-advance"}),
+        )
+
     def tearDown(self):
         self.temp.cleanup()
 
     def test_read_and_compare_and_advance_round_trip(self):
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/read", {"namespace": "trust-manifest"}
+            self.anchor, "/v1/state/read", {"namespace": "trust-manifest"},
+            client_policy=self.policy_for("trust-manifest"),
         ), {"record": None})
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/compare-and-advance", self.bootstrap
+            self.anchor, "/v1/state/compare-and-advance", self.bootstrap,
+            client_policy=self.policy_for("trust-manifest"),
         ), {"advanced": True})
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/read", {"namespace": "trust-manifest"}
+            self.anchor, "/v1/state/read", {"namespace": "trust-manifest"},
+            client_policy=self.policy_for("trust-manifest"),
         ), {"record": {"sequence": 0, "digest": "a" * 64}})
 
     def test_stale_compare_and_advance_is_false_and_does_not_mutate(self):
         dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/compare-and-advance", self.bootstrap
+            self.anchor, "/v1/state/compare-and-advance", self.bootstrap,
+            client_policy=self.policy_for("trust-manifest"),
         )
         stale = dict(self.bootstrap, new_record={"sequence": 0, "digest": "b" * 64})
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/compare-and-advance", stale
+            self.anchor, "/v1/state/compare-and-advance", stale,
+            client_policy=self.policy_for("trust-manifest"),
         ), {"advanced": False})
         self.assertEqual(self.anchor.read_state("trust-manifest"),
                          MonotonicRecord(0, "a" * 64))
@@ -65,7 +82,10 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
 
     def test_unknown_route_and_strict_json_rejected(self):
         with self.assertRaises(MonotonicAnchorHTTPError) as caught:
-            dispatch_monotonic_anchor_request(self.anchor, "/wrong", {})
+            dispatch_monotonic_anchor_request(
+                self.anchor, "/wrong", {},
+                client_policy=self.policy_for("trust-manifest"),
+            )
         self.assertEqual(caught.exception.status, 404)
         with self.assertRaises(ValueError):
             _strict_loads(b'{"namespace":"a","namespace":"b"}')
@@ -92,10 +112,12 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
 
         injected = InjectedAnchor()
         self.assertEqual(dispatch_monotonic_anchor_request(
-            injected, "/v1/state/compare-and-advance", self.bootstrap
+            injected, "/v1/state/compare-and-advance", self.bootstrap,
+            client_policy=self.policy_for("trust-manifest"),
         ), {"advanced": True})
         self.assertEqual(dispatch_monotonic_anchor_request(
-            injected, "/v1/state/read", {"namespace": "trust-manifest"}
+            injected, "/v1/state/read", {"namespace": "trust-manifest"},
+            client_policy=self.policy_for("trust-manifest"),
         ), {"record": {"sequence": 0, "digest": "a" * 64}})
 
     def test_server_requires_mtls_and_role_registry(self):
@@ -209,7 +231,8 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
 
     def test_server_dispatch_accepts_activation_witness_namespace(self):
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/read", {"namespace": "activation-witness"}
+            self.anchor, "/v1/state/read", {"namespace": "activation-witness"},
+            client_policy=self.policy_for("activation-witness"),
         ), {"record": None})
         request = {
             "namespace": "activation-witness",
@@ -217,10 +240,12 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
             "new_record": {"sequence": 0, "digest": "f" * 64},
         }
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/compare-and-advance", request
+            self.anchor, "/v1/state/compare-and-advance", request,
+            client_policy=self.policy_for("activation-witness"),
         ), {"advanced": True})
         self.assertEqual(dispatch_monotonic_anchor_request(
-            self.anchor, "/v1/state/read", {"namespace": "activation-witness"}
+            self.anchor, "/v1/state/read", {"namespace": "activation-witness"},
+            client_policy=self.policy_for("activation-witness"),
         ), {"record": {"sequence": 0, "digest": "f" * 64}})
 
 if __name__ == "__main__":
