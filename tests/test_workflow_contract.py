@@ -178,5 +178,28 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("tests.test_disposable_abci_server", workflow)
 
 
+    def test_superseded_branch_runs_are_cancelled_without_narrowing_ci_coverage(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        lines = workflow.splitlines()
+        concurrency_start = lines.index("concurrency:")
+        permissions_start = lines.index("permissions:")
+        concurrency_block = [
+            line for line in lines[concurrency_start:permissions_start] if line.strip()
+        ]
+        self.assertEqual(
+            concurrency_block,
+            [
+                "concurrency:",
+                "  group: hnd-v02-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}",
+                "  cancel-in-progress: true",
+            ],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
