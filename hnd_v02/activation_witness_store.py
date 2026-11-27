@@ -138,6 +138,12 @@ class SQLiteActivationWitnessStore:
                             "HND-WITNESS-STORE-E-ID-CONFLICT"
                         )
                     receipt = json.loads(bytes(pending[2]).decode("ascii"))
+                    if (type(receipt) is not dict
+                            or receipt.get("witness_id") != self.witness_id
+                            or receipt.get("config_epoch") != self.config_epoch):
+                        raise ActivationWitnessStoreError(
+                            "HND-WITNESS-STORE-E-ID-CONFLICT"
+                        )
                     db.execute("COMMIT")
                     return receipt
 
