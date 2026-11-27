@@ -17,7 +17,12 @@ from hnd_v02.activation_witness_interface import (
     ActivationWitnessStoreError, WitnessBackendCapabilities,
 )
 
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from hnd_v02.activation_witness import (
+    ActivationWitnessError, verify_witness_receipt,
+)
 
 _SCHEMA = "hnd.station2.witness-ack.v1"
 _DOMAIN = b"HND-STATION2-WITNESS-ACK-V1\x00"
@@ -137,13 +142,44 @@ class SQLiteActivationWitnessStore:
                         raise ActivationWitnessStoreError(
                             "HND-WITNESS-STORE-E-ID-CONFLICT"
                         )
-                    receipt = json.loads(bytes(pending[2]).decode("ascii"))
-                    if (type(receipt) is not dict
-                            or receipt.get("witness_id") != self.witness_id
-                            or receipt.get("config_epoch") != self.config_epoch):
-                        raise ActivationWitnessStoreError(
-                            "HND-WITNESS-STORE-E-ID-CONFLICT"
+                    try:
+                        encoded = bytes(pending[2])
+                        receipt = json.loads(encoded.decode("ascii"))
+                        if type(receipt) is not dict or _canonical(receipt) != encoded:
+                            raise ValueError("non-canonical persisted receipt")
+                        receipt_row = db.execute(
+                            \"\"\"SELECT activation_digest, config_epoch, counter, receipt_json
+                               FROM witness_receipts WHERE activation_id = ?\"\"\",
+                            (activation_id,),
+                        ).fetchone()
+                        if receipt_row is None:
+                            raise ValueError("immutable receipt row is missing")
+                        if (receipt_row[0] != activation_digest
+                                or receipt_row[1] != self.config_epoch
+                                or type(receipt_row[2]) is not int
+                                or bytes(receipt_row[3]) != encoded):
+                            raise ValueError("pending and immutable receipt rows differ")
+                        public_key = self.signing_key.public_key().public_bytes(
+                            encoding=serialization.Encoding.Raw,
+                            format=serialization.PublicFormat.Raw,
                         )
+                        verified = verify_witness_receipt(
+                            receipt,
+                            trusted_witness_keys={self.witness_id: public_key},
+                            expected_activation_id=activation_id,
+                            expected_activation_digest=activation_digest,
+                            expected_witness_id=self.witness_id,
+                            expected_config_epoch=self.config_epoch,
+                        )
+                        if verified.counter != receipt_row[2]:
+                            raise ValueError("receipt counter differs from immutable row")
+                    except (
+                        ActivationWitnessError, ValueError, TypeError,
+                        UnicodeError, json.JSONDecodeError,
+                    ) as exc:
+                        raise ActivationWitnessStoreError(
+                            "HND-WITNESS-STORE-E-PENDING-CORRUPT"
+                        ) from exc
                     db.execute("COMMIT")
                     return receipt
 
