@@ -9,6 +9,8 @@ import hashlib
 import json
 import re
 import ssl
+import threading
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Mapping
 
@@ -22,6 +24,106 @@ _MAX_REQUEST_BYTES = 16_384
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _ROUTES = {"/v1/state/read", "/v1/state/compare-and-advance"}
 _NAMESPACES = {"trust-manifest", "vsp-profile", "activation-witness"}
+_OPERATIONS = {"read", "compare-and-advance"}
+_PRINCIPAL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$", re.ASCII)
+
+
+@dataclass(frozen=True)
+class AnchorClientPolicy:
+    """Immutable authorization policy for one mTLS certificate identity."""
+
+    principal_id: str
+    role: str
+    namespaces: frozenset[str]
+    operations: frozenset[str]
+
+    def __post_init__(self):
+        if type(self.principal_id) is not str or not _PRINCIPAL.fullmatch(self.principal_id):
+            raise ValueError("valid principal_id required")
+        if type(self.role) is not str:
+            raise ValueError("valid anchor client role required")
+        if type(self.namespaces) is not frozenset or not self.namespaces <= _NAMESPACES:
+            raise ValueError("valid immutable namespace set required")
+        if type(self.operations) is not frozenset or not self.operations <= _OPERATIONS:
+            raise ValueError("valid immutable operation set required")
+        expected = {
+            "witness": (frozenset({"activation-witness"}), _OPERATIONS),
+            "trust-manifest-authority": (frozenset({"trust-manifest"}), _OPERATIONS),
+            "vsp-profile-authority": (frozenset({"vsp-profile"}), _OPERATIONS),
+            "finalizer": (_NAMESPACES, frozenset({"read"})),
+            # No recovery or operator mutation endpoint exists in API v1.
+            "recovery": (frozenset(), frozenset()),
+            "operator": (frozenset(), frozenset()),
+        }
+        if self.role not in expected:
+            raise ValueError("unknown anchor client role")
+        allowed_namespaces, allowed_operations = expected[self.role]
+        if (not self.namespaces or not self.operations
+                if self.role in {"witness", "trust-manifest-authority",
+                                 "vsp-profile-authority", "finalizer"}
+                else bool(self.namespaces or self.operations)):
+            raise ValueError("role requires an exact non-empty or empty policy")
+        if not self.namespaces <= allowed_namespaces or not self.operations <= allowed_operations:
+            raise ValueError("policy exceeds role authority")
+        if self.role in {"witness", "trust-manifest-authority", "vsp-profile-authority"}:
+            if self.namespaces != allowed_namespaces or self.operations != _OPERATIONS:
+                raise ValueError("namespace writer role requires its exact namespace and operations")
+        if self.role == "finalizer" and self.operations != frozenset({"read"}):
+            raise ValueError("finalizer is read-only")
+
+
+class AnchorClientRegistry:
+    """Thread-safe live certificate registry; removal revokes, replacement rotates."""
+
+    def __init__(self, clients: Mapping[str, AnchorClientPolicy]):
+        if not isinstance(clients, Mapping) or not clients:
+            raise ValueError("non-empty certificate authorization registry required")
+        self._lock = threading.RLock()
+        self._clients = {}
+        for fingerprint, policy in clients.items():
+            self._validate_fingerprint(fingerprint)
+            if type(policy) is not AnchorClientPolicy:
+                raise ValueError("AnchorClientPolicy values required")
+            self._clients[fingerprint] = policy
+
+    @staticmethod
+    def _validate_fingerprint(fingerprint):
+        if type(fingerprint) is not str or not _HEX64.fullmatch(fingerprint):
+            raise ValueError("lowercase SHA-256 certificate fingerprint required")
+
+    def authorize(self, fingerprint: str, operation: str, namespace: str) -> AnchorClientPolicy:
+        with self._lock:
+            policy = self._clients.get(fingerprint)
+        if (policy is None or operation not in policy.operations
+                or namespace not in policy.namespaces):
+            raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
+        return policy
+
+    def revoke(self, fingerprint: str) -> None:
+        self._validate_fingerprint(fingerprint)
+        with self._lock:
+            self._clients.pop(fingerprint, None)
+
+    def register(self, fingerprint: str, policy: AnchorClientPolicy) -> None:
+        self._validate_fingerprint(fingerprint)
+        if type(policy) is not AnchorClientPolicy:
+            raise ValueError("AnchorClientPolicy required")
+        with self._lock:
+            if fingerprint in self._clients:
+                raise ValueError("certificate fingerprint already registered")
+            self._clients[fingerprint] = policy
+
+    def rotate(self, old_fingerprint: str, new_fingerprint: str,
+               policy: AnchorClientPolicy) -> None:
+        self._validate_fingerprint(old_fingerprint)
+        self._validate_fingerprint(new_fingerprint)
+        if old_fingerprint == new_fingerprint or type(policy) is not AnchorClientPolicy:
+            raise ValueError("distinct fingerprints and policy required")
+        with self._lock:
+            if old_fingerprint not in self._clients or new_fingerprint in self._clients:
+                raise ValueError("rotation source missing or destination already registered")
+            self._clients[new_fingerprint] = policy
+            del self._clients[old_fingerprint]
 
 
 class MonotonicAnchorHTTPError(ValueError):
@@ -67,9 +169,10 @@ def _record(value, *, nullable: bool) -> MonotonicRecord | None:
 
 
 def dispatch_monotonic_anchor_request(
-    anchor: MonotonicStateAnchor, route: str, payload: Mapping[str, Any]
+    anchor: MonotonicStateAnchor, route: str, payload: Mapping[str, Any],
+    *, client_policy: AnchorClientPolicy | None = None,
 ) -> dict:
-    """Dispatch the exact v1 read and compare-and-advance wire contract."""
+    """Dispatch v1 only after enforcing the supplied authenticated client policy."""
     if route not in _ROUTES:
         raise MonotonicAnchorHTTPError(404, "HND-ANCHOR-SERVER-E-ROUTE")
     if type(payload) is not dict:
@@ -80,6 +183,9 @@ def dispatch_monotonic_anchor_request(
         namespace = payload["namespace"]
         if type(namespace) is not str or namespace not in _NAMESPACES:
             raise MonotonicAnchorHTTPError(400, "HND-ANCHOR-SERVER-E-NAMESPACE")
+        if client_policy is not None and ("read" not in client_policy.operations
+                or namespace not in client_policy.namespaces):
+            raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
         current = anchor.read_state(namespace)
         return {"record": None if current is None else {
             "sequence": current.sequence, "digest": current.digest,
@@ -90,6 +196,9 @@ def dispatch_monotonic_anchor_request(
     namespace = payload["namespace"]
     if type(namespace) is not str or namespace not in _NAMESPACES:
         raise MonotonicAnchorHTTPError(400, "HND-ANCHOR-SERVER-E-NAMESPACE")
+    if client_policy is not None and ("compare-and-advance" not in client_policy.operations
+            or namespace not in client_policy.namespaces):
+        raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
     expected = _record(payload["expected_current"], nullable=True)
     proposed = _record(payload["new_record"], nullable=False)
     try:
@@ -105,7 +214,7 @@ def create_monotonic_anchor_server(
     anchor: MonotonicStateAnchor,
     *,
     ssl_context: ssl.SSLContext,
-    authorized_client_cert_sha256: set[str] | frozenset[str],
+    client_registry: AnchorClientRegistry,
     address: tuple[str, int] = ("127.0.0.1", 9444),
 ) -> ThreadingHTTPServer:
     """Create a pinned mTLS server; caller provisions certs, CA and TLS context."""
@@ -121,9 +230,8 @@ def create_monotonic_anchor_server(
         raise ValueError("client certificate authentication is mandatory")
     if ssl_context.minimum_version < ssl.TLSVersion.TLSv1_2:
         raise ValueError("TLS 1.2 minimum is mandatory")
-    pins = frozenset(authorized_client_cert_sha256)
-    if not pins or any(type(pin) is not str or not _HEX64.fullmatch(pin) for pin in pins):
-        raise ValueError("explicit lowercase SHA-256 client certificate pins required")
+    if type(client_registry) is not AnchorClientRegistry:
+        raise ValueError("explicit role-based AnchorClientRegistry required")
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "HND-Monotonic-Anchor/1"
@@ -147,9 +255,10 @@ def create_monotonic_anchor_server(
 
         def do_POST(self):
             peer_cert = self.connection.getpeercert(binary_form=True)
-            if not peer_cert or hashlib.sha256(peer_cert).hexdigest() not in pins:
+            if not peer_cert:
                 self._send(403, {"error": "HND-ANCHOR-SERVER-E-CLIENT-AUTH"})
                 return
+            fingerprint = hashlib.sha256(peer_cert).hexdigest()
             if self.path not in _ROUTES:
                 self._send(404, {"error": "HND-ANCHOR-SERVER-E-ROUTE"})
                 return
@@ -168,7 +277,16 @@ def create_monotonic_anchor_server(
                 payload = _strict_loads(self.rfile.read(size))
                 if type(payload) is not dict:
                     raise ValueError("JSON object required")
-                result = dispatch_monotonic_anchor_request(anchor, self.path, payload)
+                namespace = payload.get("namespace")
+                operation = "read" if self.path == "/v1/state/read" else "compare-and-advance"
+                try:
+                    policy = client_registry.authorize(fingerprint, operation, namespace)
+                except MonotonicAnchorHTTPError as exc:
+                    self._send(exc.status, {"error": exc.code})
+                    return
+                result = dispatch_monotonic_anchor_request(
+                    anchor, self.path, payload, client_policy=policy
+                )
                 self._send(200, result)
             except MonotonicAnchorHTTPError as exc:
                 self._send(exc.status, {"error": exc.code})
