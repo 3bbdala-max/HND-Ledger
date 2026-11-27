@@ -186,7 +186,7 @@ class WorkflowContractTests(unittest.TestCase):
             / "hnd-v02-tests.yml"
         ).read_text(encoding="utf-8")
         start = workflow.index("- name: Run Station 2 activation and recovery reference tests")
-        end = workflow.index("\\n\\n  cometbft-single-node-smoke:", start)
+        end = workflow.index("\n\n  cometbft-single-node-smoke:", start)
         station2_step = workflow[start:end]
         required_modules = (
             "tests.test_activation_bundle",
