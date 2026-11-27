@@ -350,6 +350,82 @@ class EtcdV3AtomicActivationTests(unittest.TestCase):
         self.assertEqual(len(payload["success"]), 1)
 
     @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_finalized_intent_rejects_stored_witness_counter_mismatch(self, urlopen):
+        backend = self.backend()
+        proposed = state()
+        activation_id = "station2-witness-finalized-counter-001"
+        digest = compute_activation_digest(activation_id, proposed, b"profile-v1")
+        key = Ed25519PrivateKey.generate()
+        public = key.public_key().public_bytes_raw()
+        with tempfile.TemporaryDirectory() as temp:
+            store = SQLiteActivationWitnessStore(
+                str(Path(temp) / "witness.sqlite"),
+                witness_id="witness-a", config_epoch=7, signing_key=key,
+            )
+            receipt = store.acknowledge(activation_id, digest)
+        intent = {
+            "activation_id": activation_id,
+            "state": "finalized",
+            "activation_digest": digest,
+            "trust_manifest_sequence": 0,
+            "trust_manifest_digest": "1" * 64,
+            "profile_sequence": 1,
+            "profile_digest": "2" * 64,
+            "operator_ack_digest": "3" * 64,
+            "witness_receipt": receipt,
+            "witness_counter": receipt["counter"] + 1,
+        }
+        raw = json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
+
+        with self.assertRaises(EtcdAtomicActivationError):
+            backend.finalize_activation_intent(
+                activation_id, receipt,
+                trusted_witness_keys={"witness-a": public},
+                expected_witness_id="witness-a",
+                expected_config_epoch=7,
+            )
+        urlopen.assert_called_once()
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
+    def test_finalized_intent_with_matching_witness_counter_is_idempotent(self, urlopen):
+        backend = self.backend()
+        proposed = state()
+        activation_id = "station2-witness-finalized-counter-002"
+        digest = compute_activation_digest(activation_id, proposed, b"profile-v1")
+        key = Ed25519PrivateKey.generate()
+        public = key.public_key().public_bytes_raw()
+        with tempfile.TemporaryDirectory() as temp:
+            store = SQLiteActivationWitnessStore(
+                str(Path(temp) / "witness.sqlite"),
+                witness_id="witness-a", config_epoch=7, signing_key=key,
+            )
+            receipt = store.acknowledge(activation_id, digest)
+        intent = {
+            "activation_id": activation_id,
+            "state": "finalized",
+            "activation_digest": digest,
+            "trust_manifest_sequence": 0,
+            "trust_manifest_digest": "1" * 64,
+            "profile_sequence": 1,
+            "profile_digest": "2" * 64,
+            "operator_ack_digest": "3" * 64,
+            "witness_receipt": receipt,
+            "witness_counter": receipt["counter"],
+        }
+        raw = json.dumps(intent, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        urlopen.return_value = _Response({"kvs": [{"value": encoded(raw)}]})
+
+        finalized = backend.finalize_activation_intent(
+            activation_id, receipt,
+            trusted_witness_keys={"witness-a": public},
+            expected_witness_id="witness-a",
+            expected_config_epoch=7,
+        )
+        self.assertEqual(finalized, intent)
+        urlopen.assert_called_once()
+
+    @patch("hnd_v02.etcd_atomic_activation._open_no_redirect")
     def test_invalid_witness_receipt_never_submits_finalize_transaction(self, urlopen):
         backend = self.backend()
         intent = {
