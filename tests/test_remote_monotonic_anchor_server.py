@@ -68,7 +68,8 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
         bad = dict(self.bootstrap, new_record={"sequence": 1, "digest": "b" * 64})
         with self.assertRaises(MonotonicAnchorHTTPError) as caught:
             dispatch_monotonic_anchor_request(
-                self.anchor, "/v1/state/compare-and-advance", bad
+                self.anchor, "/v1/state/compare-and-advance", bad,
+                client_policy=self.policy_for("trust-manifest"),
             )
         self.assertEqual(caught.exception.status, 409)
         for route, payload in (
@@ -78,7 +79,10 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
         ):
             with self.subTest(route=route, payload=payload):
                 with self.assertRaises(MonotonicAnchorHTTPError):
-                    dispatch_monotonic_anchor_request(self.anchor, route, payload)
+                    dispatch_monotonic_anchor_request(
+                self.anchor, route, payload,
+                client_policy=self.policy_for("trust-manifest"),
+            )
 
     def test_unknown_route_and_strict_json_rejected(self):
         with self.assertRaises(MonotonicAnchorHTTPError) as caught:
