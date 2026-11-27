@@ -58,18 +58,19 @@ class AnchorClientPolicy:
         if self.role not in expected:
             raise ValueError("unknown anchor client role")
         allowed_namespaces, allowed_operations = expected[self.role]
-        if (not self.namespaces or not self.operations
-                if self.role in {"witness", "trust-manifest-authority",
-                                 "vsp-profile-authority", "finalizer"}
-                else bool(self.namespaces or self.operations)):
-            raise ValueError("role requires an exact non-empty or empty policy")
-        if not self.namespaces <= allowed_namespaces or not self.operations <= allowed_operations:
-            raise ValueError("policy exceeds role authority")
-        if self.role in {"witness", "trust-manifest-authority", "vsp-profile-authority"}:
+        writer_roles = {
+            "witness", "trust-manifest-authority", "vsp-profile-authority"
+        }
+        if self.role in writer_roles:
             if self.namespaces != allowed_namespaces or self.operations != _OPERATIONS:
                 raise ValueError("namespace writer role requires its exact namespace and operations")
-        if self.role == "finalizer" and self.operations != frozenset({"read"}):
-            raise ValueError("finalizer is read-only")
+        elif self.role == "finalizer":
+            if not self.namespaces or self.operations != frozenset({"read"}):
+                raise ValueError("finalizer requires a non-empty read-only namespace scope")
+        elif self.namespaces or self.operations:
+            raise ValueError("recovery and operator have no v1 authority")
+        if not self.namespaces <= allowed_namespaces or not self.operations <= allowed_operations:
+            raise ValueError("policy exceeds role authority")
 
 
 class AnchorClientRegistry:
@@ -94,7 +95,9 @@ class AnchorClientRegistry:
     def authorize(self, fingerprint: str, operation: str, namespace: str) -> AnchorClientPolicy:
         with self._lock:
             policy = self._clients.get(fingerprint)
-        if (policy is None or operation not in policy.operations
+        if (policy is None or type(operation) is not str
+                or type(namespace) is not str
+                or operation not in policy.operations
                 or namespace not in policy.namespaces):
             raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
         return policy
