@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import tempfile
 import threading
@@ -173,9 +174,9 @@ class SQLiteActivationWitnessStoreTests(unittest.TestCase):
                     raw = db.execute(
                         "SELECT receipt_json FROM witness_pending WHERE singleton = 1"
                     ).fetchone()[0]
-                    receipt = __import__("json").loads(bytes(raw).decode("ascii"))
+                    receipt = json.loads(bytes(raw).decode("ascii"))
                     receipt[field] = replacement
-                    encoded = __import__("json").dumps(
+                    encoded = json.dumps(
                         receipt, ensure_ascii=True, allow_nan=False,
                         sort_keys=True, separators=(",", ":"),
                     ).encode("ascii")
