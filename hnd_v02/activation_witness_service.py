@@ -66,7 +66,12 @@ def dispatch_witness_request(
         return {"receipt": store.acknowledge(activation_id, digest)}
     except ActivationWitnessStoreError as exc:
         code = str(exc)
-        status = 409 if "ID-CONFLICT" in code else 503
+        status = 409 if any(
+            marker in code for marker in (
+                "ID-CONFLICT", "PENDING-CONFLICT",
+                "TERMINAL-EVIDENCE-MISSING",
+            )
+        ) else 503
         raise ActivationWitnessHTTPError(status, code) from exc
 
 
