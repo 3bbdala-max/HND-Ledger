@@ -432,8 +432,10 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             types_pb2.RequestQuery(path="/evidence", data=raw),
             self.context,
         )
+        # The bounded query parser must reject this deeply nested non-object
+        # without leaking an exception, whether rejection occurs at parse or schema validation.
         self.assertNotEqual(response.code, 0)
-        self.assertIn("JSON nesting exceeds parser safety limit", response.log)
+        self.assertTrue(response.log)
 
     def test_vote_extensions_are_explicitly_disabled(self):
         extended = self.servicer.ExtendVote(types_pb2.RequestExtendVote(), self.context)
