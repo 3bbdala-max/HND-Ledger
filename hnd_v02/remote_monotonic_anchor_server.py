@@ -10,6 +10,7 @@ import json
 import re
 import ssl
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Mapping
@@ -92,15 +93,27 @@ class AnchorClientRegistry:
         if type(fingerprint) is not str or not _HEX64.fullmatch(fingerprint):
             raise ValueError("lowercase SHA-256 certificate fingerprint required")
 
-    def authorize(self, fingerprint: str, operation: str, namespace: str) -> AnchorClientPolicy:
-        with self._lock:
-            policy = self._clients.get(fingerprint)
+    def _policy_for(self, fingerprint: str, operation: str,
+                    namespace: str) -> AnchorClientPolicy:
+        policy = self._clients.get(fingerprint)
         if (policy is None or type(operation) is not str
                 or type(namespace) is not str
                 or operation not in policy.operations
                 or namespace not in policy.namespaces):
             raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
         return policy
+
+    @contextmanager
+    def authorization(self, fingerprint: str, operation: str, namespace: str):
+        # Hold the registry lock through the protected anchor operation so a
+        # revocation/rotation cannot race between authorization and mutation.
+        with self._lock:
+            yield self._policy_for(fingerprint, operation, namespace)
+
+    def authorize(self, fingerprint: str, operation: str,
+                  namespace: str) -> AnchorClientPolicy:
+        with self._lock:
+            return self._policy_for(fingerprint, operation, namespace)
 
     def revoke(self, fingerprint: str) -> None:
         self._validate_fingerprint(fingerprint)
@@ -293,13 +306,15 @@ def create_monotonic_anchor_server(
                     )
                 operation = "read" if self.path == "/v1/state/read" else "compare-and-advance"
                 try:
-                    policy = client_registry.authorize(fingerprint, operation, namespace)
+                    with client_registry.authorization(
+                        fingerprint, operation, namespace
+                    ) as policy:
+                        result = dispatch_monotonic_anchor_request(
+                            anchor, self.path, payload, client_policy=policy
+                        )
                 except MonotonicAnchorHTTPError as exc:
                     self._send(exc.status, {"error": exc.code})
                     return
-                result = dispatch_monotonic_anchor_request(
-                    anchor, self.path, payload, client_policy=policy
-                )
                 self._send(200, result)
             except MonotonicAnchorHTTPError as exc:
                 self._send(exc.status, {"error": exc.code})
