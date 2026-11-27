@@ -106,6 +106,8 @@ jobs:
         run: python -m unittest -v tests.test_activation_coordinator
       - name: Run pinned CometBFT process supervisor ordering tests
         run: python -m unittest -v tests.test_cometbft_supervisor
+      - name: Run Station 2 witness receipt and durable pending-lock tests
+        run: python -m unittest -v tests.test_activation_witness tests.test_activation_witness_store
       - name: Run isolated v0.2 tests
         run: >-
           python -m unittest -v

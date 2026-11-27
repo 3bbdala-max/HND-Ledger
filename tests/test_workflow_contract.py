@@ -228,5 +228,21 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('"--recovery"', harness)
 
 
+    def test_station2_witness_pending_lock_regressions_are_executed_in_ci(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        start = workflow.index(
+            "- name: Run Station 2 witness receipt and durable pending-lock tests"
+        )
+        end = workflow.index("\\n      - name: Run isolated v0.2 tests", start)
+        step = workflow[start:end]
+        self.assertIn("tests.test_activation_witness", step)
+        self.assertIn("tests.test_activation_witness_store", step)
+
+
 if __name__ == "__main__":
     unittest.main()
