@@ -282,6 +282,38 @@ class SQLiteActivationWitnessStoreTests(unittest.TestCase):
                     )
                 self.assertEqual(after, before)
 
+    def test_existing_receipt_without_pending_lock_cannot_be_reissued(self):
+        store = self.store()
+        original = store.acknowledge("activation-1", "a" * 64)
+        with sqlite3.connect(self.path) as db:
+            db.execute("DELETE FROM witness_pending WHERE singleton = 1")
+        with self.assertRaisesRegex(
+            ActivationWitnessStoreError,
+            "HND-WITNESS-STORE-E-TERMINAL-EVIDENCE-MISSING",
+        ):
+            store.acknowledge("activation-1", "a" * 64)
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT counter FROM witness_counter WHERE singleton = 1"
+                ).fetchone()[0],
+                1,
+            )
+            row = db.execute(
+                "SELECT activation_digest, config_epoch, counter, receipt_json "
+                "FROM witness_receipts WHERE activation_id = ?",
+                ("activation-1",),
+            ).fetchone()
+            self.assertEqual(row, ("a" * 64, 7, 1, json.dumps(
+                original, ensure_ascii=True, allow_nan=False,
+                sort_keys=True, separators=(",", ":"),
+            ).encode("ascii")))
+            self.assertIsNone(
+                db.execute(
+                    "SELECT singleton FROM witness_pending WHERE singleton = 1"
+                ).fetchone()
+            )
+
     def test_pending_replay_rejects_missing_immutable_receipt_row(self):
         store = self.store()
         store.acknowledge("activation-1", "a" * 64)
