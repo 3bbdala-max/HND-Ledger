@@ -120,8 +120,14 @@ class AnchorClientRegistry:
         if old_fingerprint == new_fingerprint or type(policy) is not AnchorClientPolicy:
             raise ValueError("distinct fingerprints and policy required")
         with self._lock:
-            if old_fingerprint not in self._clients or new_fingerprint in self._clients:
+            old_policy = self._clients.get(old_fingerprint)
+            if old_policy is None or new_fingerprint in self._clients:
                 raise ValueError("rotation source missing or destination already registered")
+            if (policy.principal_id != old_policy.principal_id
+                    or policy.role != old_policy.role
+                    or not policy.namespaces <= old_policy.namespaces
+                    or not policy.operations <= old_policy.operations):
+                raise ValueError("certificate rotation cannot broaden or change principal authority")
             self._clients[new_fingerprint] = policy
             del self._clients[old_fingerprint]
 
