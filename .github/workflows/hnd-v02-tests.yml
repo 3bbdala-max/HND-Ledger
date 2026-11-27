@@ -28,6 +28,7 @@ on:
       - feat/station2-sqlite-anchor-reference
       - feat/station2-sqlite-atomic-activation-reference
       - fix/station2-sqlite-backend-monotonic-enforcement
+      - station2-witness-backend-interface
       - main
 
 jobs:
@@ -95,6 +96,9 @@ jobs:
         run: python -m unittest -v tests.test_etcd_atomic_activation
       - name: Run Station 2 witness backend interface and production gate tests
         run: python -m unittest -v tests.test_activation_witness_interface
+      - name: Run durable Station 2 witness pending-lock and receipt-integrity tests
+        if: github.event_name == 'pull_request'
+        run: python -m unittest -v tests.test_activation_witness_store
       - name: Run strict HTTPS witness client transport tests
         run: python -m unittest -v tests.test_activation_witness_client
       - name: Run witness-gated etcd activation coordinator tests
