@@ -258,7 +258,7 @@ class TestV02LedgerFilePersistence(unittest.TestCase):
         with self.tempfile.TemporaryDirectory() as directory:
             path = self.Path(directory) / "ledger.json"
             self.ledger.save(path)
-            self.ledger.apply_transaction(self.signed(amount=10, nonce=0))
+            self.ledger.apply_transaction(self.signed(amount=10))
             expected = self.ledger.snapshot()
             real_fsync = os.fsync
 

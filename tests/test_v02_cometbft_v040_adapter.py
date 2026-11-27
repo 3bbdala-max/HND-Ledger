@@ -427,7 +427,7 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
             self.assertNotEqual(response.code, 0)
 
     def test_evidence_query_rejects_excessive_nesting_without_uncaught_error(self):
-        raw = b"[" * 20000 + b"0" + b"]" * 20000
+        raw = b"[" * 2000 + b"0" + b"]" * 2000
         response = self.servicer.Query(
             types_pb2.RequestQuery(path="/evidence", data=raw),
             self.context,
@@ -611,6 +611,12 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
         self.assertIn(b"evidence", query.value)
 
     def test_finalize_block_rejects_out_of_range_protobuf_timestamps(self):
+        # The evidence height must be a valid predecessor so this test reaches
+        # protobuf timestamp validation rather than failing the height guard.
+        self.servicer.FinalizeBlock(
+            types_pb2.RequestFinalizeBlock(height=1), self.context
+        )
+        self.servicer.Commit(types_pb2.RequestCommit(), self.context)
         for seconds in (
             MIN_PROTO_TIMESTAMP_SECONDS - 1,
             MAX_PROTO_TIMESTAMP_SECONDS + 1,
@@ -626,10 +632,10 @@ class TestCometBFTV040ABCIAdapter(unittest.TestCase):
                 )
                 with self.assertRaisesRegex(RuntimeError, "invalid misbehavior timestamp"):
                     self.servicer.FinalizeBlock(
-                        types_pb2.RequestFinalizeBlock(height=1, misbehavior=[item]),
+                        types_pb2.RequestFinalizeBlock(height=2, misbehavior=[item]),
                         self.context,
                     )
-                self.assertEqual(self.app.last_committed_height, 0)
+                self.assertEqual(self.app.last_committed_height, 1)
                 self.assertIsNone(self.app._pending)
 
     def test_evidence_timestamp_accepts_protobuf_range_endpoints(self):

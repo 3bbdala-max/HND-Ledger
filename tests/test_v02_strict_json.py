@@ -105,6 +105,7 @@ class TestStrictJSON(unittest.TestCase):
                 "--network-id", "hnd-strict-json-test",
                 "--max-amount", "100",
                 "--state-path", str(Path(directory) / "state.json"),
+                "--initialize-genesis",
             ]
             with patch("hnd_v02.cometbft_v040_server.start_grpc_server") as start:
                 with redirect_stderr(stderr):
@@ -125,6 +126,7 @@ class TestStrictJSON(unittest.TestCase):
                 "--network-id", "hnd-strict-json-test",
                 "--max-amount", "100",
                 "--state-path", str(Path(directory) / "state.json"),
+                "--initialize-genesis",
             ]
             with patch("hnd_v02.cometbft_v040_server.start_grpc_server") as start:
                 with redirect_stderr(stderr):
