@@ -21,7 +21,7 @@ from hnd_v02.sqlite_monotonic_anchor import SQLiteMonotonicAnchor
 _MAX_REQUEST_BYTES = 16_384
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _ROUTES = {"/v1/state/read", "/v1/state/compare-and-advance"}
-_NAMESPACES = {"trust-manifest", "vsp-profile"}
+_NAMESPACES = {"trust-manifest", "vsp-profile", "activation-witness"}
 
 
 class MonotonicAnchorHTTPError(ValueError):

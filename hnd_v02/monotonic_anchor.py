@@ -12,7 +12,7 @@ import re
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _MAX_SEQUENCE = (1 << 53) - 1
-_BOOTSTRAP_SEQUENCES = {"trust-manifest": 0, "vsp-profile": 1}
+_BOOTSTRAP_SEQUENCES = {"trust-manifest": 0, "vsp-profile": 1, "activation-witness": 0}
 _ALLOWED_NAMESPACES = frozenset(_BOOTSTRAP_SEQUENCES)
 
 

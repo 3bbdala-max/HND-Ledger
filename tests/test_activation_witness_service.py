@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import Mock
 
+from hnd_v02.activation_witness_interface import ActivationWitnessStoreError
 from hnd_v02.activation_witness_service import (
     ActivationWitnessHTTPError, dispatch_witness_request,
 )
@@ -34,6 +35,28 @@ class WitnessServiceDispatchTests(unittest.TestCase):
                 {"activation_id": "activation-1", "activation_digest": "A" * 64},
             )
         self.store.acknowledge.assert_not_called()
+
+    def test_backend_conflict_error_is_mapped_to_http_409(self):
+        self.store.acknowledge.side_effect = ActivationWitnessStoreError(
+            "HND-WITNESS-STORE-E-ID-CONFLICT"
+        )
+        with self.assertRaises(ActivationWitnessHTTPError) as caught:
+            dispatch_witness_request(
+                self.store, "/v1/witness/acknowledge",
+                {"activation_id": "activation-1", "activation_digest": "a" * 64},
+            )
+        self.assertEqual(caught.exception.status, 409)
+
+    def test_backend_unavailable_error_is_mapped_to_http_503(self):
+        self.store.acknowledge.side_effect = ActivationWitnessStoreError(
+            "HND-WITNESS-STORE-E-QUORUM-UNAVAILABLE"
+        )
+        with self.assertRaises(ActivationWitnessHTTPError) as caught:
+            dispatch_witness_request(
+                self.store, "/v1/witness/acknowledge",
+                {"activation_id": "activation-1", "activation_digest": "a" * 64},
+            )
+        self.assertEqual(caught.exception.status, 503)
 
     def test_unknown_route_is_rejected(self):
         with self.assertRaises(ActivationWitnessHTTPError):

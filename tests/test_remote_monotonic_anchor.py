@@ -141,5 +141,21 @@ class RemoteMonotonicAnchorTests(unittest.TestCase):
             self.anchor.read_state("trust-manifest")
 
 
+    def test_activation_witness_checkpoint_uses_remote_namespace(self):
+        first = advance_monotonic_state(
+            self.anchor, "activation-witness", sequence=0,
+            digest="a" * 64, predecessor_digest=None,
+        )
+        second = advance_monotonic_state(
+            self.anchor, "activation-witness", sequence=1,
+            digest="b" * 64, predecessor_digest="a" * 64,
+        )
+        self.assertEqual(second, MonotonicRecord(1, "b" * 64))
+        self.assertEqual(self.anchor.read_state("activation-witness"), second)
+        self.assertTrue(any(
+            request[1].get("namespace") == "activation-witness"
+            for request in self.service.requests
+        ))
+
 if __name__ == "__main__":
     unittest.main()

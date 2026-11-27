@@ -130,5 +130,18 @@ class MonotonicAnchorContractTests(unittest.TestCase):
             )
 
 
+    def test_activation_witness_checkpoint_bootstrap_is_sequence_zero(self):
+        anchor = MemoryAnchor()
+        first = advance_monotonic_state(
+            anchor, "activation-witness", sequence=0, digest="a" * 64,
+            predecessor_digest=None,
+        )
+        second = advance_monotonic_state(
+            anchor, "activation-witness", sequence=1, digest="b" * 64,
+            predecessor_digest="a" * 64,
+        )
+        self.assertEqual(first, MonotonicRecord(0, "a" * 64))
+        self.assertEqual(second, MonotonicRecord(1, "b" * 64))
+
 if __name__ == "__main__":
     unittest.main()

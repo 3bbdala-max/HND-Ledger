@@ -13,6 +13,10 @@ import re
 import sqlite3
 from typing import Any
 
+from hnd_v02.activation_witness_interface import (
+    ActivationWitnessStoreError, WitnessBackendCapabilities,
+)
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 _SCHEMA = "hnd.station2.witness-ack.v1"
@@ -20,10 +24,6 @@ _DOMAIN = b"HND-STATION2-WITNESS-ACK-V1\x00"
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", re.ASCII)
 _HEX64 = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 _MAX_INTEGER = (1 << 53) - 1
-
-
-class ActivationWitnessStoreError(RuntimeError):
-    """The reference witness store rejected an ACK request."""
 
 
 def _canonical(value: dict) -> bytes:
@@ -83,6 +83,17 @@ class SQLiteActivationWitnessStore:
                 db.commit()
         except sqlite3.Error as exc:
             raise ActivationWitnessStoreError("HND-WITNESS-STORE-E-INIT") from exc
+
+    @property
+    def capabilities(self) -> WitnessBackendCapabilities:
+        """SQLite is deliberately never admissible as a production witness."""
+        return {
+            "backend": "sqlite-reference",
+            "production_capable": False,
+            "quorum_ready": False,
+            "anti_rollback_verified": False,
+            "protected_key_custody": False,
+        }
 
     def acknowledge(self, activation_id: str, activation_digest: str) -> dict[str, Any]:
         if type(activation_id) is not str or not _ID.fullmatch(activation_id):
