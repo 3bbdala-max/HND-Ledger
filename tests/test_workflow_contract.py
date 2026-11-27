@@ -238,7 +238,7 @@ class WorkflowContractTests(unittest.TestCase):
         start = workflow.index(
             "- name: Run Station 2 witness receipt and durable pending-lock tests"
         )
-        end = workflow.index("\\n      - name: Run isolated v0.2 tests", start)
+        end = workflow.index("\n      - name: Run isolated v0.2 tests", start)
         step = workflow[start:end]
         self.assertIn("tests.test_activation_witness", step)
         self.assertIn("tests.test_activation_witness_store", step)
