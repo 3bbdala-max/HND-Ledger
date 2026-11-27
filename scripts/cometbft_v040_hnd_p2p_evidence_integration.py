@@ -191,6 +191,8 @@ def main():
         ports = [reserve_port() for _ in range(4)]
         apps = []
         logs = []
+        app_env = os.environ.copy()
+        app_env["HND_DISPOSABLE_ABCI_TEST_SERVER"] = "1"
         try:
             for i, port in enumerate(ports):
                 state_path = root / f"replica-{i}.json"
@@ -198,16 +200,18 @@ def main():
                 logs.append(log)
                 process = subprocess.Popen(
                     [
-                        sys.executable, "-m", "hnd_v02.cometbft_v040_server",
+                        sys.executable,
+                        str(ROOT / "scripts" / "hnd_v02_test_abci_server.py"),
                         "--manifest", str(root / "manifest.json"),
                         "--genesis-hash", genesis_hash,
                         "--network-id", cfg.network_id,
                         "--protocol-version", "2",
                         "--max-amount", str(cfg.max_amount),
                         "--state-path", str(state_path),
+                        "--initialize-genesis",
                         "--listen", f"127.0.0.1:{port}",
                     ],
-                    cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                    cwd=ROOT, env=app_env, stdout=log, stderr=subprocess.STDOUT,
                 )
                 apps.append((process, port, state_path, log))
                 wait_port(port, process, f"HND ABCI replica {i}")
@@ -263,16 +267,18 @@ def main():
             logs.append(replacement_log)
             replacement = subprocess.Popen(
                 [
-                    sys.executable, "-m", "hnd_v02.cometbft_v040_server",
+                    sys.executable,
+                    str(ROOT / "scripts" / "hnd_v02_test_abci_server.py"),
                     "--manifest", str(root / "manifest.json"),
                     "--genesis-hash", genesis_hash,
                     "--network-id", cfg.network_id,
                     "--protocol-version", "2",
                     "--max-amount", str(cfg.max_amount),
                     "--state-path", str(first_state),
+                    "--recovery",
                     "--listen", f"127.0.0.1:{first_port}",
                 ],
-                cwd=ROOT, stdout=replacement_log, stderr=subprocess.STDOUT,
+                cwd=ROOT, env=app_env, stdout=replacement_log, stderr=subprocess.STDOUT,
             )
             apps[0] = (replacement, first_port, first_state, replacement_log)
             wait_port(first_port, replacement, "restarted HND ABCI replica")

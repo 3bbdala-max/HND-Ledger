@@ -212,5 +212,17 @@ class WorkflowContractTests(unittest.TestCase):
                 )
 
 
+    def test_p2p_evidence_harness_uses_disposable_abci_server(self):
+        root = Path(__file__).resolve().parents[1]
+        harness = (
+            root / "scripts" / "cometbft_v040_hnd_p2p_evidence_integration.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("hnd_v02_test_abci_server.py", harness)
+        self.assertNotIn('sys.executable, "-m", "hnd_v02.cometbft_v040_server"', harness)
+        self.assertIn('app_env["HND_DISPOSABLE_ABCI_TEST_SERVER"] = "1"', harness)
+        self.assertIn('"--initialize-genesis"', harness)
+        self.assertIn('"--recovery"', harness)
+
+
 if __name__ == "__main__":
     unittest.main()
