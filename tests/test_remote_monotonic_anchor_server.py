@@ -176,6 +176,23 @@ class RemoteMonotonicAnchorServerTests(unittest.TestCase):
         with self.assertRaisesRegex(MonotonicAnchorHTTPError, "AUTHZ"):
             registry.authorize(new_pin, "read", "activation-witness")
 
+    def test_certificate_rotation_cannot_expand_namespace_authority(self):
+        old = AnchorClientPolicy(
+            "finalizer-1", "finalizer",
+            frozenset({"activation-witness"}), frozenset({"read"}),
+        )
+        broader = AnchorClientPolicy(
+            "finalizer-1", "finalizer",
+            frozenset({"activation-witness", "trust-manifest"}),
+            frozenset({"read"}),
+        )
+        registry = AnchorClientRegistry({"a" * 64: old})
+        with self.assertRaisesRegex(ValueError, "cannot broaden"):
+            registry.rotate("a" * 64, "b" * 64, broader)
+        self.assertEqual(
+            registry.authorize("a" * 64, "read", "activation-witness"), old
+        )
+
     def test_policy_rejects_privilege_escalation(self):
         with self.assertRaises(ValueError):
             AnchorClientPolicy(
