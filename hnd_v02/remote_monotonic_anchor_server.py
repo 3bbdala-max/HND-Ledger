@@ -278,6 +278,10 @@ def create_monotonic_anchor_server(
                 if type(payload) is not dict:
                     raise ValueError("JSON object required")
                 namespace = payload.get("namespace")
+                if type(namespace) is not str or namespace not in _NAMESPACES:
+                    raise MonotonicAnchorHTTPError(
+                        400, "HND-ANCHOR-SERVER-E-NAMESPACE"
+                    )
                 operation = "read" if self.path == "/v1/state/read" else "compare-and-advance"
                 try:
                     policy = client_registry.authorize(fingerprint, operation, namespace)
