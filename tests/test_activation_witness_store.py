@@ -43,11 +43,70 @@ class SQLiteActivationWitnessStoreTests(unittest.TestCase):
         )
         self.assertEqual(verified.counter, 1)
 
-    def test_new_activation_gets_strictly_increasing_counter(self):
+    def test_second_activation_is_rejected_while_first_is_unresolved(self):
         store = self.store()
-        one = store.acknowledge("activation-1", "a" * 64)
-        two = store.acknowledge("activation-2", "b" * 64)
-        self.assertEqual((one["counter"], two["counter"]), (1, 2))
+        first = store.acknowledge("activation-1", "a" * 64)
+        with self.assertRaisesRegex(
+            ActivationWitnessStoreError, "HND-WITNESS-STORE-E-PENDING-CONFLICT"
+        ):
+            store.acknowledge("activation-2", "b" * 64)
+        with sqlite3.connect(self.path) as db:
+            counter = db.execute(
+                "SELECT counter FROM witness_counter WHERE singleton = 1"
+            ).fetchone()[0]
+            pending = db.execute(
+                "SELECT activation_id, activation_digest FROM witness_pending WHERE singleton = 1"
+            ).fetchone()
+        self.assertEqual(counter, 1)
+        self.assertEqual(pending, ("activation-1", "a" * 64))
+        self.assertEqual(first["counter"], 1)
+
+    def test_pending_lock_survives_restart_and_same_activation_retry(self):
+        first = self.store().acknowledge("activation-1", "a" * 64)
+        restarted = self.store()
+        self.assertEqual(
+            restarted.acknowledge("activation-1", "a" * 64), first
+        )
+        with self.assertRaisesRegex(
+            ActivationWitnessStoreError, "HND-WITNESS-STORE-E-PENDING-CONFLICT"
+        ):
+            restarted.acknowledge("activation-2", "b" * 64)
+
+    def test_same_id_with_different_digest_is_rejected(self):
+        store = self.store()
+        store.acknowledge("activation-1", "a" * 64)
+        with self.assertRaisesRegex(
+            ActivationWitnessStoreError, "HND-WITNESS-STORE-E-ID-CONFLICT"
+        ):
+            store.acknowledge("activation-1", "b" * 64)
+
+    def test_legacy_receipts_without_pending_state_fail_closed(self):
+        with sqlite3.connect(self.path) as db:
+            db.execute("""
+                CREATE TABLE witness_counter (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    counter INTEGER NOT NULL CHECK(counter >= 0)
+                )
+            """)
+            db.execute("INSERT INTO witness_counter VALUES (1, 1)")
+            db.execute("""
+                CREATE TABLE witness_receipts (
+                    activation_id TEXT PRIMARY KEY,
+                    activation_digest TEXT NOT NULL,
+                    config_epoch INTEGER NOT NULL,
+                    counter INTEGER NOT NULL UNIQUE,
+                    receipt_json BLOB NOT NULL
+                )
+            """)
+            db.execute(
+                "INSERT INTO witness_receipts VALUES (?, ?, ?, ?, ?)",
+                ("old-activation", "a" * 64, 7, 1, b"{}"),
+            )
+        with self.assertRaisesRegex(
+            ActivationWitnessStoreError,
+            "HND-WITNESS-STORE-E-LEGACY-STATE-UNRESOLVED",
+        ):
+            self.store()
 
     def test_same_id_with_different_digest_is_rejected(self):
         store = self.store()
