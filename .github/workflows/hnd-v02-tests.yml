@@ -121,6 +121,23 @@ jobs:
           tests.test_workflow_contract
           tests.test_disposable_abci_server
 
+      - name: Run Station 2 activation and recovery reference tests
+        run: >-
+          python -m unittest -v
+          tests.test_activation_bundle
+          tests.test_activation_bundle_rotation
+          tests.test_activation_coordinator
+          tests.test_activation_transaction
+          tests.test_monotonic_anchor
+          tests.test_remote_activation_intent
+          tests.test_remote_activation_intent_server
+          tests.test_remote_monotonic_anchor
+          tests.test_remote_monotonic_anchor_server
+          tests.test_sqlite_activation_intent_store
+          tests.test_sqlite_atomic_activation
+          tests.test_sqlite_monotonic_anchor
+          tests.test_station2_end_to_end_activation
+
   cometbft-single-node-smoke:
     needs: hnd-v02-tests
     runs-on: ubuntu-latest
