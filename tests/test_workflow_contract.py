@@ -25,6 +25,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("      - feat/station2-sqlite-anchor-reference", push_block)
         self.assertIn("      - feat/station2-sqlite-atomic-activation-reference", push_block)
         self.assertIn("      - fix/station2-sqlite-backend-monotonic-enforcement", push_block)
+        self.assertIn("      - feat/station2-etcd-atomic-activation-backend", push_block)
+        self.assertIn("      - station2-witness-backend-interface", push_block)
         self.assertIn("      - fix/station2-sqlite-anchor-direct-monotonic", push_block)
         self.assertIn("      - phase-0.2-planning", pull_block)
         self.assertIn("      - feat/station2-trust-manifest-rotation", pull_block)
@@ -34,6 +36,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("      - feat/station2-sqlite-anchor-reference", pull_block)
         self.assertIn("      - feat/station2-sqlite-atomic-activation-reference", pull_block)
         self.assertIn("      - fix/station2-sqlite-backend-monotonic-enforcement", pull_block)
+        self.assertIn("      - feat/station2-etcd-atomic-activation-backend", pull_block)
+        self.assertIn("      - station2-witness-backend-interface", pull_block)
         self.assertIn("      - main", pull_block)
 
 
