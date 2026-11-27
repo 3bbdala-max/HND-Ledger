@@ -453,6 +453,11 @@ class EtcdV3AtomicActivationBackend:
         if intent["state"] == "finalized":
             if intent.get("witness_receipt") != witness_receipt:
                 raise EtcdAtomicActivationError("HND-ETCD-ACT-E-FINALIZE-CONFLICT")
+            stored_counter = intent.get("witness_counter")
+            if type(stored_counter) is not int or stored_counter != verified.counter:
+                raise EtcdAtomicActivationError(
+                    "HND-ETCD-ACT-E-FINALIZE-COUNTER-CONFLICT"
+                )
             return intent
 
         finalized = dict(intent)
