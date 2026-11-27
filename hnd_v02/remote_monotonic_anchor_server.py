@@ -192,7 +192,7 @@ def _record(value, *, nullable: bool) -> MonotonicRecord | None:
 
 def dispatch_monotonic_anchor_request(
     anchor: MonotonicStateAnchor, route: str, payload: Mapping[str, Any],
-    *, client_policy: AnchorClientPolicy | None = None,
+    *, client_policy: AnchorClientPolicy,
 ) -> dict:
     """Dispatch v1 only after enforcing the supplied authenticated client policy."""
     if route not in _ROUTES:
@@ -205,7 +205,7 @@ def dispatch_monotonic_anchor_request(
         namespace = payload["namespace"]
         if type(namespace) is not str or namespace not in _NAMESPACES:
             raise MonotonicAnchorHTTPError(400, "HND-ANCHOR-SERVER-E-NAMESPACE")
-        if client_policy is not None and ("read" not in client_policy.operations
+        if ("read" not in client_policy.operations
                 or namespace not in client_policy.namespaces):
             raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
         current = anchor.read_state(namespace)
@@ -218,7 +218,7 @@ def dispatch_monotonic_anchor_request(
     namespace = payload["namespace"]
     if type(namespace) is not str or namespace not in _NAMESPACES:
         raise MonotonicAnchorHTTPError(400, "HND-ANCHOR-SERVER-E-NAMESPACE")
-    if client_policy is not None and ("compare-and-advance" not in client_policy.operations
+    if ("compare-and-advance" not in client_policy.operations
             or namespace not in client_policy.namespaces):
         raise MonotonicAnchorHTTPError(403, "HND-ANCHOR-SERVER-E-AUTHZ")
     expected = _record(payload["expected_current"], nullable=True)
