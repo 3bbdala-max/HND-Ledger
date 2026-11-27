@@ -178,5 +178,39 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("tests.test_disposable_abci_server", workflow)
 
 
+    def test_station2_activation_and_recovery_reference_tests_are_executed_in_ci(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "hnd-v02-tests.yml"
+        ).read_text(encoding="utf-8")
+        start = workflow.index("- name: Run Station 2 activation and recovery reference tests")
+        end = workflow.index("\\n\\n  cometbft-single-node-smoke:", start)
+        station2_step = workflow[start:end]
+        required_modules = (
+            "tests.test_activation_bundle",
+            "tests.test_activation_bundle_rotation",
+            "tests.test_activation_coordinator",
+            "tests.test_activation_transaction",
+            "tests.test_monotonic_anchor",
+            "tests.test_remote_activation_intent",
+            "tests.test_remote_activation_intent_server",
+            "tests.test_remote_monotonic_anchor",
+            "tests.test_remote_monotonic_anchor_server",
+            "tests.test_sqlite_activation_intent_store",
+            "tests.test_sqlite_atomic_activation",
+            "tests.test_sqlite_monotonic_anchor",
+            "tests.test_station2_end_to_end_activation",
+        )
+        for module in required_modules:
+            with self.subTest(module=module):
+                self.assertIn(
+                    module,
+                    station2_step,
+                    f"{module} must remain in the Station 2 CI test matrix",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
