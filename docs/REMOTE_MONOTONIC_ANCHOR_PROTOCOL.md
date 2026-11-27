@@ -17,6 +17,25 @@ The service must be independently administered and independently recoverable fro
 - Client certificate issuance, rotation, revocation, CA custody, endpoint DNS, and service operator identity require a separate documented ceremony.
 - Fail closed on TLS errors, timeout, non-200 response, unexpected content type, oversized response, malformed JSON, duplicate JSON keys, or an unknown response shape.
 
+## Role-based client authorization
+
+The reference server requires an explicit `AnchorClientRegistry`; a certificate fingerprint allow-list alone is not authorization. The registry maps each SHA-256 certificate fingerprint to an immutable principal ID, role, exact namespace set, and operation set. The server resolves this policy for every request and checks both route and namespace before touching anchor state.
+
+Supported v1 roles are deliberately constrained:
+
+| Role | Namespace scope | Read | Compare-and-advance |
+|---|---|---:|---:|
+| `witness` | `activation-witness` only | Yes | Yes |
+| `trust-manifest-authority` | `trust-manifest` only | Yes | Yes |
+| `vsp-profile-authority` | `vsp-profile` only | Yes | Yes |
+| `finalizer` | Explicit subset of all namespaces | Yes | No |
+| `recovery` | No v1 namespace | No | No |
+| `operator` | No v1 namespace | No | No |
+
+A witness certificate cannot read or advance trust-manifest or VSP state. A finalizer is read-only. Recovery and operator identities receive no authority through the v1 API because no dedicated recovery operation exists; they cannot use compare-and-advance as a substitute recovery route.
+
+The registry supports live revocation by removing a fingerprint and atomic certificate rotation by replacing the old fingerprint with the new one and its policy. Deployments must keep registry updates under a separately controlled certificate-administration process. Rotation must not broaden the principal's role or namespace scope. Unknown, revoked, cross-role, and cross-namespace requests fail closed with HTTP 403. The registry is an in-process reference control; production must persist and audit authorization changes in a separately governed control plane.
+
 ## API
 
 All requests are UTF-8 JSON POSTs. Responses are UTF-8 JSON with Content-Type application/json. The client currently accepts at most 16 KiB per response.

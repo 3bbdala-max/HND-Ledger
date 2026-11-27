@@ -100,15 +100,20 @@ The exact API shape may differ, but the security invariants above MUST remain. T
 
 ## 9. Authorization
 
-The remote anchor service MUST map each authenticated client identity to an explicit role and allowed operations. Certificate pinning/mTLS authenticates a peer; it does not by itself authorize every route.
+The remote anchor service MUST map each authenticated client certificate identity to an immutable principal ID, an explicit role, and exact allowed namespace/operation sets. Certificate pinning and mTLS authenticate a peer; they do not authorize every route.
 
-At minimum:
-- witness identity: only its assigned witness namespace and permitted advancement operation;
-- finalizer/coordinator: read and verify only, unless a separately reviewed operation is required;
-- recovery authority: explicit recovery operations only;
-- HND operator: no direct anchor mutation, key use, or recovery privilege.
+The v1 reference roles are constrained as follows:
 
-Authorization MUST be checked on every request, including namespace binding. Revocation and key/certificate rotation MUST be enforced.
+- `witness`: exactly the `activation-witness` namespace; read and compare-and-advance only there.
+- `trust-manifest-authority`: exactly `trust-manifest`; read and compare-and-advance only there.
+- `vsp-profile-authority`: exactly `vsp-profile`; read and compare-and-advance only there.
+- `finalizer`: read-only on explicitly assigned namespaces; no mutation.
+- `recovery`: no v1 authority because v1 defines no recovery route.
+- `operator`: no direct read, mutation, key use, or recovery privilege.
+
+Authorization MUST be checked on every request, including route, namespace, operation, and certificate revocation state. The reference implementation's registry supports live fingerprint revocation and atomic old-to-new fingerprint rotation; production MUST govern registry updates through a separately administered control plane with append-only audit, approval, and key-rotation evidence. Rotation MUST preserve or reduce the prior principal's authority; it MUST NOT silently broaden namespace or operation scope.
+
+A witness client MUST NOT act as a finalizer or recovery authority. A finalizer MUST NOT mutate any anchor namespace. An operator MUST NOT gain authority by possessing a valid client certificate. Unknown, revoked, cross-role, and cross-namespace requests MUST fail closed.
 
 ## 10. Required tests
 
