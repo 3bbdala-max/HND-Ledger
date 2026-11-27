@@ -28,6 +28,10 @@ on:
       - fix/station2-sqlite-backend-monotonic-enforcement
       - main
 
+concurrency:
+  group: hnd-v02-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
