@@ -1,5 +1,6 @@
 import sqlite3
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -61,6 +62,48 @@ class SQLiteActivationWitnessStoreTests(unittest.TestCase):
         self.assertEqual(pending, ("activation-1", "a" * 64))
         self.assertEqual(first["counter"], 1)
 
+    def test_concurrent_distinct_activations_have_one_pending_winner(self):
+        store = self.store()
+        barrier = threading.Barrier(3)
+        outcomes = []
+        outcome_lock = threading.Lock()
+
+        def acknowledge(activation_id, digest):
+            barrier.wait()
+            try:
+                result = store.acknowledge(activation_id, digest)
+                outcome = ("ok", result["activation_id"])
+            except ActivationWitnessStoreError as exc:
+                outcome = ("error", str(exc))
+            with outcome_lock:
+                outcomes.append(outcome)
+
+        threads = [
+            threading.Thread(target=acknowledge, args=("activation-1", "a" * 64)),
+            threading.Thread(target=acknowledge, args=("activation-2", "b" * 64)),
+        ]
+        for thread in threads:
+            thread.start()
+        barrier.wait()
+        for thread in threads:
+            thread.join(timeout=15)
+            self.assertFalse(thread.is_alive())
+
+        successes = [item for item in outcomes if item[0] == "ok"]
+        conflicts = [
+            item for item in outcomes
+            if item == ("error", "HND-WITNESS-STORE-E-PENDING-CONFLICT")
+        ]
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(conflicts), 1)
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT counter FROM witness_counter WHERE singleton = 1"
+                ).fetchone()[0],
+                1,
+            )
+
     def test_pending_lock_survives_restart_and_same_activation_retry(self):
         first = self.store().acknowledge("activation-1", "a" * 64)
         restarted = self.store()
@@ -107,12 +150,6 @@ class SQLiteActivationWitnessStoreTests(unittest.TestCase):
             "HND-WITNESS-STORE-E-LEGACY-STATE-UNRESOLVED",
         ):
             self.store()
-
-    def test_same_id_with_different_digest_is_rejected(self):
-        store = self.store()
-        store.acknowledge("activation-1", "a" * 64)
-        with self.assertRaises(ActivationWitnessStoreError):
-            store.acknowledge("activation-1", "b" * 64)
 
     def test_connection_failure_is_reported_as_store_error(self):
         store = self.store()
