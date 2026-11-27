@@ -9,6 +9,7 @@ on:
       - feat/station2-atomic-activation-contract
       - feat/station2-etcd-atomic-activation-backend
       - feat/station2-config-schema-dumper
+      - feat/station2-etcd-atomic-activation-backend
       - feat/station2-sqlite-anchor-reference
       - feat/station2-sqlite-atomic-activation-reference
       - fix/station2-sqlite-backend-monotonic-enforcement
