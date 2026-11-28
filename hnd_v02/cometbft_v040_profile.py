@@ -228,7 +228,7 @@ def load_cometbft_v040_profile_schema(
             raise CometBFTProfileError("schema inventory excluded-source field is malformed")
         excluded_go_paths.add(excluded["go_path"])
     expected_tables = {
-        ".".join(path.split(".")[:index])
+        ".".join(entry["path"].split(".")[:index])
         for entry in inventory["fields"]
         if type(entry) is dict and type(entry.get("path")) is str
         for index in range(1, len(entry["path"].split(".")))

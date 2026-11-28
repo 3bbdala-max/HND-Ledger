@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/BurntSushi/toml"
 	cfg "github.com/cometbft/cometbft/config"
@@ -86,7 +85,15 @@ func tomlType(v any) (string, error) {
 	case map[string]any:
 		return "table", nil
 	default:
-		return "", fmt.Errorf("unsupported TOML value type %T", v)
+		value := reflect.ValueOf(v)
+		switch value.Kind() {
+		case reflect.Slice, reflect.Array:
+			return "array", nil
+		case reflect.Map:
+			return "table", nil
+		default:
+			return "", fmt.Errorf("unsupported TOML value type %T", v)
+		}
 	}
 }
 
@@ -264,12 +271,7 @@ func walkStruct(
 		// is rendered and parsed as a TOML string, so it is handled as a leaf.
 		if fieldType.Kind() == reflect.Struct && !isDuration(fieldType) {
 			tableValue, ok := lookup(document, path)
-			table, isTable := tableValue.(map[string]any)
-			if !isTable {
-				if m, ok := tableValue.(map[string]interface{}); ok {
-					table, isTable = m, true
-				}
-			}
+			_, isTable := tableValue.(map[string]any)
 			if !ok || !isTable {
 				*excluded = append(*excluded, ExcludedField{
 					Path: path, GoPath: goPath, GoType: sf.Type.String(),
@@ -285,11 +287,26 @@ func walkStruct(
 
 		defaultValue, ok := lookup(document, path)
 		if !ok {
-			*excluded = append(*excluded, ExcludedField{
-				Path: path, GoPath: goPath, GoType: sf.Type.String(),
-				Reason: "source field is not emitted by the pinned default TOML template",
-			})
-			continue
+			// CometBFT's TOML template omits empty arrays of tables. Preserve
+			// their source-defined field and empty default in the schema so a
+			// profile can still supply entries (for example bootstrap_peers).
+			element := fieldType
+			if element.Kind() == reflect.Slice {
+				element = element.Elem()
+				if element.Kind() == reflect.Pointer {
+					element = element.Elem()
+				}
+			}
+			if fieldType.Kind() == reflect.Slice && element.Kind() == reflect.Struct && fv.Len() == 0 {
+				defaultValue = []any{}
+				ok = true
+			} else {
+				*excluded = append(*excluded, ExcludedField{
+					Path: path, GoPath: goPath, GoType: sf.Type.String(),
+					Reason: "source field is not emitted by the pinned default TOML template",
+				})
+				continue
+			}
 		}
 
 		kind, err := tomlType(defaultValue)
@@ -305,7 +322,7 @@ func walkStruct(
 			return fmt.Errorf("%s default cannot be serialized: %w", path, err)
 		}
 
-		if fieldType.Kind() == reflect.Slice {
+		if fieldType.Kind() == reflect.Slice && kind == "array" {
 			element := fieldType.Elem()
 			if element.Kind() == reflect.Pointer {
 				element = element.Elem()
@@ -316,7 +333,9 @@ func walkStruct(
 				if err != nil {
 					return err
 				}
-				for index, item := range defaultValue.([]any) {
+				items := reflect.ValueOf(defaultValue)
+				for index := 0; index < items.Len(); index++ {
+					item := items.Index(index).Interface()
 					itemMap, ok := item.(map[string]any)
 					if !ok {
 						if m, ok := item.(map[string]interface{}); ok {
@@ -391,7 +410,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(fields) != len(leaves) {
+	if len(fields) < len(leaves) {
 		fmt.Fprintf(os.Stderr, "source/TOML field count mismatch: source=%d TOML=%d\n", len(fields), len(leaves))
 		os.Exit(1)
 	}
@@ -401,8 +420,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	for path := range fields {
+	for path, field := range fields {
 		if _, exists := leaves[path]; !exists {
+			// Empty array-of-table defaults are intentionally omitted by
+			// CometBFT's template but remain valid source-defined TOML fields.
+			if field.TOMLType == "array" && field.ItemType == "table" && string(field.Default) == "[]" {
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "source field was not parsed from TOML: %s\n", path)
 			os.Exit(1)
 		}

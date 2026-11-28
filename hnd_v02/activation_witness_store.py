@@ -17,7 +17,12 @@ from hnd_v02.activation_witness_interface import (
     ActivationWitnessStoreError, WitnessBackendCapabilities,
 )
 
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from hnd_v02.activation_witness import (
+    ActivationWitnessError, verify_witness_receipt,
+)
 
 _SCHEMA = "hnd.station2.witness-ack.v1"
 _DOMAIN = b"HND-STATION2-WITNESS-ACK-V1\x00"
@@ -80,6 +85,25 @@ class SQLiteActivationWitnessStore:
                         receipt_json BLOB NOT NULL
                     )
                 """)
+                db.execute("""
+                    CREATE TABLE IF NOT EXISTS witness_pending (
+                        singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                        activation_id TEXT NOT NULL UNIQUE,
+                        activation_digest TEXT NOT NULL,
+                        receipt_json BLOB NOT NULL
+                    )
+                """)
+                # Never infer terminal state for receipts created before this lock existed.
+                pending = db.execute(
+                    "SELECT activation_id FROM witness_pending WHERE singleton = 1"
+                ).fetchone()
+                receipts = db.execute(
+                    "SELECT COUNT(*) FROM witness_receipts"
+                ).fetchone()[0]
+                if pending is None and receipts:
+                    raise ActivationWitnessStoreError(
+                        "HND-WITNESS-STORE-E-LEGACY-STATE-UNRESOLVED"
+                    )
                 db.commit()
         except sqlite3.Error as exc:
             raise ActivationWitnessStoreError("HND-WITNESS-STORE-E-INIT") from exc
@@ -105,6 +129,60 @@ class SQLiteActivationWitnessStore:
             with closing(sqlite3.connect(self.database, timeout=10, isolation_level=None)) as db:
                 db.execute("PRAGMA synchronous=FULL")
                 db.execute("BEGIN IMMEDIATE")
+                pending = db.execute(
+                    """SELECT activation_id, activation_digest, receipt_json
+                       FROM witness_pending WHERE singleton = 1"""
+                ).fetchone()
+                if pending is not None:
+                    if pending[0] != activation_id:
+                        raise ActivationWitnessStoreError(
+                            "HND-WITNESS-STORE-E-PENDING-CONFLICT"
+                        )
+                    if pending[1] != activation_digest:
+                        raise ActivationWitnessStoreError(
+                            "HND-WITNESS-STORE-E-ID-CONFLICT"
+                        )
+                    try:
+                        encoded = bytes(pending[2])
+                        receipt = json.loads(encoded.decode("ascii"))
+                        if type(receipt) is not dict or _canonical(receipt) != encoded:
+                            raise ValueError("non-canonical persisted receipt")
+                        receipt_row = db.execute(
+                            """SELECT activation_digest, config_epoch, counter, receipt_json
+                               FROM witness_receipts WHERE activation_id = ?""",
+                            (activation_id,),
+                        ).fetchone()
+                        if receipt_row is None:
+                            raise ValueError("immutable receipt row is missing")
+                        if (receipt_row[0] != activation_digest
+                                or receipt_row[1] != self.config_epoch
+                                or type(receipt_row[2]) is not int
+                                or bytes(receipt_row[3]) != encoded):
+                            raise ValueError("pending and immutable receipt rows differ")
+                        public_key = self.signing_key.public_key().public_bytes(
+                            encoding=serialization.Encoding.Raw,
+                            format=serialization.PublicFormat.Raw,
+                        )
+                        verified = verify_witness_receipt(
+                            receipt,
+                            trusted_witness_keys={self.witness_id: public_key},
+                            expected_activation_id=activation_id,
+                            expected_activation_digest=activation_digest,
+                            expected_witness_id=self.witness_id,
+                            expected_config_epoch=self.config_epoch,
+                        )
+                        if verified.counter != receipt_row[2]:
+                            raise ValueError("receipt counter differs from immutable row")
+                    except (
+                        ActivationWitnessError, ValueError, TypeError,
+                        UnicodeError, json.JSONDecodeError,
+                    ) as exc:
+                        raise ActivationWitnessStoreError(
+                            "HND-WITNESS-STORE-E-PENDING-CORRUPT"
+                        ) from exc
+                    db.execute("COMMIT")
+                    return receipt
+
                 row = db.execute(
                     """SELECT activation_digest, config_epoch, counter, receipt_json
                        FROM witness_receipts WHERE activation_id = ?""",
@@ -113,9 +191,9 @@ class SQLiteActivationWitnessStore:
                 if row is not None:
                     if row[0] != activation_digest or row[1] != self.config_epoch:
                         raise ActivationWitnessStoreError("HND-WITNESS-STORE-E-ID-CONFLICT")
-                    receipt = json.loads(bytes(row[3]).decode("ascii"))
-                    db.execute("COMMIT")
-                    return receipt
+                    raise ActivationWitnessStoreError(
+                        "HND-WITNESS-STORE-E-TERMINAL-EVIDENCE-MISSING"
+                    )
 
                 current = db.execute(
                     "SELECT counter FROM witness_counter WHERE singleton = 1"
@@ -146,6 +224,12 @@ class SQLiteActivationWitnessStore:
                        (activation_id, activation_digest, config_epoch, counter, receipt_json)
                        VALUES (?, ?, ?, ?, ?)""",
                     (activation_id, activation_digest, self.config_epoch, counter, encoded),
+                )
+                db.execute(
+                    """INSERT INTO witness_pending
+                       (singleton, activation_id, activation_digest, receipt_json)
+                       VALUES (1, ?, ?, ?)""",
+                    (activation_id, activation_digest, encoded),
                 )
                 db.execute("COMMIT")
                 return receipt

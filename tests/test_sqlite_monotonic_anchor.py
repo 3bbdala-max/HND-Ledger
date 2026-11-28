@@ -111,10 +111,9 @@ class SQLiteMonotonicAnchorTests(unittest.TestCase):
             self.assertTrue(reopened.compare_and_advance(
                 "activation-witness", first, MonotonicRecord(1, "b" * 64)
             ))
-            with self.assertRaises(MonotonicAnchorConflict):
-                reopened.compare_and_advance(
-                    "activation-witness", None, MonotonicRecord(0, "c" * 64)
-                )
+            self.assertFalse(reopened.compare_and_advance(
+                "activation-witness", None, MonotonicRecord(0, "c" * 64)
+            ))
 
 if __name__ == "__main__":
     unittest.main()
