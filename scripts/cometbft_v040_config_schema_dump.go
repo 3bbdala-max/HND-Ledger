@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/BurntSushi/toml"
 	cfg "github.com/cometbft/cometbft/config"
@@ -264,12 +263,7 @@ func walkStruct(
 		// is rendered and parsed as a TOML string, so it is handled as a leaf.
 		if fieldType.Kind() == reflect.Struct && !isDuration(fieldType) {
 			tableValue, ok := lookup(document, path)
-			table, isTable := tableValue.(map[string]any)
-			if !isTable {
-				if m, ok := tableValue.(map[string]interface{}); ok {
-					table, isTable = m, true
-				}
-			}
+			_, isTable := tableValue.(map[string]any)
 			if !ok || !isTable {
 				*excluded = append(*excluded, ExcludedField{
 					Path: path, GoPath: goPath, GoType: sf.Type.String(),
