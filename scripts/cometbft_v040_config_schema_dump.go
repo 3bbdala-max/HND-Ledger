@@ -287,11 +287,26 @@ func walkStruct(
 
 		defaultValue, ok := lookup(document, path)
 		if !ok {
-			*excluded = append(*excluded, ExcludedField{
-				Path: path, GoPath: goPath, GoType: sf.Type.String(),
-				Reason: "source field is not emitted by the pinned default TOML template",
-			})
-			continue
+			// CometBFT's TOML template omits empty arrays of tables. Preserve
+			// their source-defined field and empty default in the schema so a
+			// profile can still supply entries (for example bootstrap_peers).
+			element := fieldType
+			if element.Kind() == reflect.Slice {
+				element = element.Elem()
+				if element.Kind() == reflect.Pointer {
+					element = element.Elem()
+				}
+			}
+			if fieldType.Kind() == reflect.Slice && element.Kind() == reflect.Struct && fv.Len() == 0 {
+				defaultValue = []any{}
+				ok = true
+			} else {
+				*excluded = append(*excluded, ExcludedField{
+					Path: path, GoPath: goPath, GoType: sf.Type.String(),
+					Reason: "source field is not emitted by the pinned default TOML template",
+				})
+				continue
+			}
 		}
 
 		kind, err := tomlType(defaultValue)
@@ -395,7 +410,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(fields) != len(leaves) {
+	if len(fields) < len(leaves) {
 		fmt.Fprintf(os.Stderr, "source/TOML field count mismatch: source=%d TOML=%d\n", len(fields), len(leaves))
 		os.Exit(1)
 	}
@@ -405,8 +420,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	for path := range fields {
+	for path, field := range fields {
 		if _, exists := leaves[path]; !exists {
+			// Empty array-of-table defaults are intentionally omitted by
+			// CometBFT's template but remain valid source-defined TOML fields.
+			if field.TOMLType == "array" && field.ItemType == "table" && string(field.Default) == "[]" {
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "source field was not parsed from TOML: %s\n", path)
 			os.Exit(1)
 		}
