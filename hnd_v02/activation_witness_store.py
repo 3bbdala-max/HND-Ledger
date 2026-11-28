@@ -148,8 +148,8 @@ class SQLiteActivationWitnessStore:
                         if type(receipt) is not dict or _canonical(receipt) != encoded:
                             raise ValueError("non-canonical persisted receipt")
                         receipt_row = db.execute(
-                            \"\"\"SELECT activation_digest, config_epoch, counter, receipt_json
-                               FROM witness_receipts WHERE activation_id = ?\"\"\",
+                            """"""SELECT activation_digest, config_epoch, counter, receipt_json
+                               FROM witness_receipts WHERE activation_id = ?""""",
                             (activation_id,),
                         ).fetchone()
                         if receipt_row is None:
