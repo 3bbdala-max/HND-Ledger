@@ -190,7 +190,11 @@ jobs:
               "statesync.chunk_fetchers",
               "consensus.timeout_commit",
           }
-          assert expected_paths.issubset(set(field_paths))
+          missing_expected_paths = sorted(expected_paths - set(field_paths))
+          if missing_expected_paths:
+              raise AssertionError(
+                  f"pinned CometBFT inventory is missing expected paths: {missing_expected_paths}"
+              )
           schema = load_cometbft_v040_profile_schema(inventory_raw, policy_raw)
           assert len(schema.fields) == len(fields)
           assert schema.inventory_sha256 == hashlib.sha256(inventory_raw).hexdigest()
