@@ -322,7 +322,7 @@ func walkStruct(
 			return fmt.Errorf("%s default cannot be serialized: %w", path, err)
 		}
 
-		if fieldType.Kind() == reflect.Slice {
+		if fieldType.Kind() == reflect.Slice && kind == "array" {
 			element := fieldType.Elem()
 			if element.Kind() == reflect.Pointer {
 				element = element.Elem()
