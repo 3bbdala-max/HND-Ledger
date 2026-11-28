@@ -85,7 +85,15 @@ func tomlType(v any) (string, error) {
 	case map[string]any:
 		return "table", nil
 	default:
-		return "", fmt.Errorf("unsupported TOML value type %T", v)
+		value := reflect.ValueOf(v)
+		switch value.Kind() {
+		case reflect.Slice, reflect.Array:
+			return "array", nil
+		case reflect.Map:
+			return "table", nil
+		default:
+			return "", fmt.Errorf("unsupported TOML value type %T", v)
+		}
 	}
 }
 
@@ -310,7 +318,9 @@ func walkStruct(
 				if err != nil {
 					return err
 				}
-				for index, item := range defaultValue.([]any) {
+				items := reflect.ValueOf(defaultValue)
+				for index := 0; index < items.Len(); index++ {
+					item := items.Index(index).Interface()
 					itemMap, ok := item.(map[string]any)
 					if !ok {
 						if m, ok := item.(map[string]interface{}); ok {
