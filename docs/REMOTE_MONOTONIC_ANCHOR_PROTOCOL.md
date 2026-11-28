@@ -17,6 +17,24 @@ The service must be independently administered and independently recoverable fro
 - Client certificate issuance, rotation, revocation, CA custody, endpoint DNS, and service operator identity require a separate documented ceremony.
 - Fail closed on TLS errors, timeout, non-200 response, unexpected content type, oversized response, malformed JSON, duplicate JSON keys, or an unknown response shape.
 
+## Role-based client authorization
+
+The reference mTLS server requires an explicit `AnchorClientRegistry`; a certificate fingerprint allow-list alone is authentication, not authorization. Each certificate fingerprint maps to an immutable principal ID, role, exact namespace set, and operation set. The server checks the authenticated certificate, route, namespace, and operation before reading or mutating anchor state.
+
+The v1 reference roles are deliberately constrained:
+
+| Role | Namespace scope | Read | Compare-and-advance |
+|---|---|---:|---:|
+| `trust-manifest-authority` | `trust-manifest` only | Yes | Yes |
+| `vsp-profile-authority` | `vsp-profile` only | Yes | Yes |
+| `finalizer` | Explicit non-empty subset of the two namespaces | Yes | No |
+| `recovery` | No v1 authority | No | No |
+| `operator` | No v1 authority | No | No |
+
+A trust-manifest authority cannot access VSP state, and a VSP authority cannot access trust-manifest state. A finalizer is read-only. Recovery and operator identities have no v1 route authority because this API defines no recovery operation. Unknown, revoked, cross-role, cross-namespace, and cross-operation requests fail closed.
+
+The in-process reference registry supports revocation and atomic certificate rotation. Rotation preserves the same principal and role and cannot broaden namespace or operation authority. This is not a production certificate-administration control plane: durable authorization state, append-only audit, approval workflow, CA custody, and operational revocation evidence remain external acceptance requirements.
+
 ## API
 
 All requests are UTF-8 JSON POSTs. Responses are UTF-8 JSON with Content-Type application/json. The client currently accepts at most 16 KiB per response.
