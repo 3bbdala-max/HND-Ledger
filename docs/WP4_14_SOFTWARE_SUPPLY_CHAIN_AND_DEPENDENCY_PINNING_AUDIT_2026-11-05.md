@@ -69,3 +69,31 @@ These successful runs establish that the configured jobs passed for those commit
 **Status: PARTIAL / NOT RELEASE-READY.**
 
 No dependency was changed, no workflow was modified, no SBOM or release artifact was generated, and no vulnerability scan was claimed. This is a repository-evidence audit, not a full software composition analysis or security certification.
+
+
+## 8. Evidence reconciliation — 2026-11-20
+
+The findings in §§2–4 above describe the repository as inspected on 2026-11-05. A fresh read of the 2026-11-20 working-branch tree shows that several of those specific observations have since been remediated. This addendum supersedes only the corresponding historical statements; it does not convert the repository into a release-ready supply chain.
+
+### 8.1 Controls now present
+
+- **Python direct pins:** the current root requirements file pins `cryptography==50.0.2`, `grpcio==1.76.0`, `grpcio-tools==1.76.0`, and `protobuf==6.33.5`. The earlier `cryptography>=41.0` range finding is no longer current.
+- **GitHub Actions references:** the current workflow pins `actions/checkout`, `actions/setup-python`, and `actions/setup-go` to full commit SHAs, with readable version comments. The earlier movable-major-tag finding is superseded.
+- **CometBFT source:** both the workflow and `scripts/generate_cometbft_v040_python.sh` fetch CometBFT commit `0880b4d378f347ab16e54ec677ff50d803f37d62` and assert that the checked-out HEAD equals that SHA. The workflow also verifies the generated config inventory's source commit. The earlier tag-only source-pin finding is superseded.
+- **Automated update configuration:** `.github/dependabot.yml` now configures weekly pip and GitHub Actions update checks, with a five-open-PR limit and dependency/security labels. The earlier statement that no Dependabot configuration existed is no longer current.
+- **Isolated JCS dependencies:** `requirements-vsp-jcs-spike.txt` hash-pins the isolated `rfc8785==0.1.4` dependency and the workflow installs it with `--require-hashes`. The independent Node comparator has a committed `package-lock.json` with an integrity value for `canonicalize@2.1.0`; CI checks the expected registry integrity and uses `npm ci`.
+
+### 8.2 Remaining supply-chain gaps
+
+- The root `requirements.txt` still has no artifact hashes and does not lock the complete transitive dependency graph. Exact direct pins alone do not make installation fully reproducible.
+- The hash-locked Python spike file and Node lockfile cover only their isolated test tools; they are not a lock for the main Python runtime.
+- No repository-owned `go.mod`/`go.sum` pair was found in the current tree. The CometBFT build is source-pinned, but a separate repository-owned Go dependency manifest for HND helper binaries is not established by this evidence.
+- No SBOM generation, dependency vulnerability scan, CodeQL/security-analysis workflow, build-provenance attestation, or artifact-signing workflow was found in the current repository tree.
+- This review did not query an external vulnerability database or execute a fresh dependency audit. It makes no claim that the pinned versions are vulnerability-free.
+- The latest Actions evidence remains blocked before runner allocation on the current project branch; no dependency audit or test result is inferred from a zero-step workflow failure.
+
+### 8.3 Corrected disposition and next action
+
+**Status: PARTIAL / NOT RELEASE-READY.** The direct-version, immutable-action, CometBFT-source, Dependabot, and isolated JCS controls above are present. The main Python transitive graph is not hash-locked, and SBOM, vulnerability review, build provenance, artifact signing, and independent reproducibility evidence remain open.
+
+Next repository-addressable step: generate and review a complete hash-locked main Python requirements set from a pinned resolver/toolchain, without changing dependency versions silently; then add an explicit CI verification step. External vulnerability review and release provenance remain separate gates. Do not publish or sign release artifacts until those gates are independently accepted.
